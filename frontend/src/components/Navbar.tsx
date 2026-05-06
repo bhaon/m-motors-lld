@@ -2,6 +2,7 @@ import Link from "next/link";
 
 export default function Navbar() {
   return (
+    // Barre principale persistante pour la navigation publique.
     <nav
       style={{
         background: "var(--navy)",
@@ -16,6 +17,7 @@ export default function Navbar() {
         boxShadow: "0 2px 12px rgba(0,0,0,.25)",
       }}
     >
+      {/* Signature visuelle de marque. */}
       <div
         style={{
           fontFamily: "Syne, sans-serif",
@@ -28,6 +30,7 @@ export default function Navbar() {
         M-<span style={{ color: "var(--cyan)" }}>MOTORS</span>
       </div>
 
+      {/* Liens de navigation principaux du parcours utilisateur. */}
       <div style={{ display: "flex", gap: "1.5rem", alignItems: "center" }}>
         <Link
           href="/"
@@ -40,6 +43,7 @@ export default function Navbar() {
         >
           Catalogue
         </Link>
+        {/* Point d'entrée principal du tunnel d'inscription. */}
         <Link
           href="/inscription"
           style={{
@@ -51,6 +55,7 @@ export default function Navbar() {
         >
           Inscription
         </Link>
+        {/* Lien placeholder en attendant une page "À propos" dédiée. */}
         <Link
           href="#"
           style={{

@@ -13,6 +13,7 @@ from app.core.deps import DbSession
 from app.core.security import hash_password
 from app.models.user import RoleEnum, User
 from app.schemas.auth import EmailVerificationResponse, RegisterRequest, RegisterResponse
+from app.services.emailing import send_verification_email
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 
@@ -30,6 +31,15 @@ def _hash_email_verification_token(token: str) -> str:
 def _build_confirmation_link(token: str) -> str:
     """Construit l'URL de confirmation utilisée dans l'email de validation."""
     return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/confirm-email?token={token}"
+
+
+def _is_token_expired(expires_at: datetime | None, now: datetime) -> bool:
+    """Retourne True si la date d'expiration est passée, en gérant naïf/aware."""
+    if expires_at is None:
+        return False
+    if expires_at.tzinfo is None:
+        return now.replace(tzinfo=None) > expires_at
+    return now > expires_at
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
@@ -63,8 +73,7 @@ def register_client(payload: RegisterRequest, db: DbSession) -> RegisterResponse
     db.commit()
 
     confirmation_link = _build_confirmation_link(raw_token)
-    # Simule l'envoi email côté infrastructure actuelle (MVP) : lien traçable dans les logs.
-    print(f"[EMAIL_CONFIRMATION] to={payload.email} link={confirmation_link}")
+    send_verification_email(to_email=payload.email, confirmation_link=confirmation_link)
 
     return RegisterResponse(
         message="Inscription reussie. Un email de confirmation vous a ete envoye pour activer votre compte.",
@@ -84,7 +93,7 @@ def confirm_email(token: str, db: DbSession) -> EmailVerificationResponse:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lien de confirmation invalide.")
 
     now = datetime.now(timezone.utc)
-    if user.email_verification_expires_at and now > user.email_verification_expires_at:
+    if _is_token_expired(user.email_verification_expires_at, now):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lien de confirmation expire.")
 
     user.email_verified = True

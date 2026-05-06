@@ -6,6 +6,7 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 
 from app.models.user import User
+from app.api.v1.endpoints import auth as auth_endpoint
 
 
 def test_register_client_success(client, db) -> None:
@@ -29,6 +30,35 @@ def test_register_client_success(client, db) -> None:
     assert user is not None
     assert user.email_verified is False
     assert user.email_verification_token is not None
+
+
+def test_register_client_sends_verification_email(client, monkeypatch) -> None:
+    """Déclenche l'envoi de l'email de vérification après création du compte."""
+    sent_payload: dict[str, str] = {}
+
+    def _fake_send_verification_email(*, to_email: str, confirmation_link: str) -> None:
+        """Capture les paramètres d'envoi pour vérifier le branchement Resend."""
+        sent_payload["to_email"] = to_email
+        sent_payload["confirmation_link"] = confirmation_link
+
+    monkeypatch.setattr(auth_endpoint, "send_verification_email", _fake_send_verification_email)
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "mail.check@example.com",
+            "password": "UltraSecure123!",
+            "first_name": "Lina",
+            "last_name": "Fournier",
+            "birth_date": "1995-07-14",
+            "accepted_cgu": True,
+            "accepted_privacy_policy": True,
+        },
+    )
+
+    assert response.status_code == 201
+    assert sent_payload["to_email"] == "mail.check@example.com"
+    assert "/confirm-email?token=" in sent_payload["confirmation_link"]
 
 
 def test_register_client_rejects_weak_password(client) -> None:

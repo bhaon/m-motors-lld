@@ -97,6 +97,14 @@ class Settings(BaseSettings):
         default="https://netdevops.fr",
         description="URL publique du frontend utilisée pour les liens de confirmation email.",
     )
+    RESEND_API_KEY: str | None = Field(
+        default=None,
+        description="Clé API Resend pour l'envoi d'emails transactionnels.",
+    )
+    RESEND_FROM_EMAIL: str = Field(
+        default="M-Motors <no-reply@mmotors.dev>",
+        description="Adresse expéditeur utilisée pour les emails de vérification.",
+    )
 
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
