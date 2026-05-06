@@ -1,0 +1,89 @@
+/* ==========================================================================
+   Feuille de styles globale pour l'application M-Motors (Next.js + Tailwind)
+   Cette feuille applique les styles de base, thématise les couleurs et
+   définit des utilitaires globaux pour l'ensemble du frontend.
+   ========================================================================== */
+
+/* ── Importation des polices Google Fonts pour Syne et DM Sans ── */
+@import url("https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap");
+
+/* ── Inclusion de la base Tailwind, composants & utilitaires ── */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ───────────────────────
+   Variables CSS globales
+   ─────────────────────── */
+:root {
+  --navy: #0d1b4b; /* Couleur bleu marine principale */
+  --navy2: #1a2d6b; /* Variante secondaire du bleu */
+  --cyan: #00b4d8; /* Accent cyan clair */
+  --cyan2: #0090b0; /* Variante cyan plus foncé */
+  --gold: #f4a024; /* Accent doré (boutons, etc.) */
+  --white: #fff; /* Blanc pur */
+  --off: #f7f8fc; /* Arrière-plan off-white */
+  --muted: #6b7280; /* Texte gris atténué */
+  --border: #e5e7eb; /* Couleur de bordure */
+  --radius: 12px; /* Rayon de bordure pour les cards */
+  --shadow: 0 2px 16px rgba(13, 27, 75, 0.1); /* Ombre légère */
+}
+
+/* ──────────────────────────────
+   Reset & base du box model CSS
+   ────────────────────────────── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ──────────────────────────────
+   Style de base du <body>
+   ────────────────────────────── */
+body {
+  font-family: "DM Sans", sans-serif; /* Police principale du site */
+  background: var(--off); /* Couleur de fond globale */
+  color: var(--navy); /* Couleur de texte principale */
+  min-height: 100vh; /* Hauteur minimale : plein écran */
+}
+
+/* ────────────────────────────────────────
+   Désactivation du scroll sous modal overlay
+   ──────────────────────────────────────── */
+.modal-open {
+  overflow: hidden;
+}
+
+/* ─────────────────────────────────────────────
+   Effet zoom sur l’image des cards véhicules au hover
+   ───────────────────────────────────────────── */
+.vehicle-card:hover .card-img-inner {
+  transform: scale(1.04);
+}
+
+/* ──────────────────────────────────────────
+   Effet de transition pour affichage overlay
+   ────────────────────────────────────────── */
+.overlay-enter {
+  opacity: 0;
+}
+.overlay-visible {
+  opacity: 1;
+  transition: opacity 0.2s;
+}
+
+/* ──────────────────────────────
+   Animations d'affichage des toasts
+   ────────────────────────────── */
+.toast-hidden {
+  transform: translateY(80px); /* Slide bas */
+  opacity: 0; /* Invisible */
+}
+.toast-visible {
+  transform: translateY(0); /* Slide en place */
+  opacity: 1; /* Visible */
+  transition:
+    transform 0.3s,
+    opacity 0.3s;
+}
