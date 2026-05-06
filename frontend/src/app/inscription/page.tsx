@@ -134,7 +134,15 @@ export default function InscriptionPage() {
           <button
             type="submit"
             disabled={isSubmitDisabled}
-            style={{ background: "var(--navy)", color: "#fff", border: 0, padding: ".75rem", borderRadius: 8 }}
+            style={{
+              background: isSubmitDisabled ? "#9ca3af" : "var(--navy)",
+              color: "#fff",
+              border: 0,
+              padding: ".75rem",
+              borderRadius: 8,
+              cursor: isSubmitDisabled ? "not-allowed" : "pointer",
+              opacity: isSubmitDisabled ? 0.8 : 1,
+            }}
           >
             {loading ? "Inscription..." : "S'inscrire"}
           </button>

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from sqlalchemy import String, TypeDecorator, func, literal
+from sqlalchemy import String, TypeDecorator, func, literal, type_coerce
 from sqlalchemy.dialects.postgresql import BYTEA
 from app.core.config import settings
 
@@ -38,8 +38,10 @@ class PgcryptoEncryptedText(TypeDecorator[str]):
         """Applique pgp_sym_encrypt à l'écriture sur PostgreSQL."""
         if not is_pgcrypto_runtime_enabled():
             return bindvalue
+        # Force le paramètre en texte pour éviter l'adaptation BYTEA d'un str.
+        plaintext_value = type_coerce(bindvalue, String())
         return func.pgp_sym_encrypt(
-            bindvalue,
+            plaintext_value,
             literal(self._encryption_key),
             literal("cipher-algo=aes256"),
         )
