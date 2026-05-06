@@ -23,10 +23,11 @@ export default function ConfirmEmailPage() {
       setMessage("Lien de confirmation invalide.");
       return;
     }
+    const confirmedToken = token;
 
     async function confirmEmail() {
       try {
-        const response = await fetch(resolveConfirmUrl(token));
+        const response = await fetch(resolveConfirmUrl(confirmedToken));
         const payload = (await response.json()) as { message?: string; detail?: string };
         if (!response.ok) {
           throw new Error(payload.detail || "Confirmation impossible.");
