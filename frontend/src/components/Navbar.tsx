@@ -1,6 +1,42 @@
+ "use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
+/**
+ * Résout l'URL d'authentification courante côté navigateur.
+ */
+function resolveMeUrl(): string {
+  const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
+  const base = pub ? pub.replace(/\/$/, "") : "";
+  return base ? `${base}/api/v1/auth/me` : "/api/v1/auth/me";
+}
+
 export default function Navbar() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  /**
+   * Vérifie si l'utilisateur est connecté afin d'afficher la pastille profil.
+   */
+  async function checkAuthStatus() {
+    try {
+      if (process.env.NODE_ENV === "test") return;
+      if (typeof fetch !== "function") return;
+      const response = await fetch(resolveMeUrl(), {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      setIsAuthenticated(response.ok);
+    } catch {
+      setIsAuthenticated(false);
+    }
+  }
+
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
+
   return (
     // Barre principale persistante pour la navigation publique.
     <nav
@@ -78,6 +114,28 @@ export default function Navbar() {
         >
           À propos
         </Link>
+        {isAuthenticated ? (
+          <Link
+            href="/espace-client"
+            aria-label="Accéder à mon espace client"
+            title="Espace client"
+            style={{
+              width: "28px",
+              height: "28px",
+              borderRadius: "9999px",
+              background: "var(--cyan)",
+              color: "var(--navy)",
+              fontWeight: 800,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textDecoration: "none",
+              fontSize: ".8rem",
+            }}
+          >
+            U
+          </Link>
+        ) : null}
       </div>
     </nav>
   );
