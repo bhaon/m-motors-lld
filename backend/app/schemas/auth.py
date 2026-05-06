@@ -74,11 +74,75 @@ class LoginResponse(BaseModel):
 
 
 class CurrentUserResponse(BaseModel):
-    """Représentation minimale de l'utilisateur connecté."""
+    """Représentation du profil utilisateur connecté."""
 
     id: int
     email: str
     role: str
+    first_name: str
+    last_name: str
+    phone: str | None
+    email_verified: bool
+
+
+class UpdateProfileRequest(BaseModel):
+    """Corps de requête pour modifier les informations de profil."""
+
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    phone: str | None = Field(default=None, max_length=30)
+    email: str = Field(min_length=5, max_length=255)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        """Normalise l'email pour homogénéiser les comparaisons."""
+        normalized = value.strip().lower()
+        if not EMAIL_REGEX.match(normalized):
+            raise ValueError("Format d'email invalide.")
+        return normalized
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        """Supprime les espaces superflus sur les noms."""
+        return value.strip()
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, value: str | None) -> str | None:
+        """Convertit une chaîne vide en null pour le stockage."""
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class UpdateProfileResponse(BaseModel):
+    """Réponse standard après mise à jour du profil."""
+
+    message: str
+
+
+class ChangePasswordRequest(BaseModel):
+    """Corps de requête pour changer le mot de passe du compte."""
+
+    old_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        """Applique la politique de mot de passe sur le nouveau mot de passe."""
+        if not PASSWORD_REGEX.match(value):
+            raise ValueError("Le mot de passe ne respecte pas la politique de sécurité.")
+        return value
+
+
+class ChangePasswordResponse(BaseModel):
+    """Réponse standard après changement de mot de passe."""
+
+    message: str
 
 
 class EmailVerificationResponse(BaseModel):

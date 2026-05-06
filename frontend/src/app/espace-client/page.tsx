@@ -1,6 +1,7 @@
 import Navbar from "@/components/Navbar";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import ProfileManagementClient from "./ProfileManagementClient";
 
 /**
  * Résout l'URL backend de l'endpoint d'authentification courante.
@@ -19,7 +20,17 @@ function resolveMeUrl(): string {
 /**
  * Vérifie l'authentification en backend à partir du cookie HTTP-only.
  */
-async function ensureAuthenticatedOrRedirect(): Promise<void> {
+type CurrentUser = {
+  id: number;
+  email: string;
+  role: string;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  email_verified: boolean;
+};
+
+async function ensureAuthenticatedOrRedirect(): Promise<CurrentUser> {
   const cookieHeader = (await headers()).get("cookie") || "";
   const response = await fetch(resolveMeUrl(), {
     method: "GET",
@@ -30,18 +41,16 @@ async function ensureAuthenticatedOrRedirect(): Promise<void> {
   if (!response.ok) {
     redirect("/connexion");
   }
+  return (await response.json()) as CurrentUser;
 }
 
 export default async function EspaceClientPage() {
-  await ensureAuthenticatedOrRedirect();
+  const currentUser = await ensureAuthenticatedOrRedirect();
 
   return (
     <main>
       <Navbar />
-      <section style={{ maxWidth: 720, margin: "2rem auto", padding: "1.5rem", background: "#fff", borderRadius: 12 }}>
-        <h1 style={{ fontFamily: "Syne, sans-serif", marginBottom: "1rem" }}>Espace client</h1>
-        <p>Bienvenue dans votre espace personnel. Vos dossiers et contrats seront disponibles ici.</p>
-      </section>
+      <ProfileManagementClient initialUser={currentUser} />
     </main>
   );
 }

@@ -12,6 +12,11 @@ jest.mock("next/navigation", () => ({
   redirect: (path: string) => redirectMock(path),
 }));
 
+jest.mock("@/app/espace-client/ProfileManagementClient", () => ({
+  __esModule: true,
+  default: ({ initialUser }: { initialUser: { email: string } }) => <div>Profil {initialUser.email}</div>,
+}));
+
 describe("EspaceClientPage", () => {
   const originalEnv = { ...process.env };
   const fetchMock = jest.fn();
@@ -31,12 +36,12 @@ describe("EspaceClientPage", () => {
     headersMock.mockResolvedValue({
       get: () => "access_token=jwt",
     });
-    fetchMock.mockResolvedValue({ ok: true });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ email: "ok@example.com" }) });
 
     const tree = await EspaceClientPage();
     render(tree);
 
-    expect(screen.getByText(/espace client/i)).toBeInTheDocument();
+    expect(screen.getByText(/profil ok@example.com/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/v1\/auth\/me$/),
       expect.objectContaining({
@@ -52,7 +57,7 @@ describe("EspaceClientPage", () => {
     headersMock.mockResolvedValue({
       get: () => "",
     });
-    fetchMock.mockResolvedValue({ ok: false });
+    fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) });
 
     await EspaceClientPage();
 
@@ -68,7 +73,7 @@ describe("EspaceClientPage", () => {
   it("utilise API_INTERNAL_URL quand défini", async () => {
     process.env.API_INTERNAL_URL = "http://backend:8000/";
     headersMock.mockResolvedValue({ get: () => "access_token=jwt" });
-    fetchMock.mockResolvedValue({ ok: true });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ email: "ok@example.com" }) });
 
     await EspaceClientPage();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -81,7 +86,7 @@ describe("EspaceClientPage", () => {
     delete process.env.API_INTERNAL_URL;
     process.env.NEXT_PUBLIC_API_URL = "https://api.example.com/";
     headersMock.mockResolvedValue({ get: () => "access_token=jwt" });
-    fetchMock.mockResolvedValue({ ok: true });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ email: "ok@example.com" }) });
 
     await EspaceClientPage();
     expect(fetchMock).toHaveBeenCalledWith(

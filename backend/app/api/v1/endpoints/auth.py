@@ -14,12 +14,16 @@ from app.core.deps import DbSession
 from app.core.security import create_access_token, decode_token, hash_password, verify_password
 from app.models.user import RoleEnum, User
 from app.schemas.auth import (
+    ChangePasswordRequest,
+    ChangePasswordResponse,
     CurrentUserResponse,
     EmailVerificationResponse,
     LoginRequest,
     LoginResponse,
     RegisterRequest,
     RegisterResponse,
+    UpdateProfileRequest,
+    UpdateProfileResponse,
 )
 from app.services.emailing import send_verification_email
 
@@ -73,6 +77,17 @@ def _resolve_user_from_token(token: str | None, db: DbSession) -> User:
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentification requise.")
     return user
+
+
+def _issue_email_revalidation(user: User) -> None:
+    """Déclenche une nouvelle validation email après changement d'adresse."""
+    now = datetime.now(timezone.utc)
+    raw_token = _generate_email_verification_token()
+    user.email_verified = False
+    user.email_verification_token = _hash_email_verification_token(raw_token)
+    user.email_verification_sent_at = now
+    user.email_verification_expires_at = now + timedelta(hours=24)
+    send_verification_email(to_email=user.email, confirmation_link=_build_confirmation_link(raw_token))
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
@@ -137,7 +152,62 @@ def login_client(payload: LoginRequest, response: Response, db: DbSession) -> Lo
 def get_current_authenticated_user(db: DbSession, access_token: str | None = Cookie(default=None)) -> CurrentUserResponse:
     """Retourne l'utilisateur authentifié à partir du cookie HTTP-only."""
     user = _resolve_user_from_token(access_token, db)
-    return CurrentUserResponse(id=user.id, email=user.email, role=user.role.value)
+    return CurrentUserResponse(
+        id=user.id,
+        email=user.email,
+        role=user.role.value,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        phone=user.phone,
+        email_verified=user.email_verified,
+    )
+
+
+@router.put("/profile", response_model=UpdateProfileResponse)
+def update_profile(
+    payload: UpdateProfileRequest,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> UpdateProfileResponse:
+    """Met à jour le profil et impose une revalidation en cas de changement d'email."""
+    user = _resolve_user_from_token(access_token, db)
+
+    email_changed = payload.email != user.email
+    if email_changed:
+        existing = db.query(User).filter(User.email == payload.email, User.id != user.id, User.deleted_at.is_(None)).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Un compte existe déjà avec cet email.")
+
+    user.first_name = payload.first_name
+    user.last_name = payload.last_name
+    user.phone = payload.phone
+    user.email = payload.email
+    if email_changed:
+        _issue_email_revalidation(user)
+
+    db.commit()
+    return UpdateProfileResponse(
+        message=(
+            "Profil mis a jour. Un email de verification a ete envoye a votre nouvelle adresse."
+            if email_changed
+            else "Profil mis a jour avec succes."
+        )
+    )
+
+
+@router.post("/change-password", response_model=ChangePasswordResponse)
+def change_password(
+    payload: ChangePasswordRequest,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> ChangePasswordResponse:
+    """Change le mot de passe après vérification de l'ancien mot de passe."""
+    user = _resolve_user_from_token(access_token, db)
+    if not verify_password(payload.old_password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ancien mot de passe invalide.")
+    user.hashed_password = hash_password(payload.new_password)
+    db.commit()
+    return ChangePasswordResponse(message="Mot de passe mis a jour avec succes.")
 
 
 @router.get("/confirm-email", response_model=EmailVerificationResponse)

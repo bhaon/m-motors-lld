@@ -233,3 +233,104 @@ def test_get_current_authenticated_user_without_cookie_rejected(client) -> None:
     response = client.get("/api/v1/auth/me")
     assert response.status_code == 401
 
+
+def test_update_profile_updates_names_and_phone(client, db) -> None:
+    """Met à jour prénom/nom/téléphone et retourne une confirmation visuelle."""
+    create_user(db, email="profile.edit@example.com", password="UltraSecure123!")
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "profile.edit@example.com", "password": "UltraSecure123!"},
+    )
+    access_token = login_response.headers.get("set-cookie", "").split("access_token=")[1].split(";")[0]
+
+    response = client.put(
+        "/api/v1/auth/profile",
+        cookies={"access_token": access_token},
+        json={
+            "first_name": "Alicia",
+            "last_name": "Martin",
+            "phone": "0102030405",
+            "email": "profile.edit@example.com",
+        },
+    )
+    assert response.status_code == 200
+    assert "profil mis a jour" in response.json()["message"].lower()
+
+    me_response = client.get("/api/v1/auth/me", cookies={"access_token": access_token})
+    assert me_response.status_code == 200
+    assert me_response.json()["first_name"] == "Alicia"
+    assert me_response.json()["phone"] == "0102030405"
+
+
+def test_update_profile_email_change_requires_revalidation(client, db, monkeypatch) -> None:
+    """Un changement d'email déclenche un nouveau lien de validation."""
+    sent_payload: dict[str, str] = {}
+
+    def _fake_send_verification_email(*, to_email: str, confirmation_link: str) -> None:
+        sent_payload["to_email"] = to_email
+        sent_payload["confirmation_link"] = confirmation_link
+
+    monkeypatch.setattr(auth_endpoint, "send_verification_email", _fake_send_verification_email)
+    create_user(db, email="old.mail@example.com", password="UltraSecure123!")
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "old.mail@example.com", "password": "UltraSecure123!"},
+    )
+    access_token = login_response.headers.get("set-cookie", "").split("access_token=")[1].split(";")[0]
+
+    response = client.put(
+        "/api/v1/auth/profile",
+        cookies={"access_token": access_token},
+        json={
+            "first_name": "Alice",
+            "last_name": "Durand",
+            "phone": "",
+            "email": "new.mail@example.com",
+        },
+    )
+    assert response.status_code == 200
+    assert "verification" in response.json()["message"].lower()
+    assert sent_payload["to_email"] == "new.mail@example.com"
+    assert "/confirm-email?token=" in sent_payload["confirmation_link"]
+
+
+def test_change_password_requires_old_password(client, db) -> None:
+    """Refuse le changement si l'ancien mot de passe est incorrect."""
+    create_user(db, email="pwd.user@example.com", password="UltraSecure123!")
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "pwd.user@example.com", "password": "UltraSecure123!"},
+    )
+    access_token = login_response.headers.get("set-cookie", "").split("access_token=")[1].split(";")[0]
+
+    response = client.post(
+        "/api/v1/auth/change-password",
+        cookies={"access_token": access_token},
+        json={"old_password": "WrongPassword", "new_password": "NewStrongPassword123!"},
+    )
+    assert response.status_code == 400
+    assert "ancien mot de passe invalide" in response.json()["detail"].lower()
+
+
+def test_change_password_success(client, db) -> None:
+    """Met à jour le mot de passe quand l'ancien est valide."""
+    create_user(db, email="pwd.ok@example.com", password="UltraSecure123!")
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "pwd.ok@example.com", "password": "UltraSecure123!"},
+    )
+    access_token = login_response.headers.get("set-cookie", "").split("access_token=")[1].split(";")[0]
+
+    response = client.post(
+        "/api/v1/auth/change-password",
+        cookies={"access_token": access_token},
+        json={"old_password": "UltraSecure123!", "new_password": "NewStrongPassword123!"},
+    )
+    assert response.status_code == 200
+
+    relogin_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "pwd.ok@example.com", "password": "NewStrongPassword123!"},
+    )
+    assert relogin_response.status_code == 200
+
