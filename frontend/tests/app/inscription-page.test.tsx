@@ -41,6 +41,35 @@ describe("InscriptionPage", () => {
     });
   });
 
+  it("active le bouton seulement si CGU et politique sont cochees", () => {
+    render(<InscriptionPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "new.user@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Mot de passe"), {
+      target: { value: "StrongPassword123!" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Prenom"), {
+      target: { value: "Alice" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Nom"), {
+      target: { value: "Martin" },
+    });
+    const birthDateInput = document.querySelector('input[type="date"]');
+    expect(birthDateInput).not.toBeNull();
+    fireEvent.change(birthDateInput as HTMLInputElement, { target: { value: "1990-01-01" } });
+
+    const submitButton = screen.getByRole("button", { name: /s'inscrire/i });
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText(/J.accepte les CGU/i));
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText(/J.accepte la politique/i));
+    expect(submitButton).toBeEnabled();
+  });
+
   it("affiche une erreur si l'API renvoie un echec", async () => {
     jest.spyOn(global, "fetch").mockResolvedValue({
       ok: false,

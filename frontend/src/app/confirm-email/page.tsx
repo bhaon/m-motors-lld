@@ -16,22 +16,22 @@ function resolveConfirmUrl(token: string): string {
  * Lit la reponse HTTP en JSON si possible, sinon en texte.
  */
 async function readApiPayload(response: Response): Promise<{ message?: string; detail?: string }> {
-  const contentType = response.headers?.get?.("content-type") || "";
-  if (contentType.includes("application/json")) {
-    return (await response.json()) as { message?: string; detail?: string };
-  }
+  const clonedResponse = typeof response.clone === "function" ? response.clone() : null;
   if (typeof response.json === "function") {
     try {
       return (await response.json()) as { message?: string; detail?: string };
     } catch {
-      // Le fallback texte ci-dessous couvre les réponses non-JSON.
+      // On tente ensuite de récupérer un message texte via le clone.
     }
   }
-  if (typeof response.text !== "function") {
+  if (typeof clonedResponse?.text !== "function") {
     return {};
   }
-  const text = await response.text();
-  return { detail: text || undefined };
+  const body = await clonedResponse.text();
+  if (!body) {
+    return {};
+  }
+  return { detail: body };
 }
 
 export default function ConfirmEmailPage() {
