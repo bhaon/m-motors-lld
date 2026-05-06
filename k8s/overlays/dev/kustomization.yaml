@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: dev
+
+# Tire uniquement deployment + service + postgresql
+resources:
+  - ../../base
+  - ingress.yaml
+  - configmap.yaml
+
+patches:
+  - path: patches/replicas.yaml
+  - path: patches/resources.yaml
+  - path: patches/storage.yaml
+
+images:
+  - name: ghcr.io/bhaon/studi-bloc3-mmotors-frontend
+    newTag: dev-latest
+  - name: ghcr.io/bhaon/studi-bloc3-mmotors-backend
+    newTag: dev-latest
+
+labels:
+  - pairs:
+      environment: dev
+    includeSelectors: true

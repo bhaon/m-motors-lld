@@ -1,0 +1,30 @@
+---
+# ============================================================
+# OVERLAY STAGING — Kustomization
+# Déployé automatiquement à chaque merge sur main
+# ============================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: staging
+
+resources:
+  - ../../base
+  - ingress.yaml
+  - configmap.yaml
+
+patches:
+  - path: patches/replicas.yaml
+  - path: patches/resources.yaml
+  - path: patches/storage.yaml
+
+images:
+  - name: ghcr.io/bhaon/studi-bloc3-mmotors-frontend
+    newTag: staging-latest
+  - name: ghcr.io/bhaon/studi-bloc3-mmotors-backend
+    newTag: staging-latest
+
+labels:
+  - pairs:
+      environment: staging
+    includeSelectors: true

@@ -1,0 +1,222 @@
+---
+# ============================================================
+# TRAEFIK — Configuration additionnelle
+# K3S installe Traefik v2/v3 nativement via HelmChartConfig
+# Ce manifest surcharge la config par défaut
+# Appliquer : kubectl apply -f k8s/infra/traefik/traefik-config.yaml
+# ============================================================
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    # ── Entrypoints ─────────────────────────────────────────
+    ports:
+      web:
+        port: 8000
+        exposedPort: 80
+        redirectTo:
+          port: websecure          # Forcer HTTPS sur tout le trafic HTTP
+      websecure:
+        port: 8443
+        exposedPort: 443
+        tls:
+          enabled: true
+
+    # ── Dashboard Traefik (désactivé en production) ─────────
+    ingressRoute:
+      dashboard:
+        enabled: false             # Accès via port-forward uniquement si besoin
+
+    # ── Logs ────────────────────────────────────────────────
+    logs:
+      general:
+        level: INFO
+      access:
+        enabled: true
+        filters:
+          statusCodes:
+            - "400-599"            # Logger uniquement les erreurs
+        fields:
+          headers:
+            defaultMode: drop
+            names:
+              User-Agent: keep
+              Authorization: redact
+
+    # ── Métriques Prometheus ─────────────────────────────────
+    metrics:
+      prometheus:
+        enabled: true
+        entryPoint: metrics
+        addEntryPointsLabels: true
+        addServicesLabels: true
+
+    # ── Sécurité globale ────────────────────────────────────
+    globalArguments:
+      - "--global.checknewversion=false"
+      - "--global.sendanonymoususage=false"
+      - "--api.insecure=false"
+      - "--serversTransport.insecureSkipVerify=false"
+
+    # ── Ressources ──────────────────────────────────────────
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+
+    # ── Tolerations pour nœud unique ───────────────────────
+    tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+---
+# ============================================================
+# MIDDLEWARE — HTTPS Redirect (global)
+# ============================================================
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-to-https
+  namespace: kube-system
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+# ============================================================
+# MIDDLEWARE — HSTS + Security Headers (production)
+# Ajouter sur les Ingress production via annotation :
+# traefik.ingress.kubernetes.io/router.middlewares: production-security-headers@kubernetescrd
+# ============================================================
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: security-headers
+  namespace: production
+spec:
+  headers:
+    # HSTS — forcer HTTPS pendant 1 an, inclure sous-domaines
+    stsSeconds: 31536000
+    stsIncludeSubdomains: true
+    stsPreload: true
+    # Anti-clickjacking
+    frameDeny: true
+    # XSS Protection
+    browserXssFilter: true
+    # Content-Type sniffing
+    contentTypeNosniff: true
+    # Referrer Policy
+    referrerPolicy: "strict-origin-when-cross-origin"
+    # Permissions Policy
+    permissionsPolicy: "camera=(), microphone=(), geolocation=()"
+    # Supprimer les headers qui révèlent la stack
+    customResponseHeaders:
+      X-Powered-By: ""
+      Server: ""
+---
+# ============================================================
+# MIDDLEWARE — Rate Limiting (production)
+# ============================================================
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit
+  namespace: production
+spec:
+  rateLimit:
+    average: 100      # 100 req/s en moyenne
+    burst: 200        # Pic autorisé à 200 req/s
+    period: 1s
+---
+# ============================================================
+# MIDDLEWARE — Rate Limiting API (plus strict)
+# ============================================================
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: api-rate-limit
+  namespace: production
+spec:
+  rateLimit:
+    average: 30
+    burst: 60
+    period: 1s
+---
+# ============================================================
+# MIDDLEWARE — BasicAuth pour staging (accès restreint)
+# Générer le hash : htpasswd -nb user password | base64
+# ============================================================
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: staging-auth
+  namespace: staging
+spec:
+  basicAuth:
+    secret: staging-auth-secret
+    removeHeader: true           # Ne pas transmettre le header Authorization à l'app
+---
+# Secret pour BasicAuth staging
+# Générer avec : kubectl create secret generic staging-auth-secret \
+#   --from-literal=users="admin:$(openssl passwd -apr1 VotreMotDePasse)" \
+#   -n staging
+# Ce fichier est un RAPPEL — créer le secret manuellement ou via Sealed Secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: staging-auth-secret
+  namespace: staging
+  annotations:
+    note: "Remplacer par un SealedSecret — ne pas commiter avec des vraies valeurs"
+type: Opaque
+stringData:
+  users: "admin:$apr1$CHANGEME$CHANGEME"   # Remplacer avant apply
+---
+# ============================================================
+# MIDDLEWARE — Compression gzip
+# ============================================================
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: compress
+  namespace: kube-system
+spec:
+  compress: {}
+---
+# ============================================================
+# INGRESS — Dashboard Traefik (accès admin restreint)
+# Activer uniquement si nécessaire, désactiver après usage
+# ============================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: traefik-dashboard
+  namespace: kube-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-redirect-to-https@kubernetescrd
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - traefik.votre-domaine.com
+      secretName: traefik-dashboard-tls
+  rules:
+    - host: traefik.votre-domaine.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: traefik
+                port:
+                  number: 9000

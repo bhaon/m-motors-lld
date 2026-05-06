@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: dev
+data:
+  NODE_ENV: "development"
+  ENVIRONMENT: "dev"
+  # SSR (pod frontend → Service backend, même namespace)
+  API_INTERNAL_URL: "http://backend"
+  API_URL: "https://app-dev.netdevops.fr/api"
+  ALLOWED_HOSTS: "app-dev.netdevops.fr,localhost"
+  LOG_LEVEL: "debug"
+  DEBUG: "true"

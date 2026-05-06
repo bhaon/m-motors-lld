@@ -1,0 +1,40 @@
+---
+# ============================================================
+# RESOURCE QUOTA — Namespace dev
+# Limite les ressources consommables pour éviter le noisy neighbor
+# ============================================================
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dev-quota
+  namespace: dev
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+    persistentvolumeclaims: "5"
+    pods: "20"
+    services: "10"
+---
+# ============================================================
+# LIMIT RANGE — Valeurs par défaut si non spécifiées dans le pod
+# ============================================================
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: dev-limits
+  namespace: dev
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "200m"
+        memory: "256Mi"
+      defaultRequest:
+        cpu: "50m"
+        memory: "64Mi"
+      max:
+        cpu: "1"
+        memory: "1Gi"

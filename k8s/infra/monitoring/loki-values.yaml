@@ -1,0 +1,60 @@
+---
+# ============================================================
+# LOKI — Agrégation des logs (stack légère pour VPS)
+# Installation via Helm :
+#   helm repo add grafana https://grafana.github.io/helm-charts
+#   helm install loki grafana/loki-stack \
+#     -n monitoring \
+#     -f k8s/infra/monitoring/loki-values.yaml
+# ============================================================
+
+# loki-values.yaml
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 10Gi
+  config:
+    limits_config:
+      retention_period: 168h      # 7 jours de logs
+      ingestion_rate_mb: 4
+      ingestion_burst_size_mb: 8
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+promtail:
+  enabled: true
+  config:
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+    scrape_configs:
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+        pipeline_stages:
+          - docker: {}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_label_environment]
+            target_label: environment
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+grafana:
+  enabled: false    # Grafana déjà installé via kube-prometheus-stack

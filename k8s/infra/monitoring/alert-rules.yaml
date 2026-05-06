@@ -1,0 +1,277 @@
+---
+# ============================================================
+# PROMETHEUS RULES — Alertes applicatives
+# Couvre les 3 namespaces : dev, staging, production
+# Appliquer : kubectl apply -f k8s/infra/monitoring/alert-rules.yaml
+# ============================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack    # Doit matcher le label du chart Helm
+spec:
+  groups:
+
+    # ── Disponibilité des pods ───────────────────────────────
+    - name: pod-availability
+      interval: 30s
+      rules:
+        - alert: PodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{
+              namespace=~"dev|staging|production"
+            }[5m]) * 60 > 5
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.pod }} redémarre en boucle"
+            description: "{{ $labels.pod }} dans {{ $labels.namespace }} : {{ $value }} restarts/min"
+
+        - alert: PodNotReady
+          expr: |
+            kube_pod_status_ready{
+              namespace=~"staging|production",
+              condition="true"
+            } == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.pod }} non prêt"
+            description: "{{ $labels.pod }} dans {{ $labels.namespace }} n'est pas Ready depuis 5 min"
+
+        - alert: DeploymentReplicasMismatch
+          expr: |
+            kube_deployment_spec_replicas{namespace=~"staging|production"}
+            != kube_deployment_status_available_replicas{namespace=~"staging|production"}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Deployment {{ $labels.deployment }} sous-capacité"
+            description: "{{ $labels.deployment }} dans {{ $labels.namespace }} : replicas disponibles insuffisantes"
+
+    # ── Ressources ───────────────────────────────────────────
+    - name: resource-usage
+      interval: 60s
+      rules:
+        - alert: ContainerHighCPU
+          expr: |
+            rate(container_cpu_usage_seconds_total{
+              namespace=~"staging|production",
+              container!=""
+            }[5m]) /
+            kube_pod_container_resource_limits{
+              namespace=~"staging|production",
+              resource="cpu"
+            } * 100 > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CPU élevé sur {{ $labels.container }}"
+            description: "{{ $labels.container }} dans {{ $labels.namespace }} utilise {{ $value }}% de sa limite CPU"
+
+        - alert: ContainerHighMemory
+          expr: |
+            container_memory_working_set_bytes{
+              namespace=~"staging|production",
+              container!=""
+            } /
+            kube_pod_container_resource_limits{
+              namespace=~"staging|production",
+              resource="memory"
+            } * 100 > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Mémoire élevée sur {{ $labels.container }}"
+            description: "{{ $labels.container }} dans {{ $labels.namespace }} utilise {{ $value }}% de sa limite mémoire"
+
+        - alert: ContainerOOMKilled
+          expr: |
+            kube_pod_container_status_last_terminated_reason{
+              namespace=~"dev|staging|production",
+              reason="OOMKilled"
+            } == 1
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Container OOMKilled : {{ $labels.container }}"
+            description: "{{ $labels.container }} dans {{ $labels.namespace }} a été tué pour OOM — augmenter limits.memory"
+
+    # ── Stockage ─────────────────────────────────────────────
+    - name: storage
+      interval: 60s
+      rules:
+        - alert: PVCAlmostFull
+          expr: |
+            kubelet_volume_stats_used_bytes{namespace=~"dev|staging|production"} /
+            kubelet_volume_stats_capacity_bytes{namespace=~"dev|staging|production"} * 100 > 80
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} presque plein"
+            description: "{{ $labels.persistentvolumeclaim }} dans {{ $labels.namespace }} est à {{ $value }}% de capacité"
+
+        - alert: PVCFull
+          expr: |
+            kubelet_volume_stats_used_bytes{namespace=~"staging|production"} /
+            kubelet_volume_stats_capacity_bytes{namespace=~"staging|production"} * 100 > 95
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} critique"
+            description: "{{ $labels.persistentvolumeclaim }} est à {{ $value }}% — action immédiate requise"
+
+    # ── Nœud VPS ────────────────────────────────────────────
+    - name: node-health
+      interval: 30s
+      rules:
+        - alert: NodeHighCPU
+          expr: |
+            100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CPU VPS élevé"
+            description: "Le nœud K3S utilise {{ $value }}% du CPU depuis 10 min"
+
+        - alert: NodeHighMemory
+          expr: |
+            (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Mémoire VPS élevée"
+            description: "Le nœud K3S utilise {{ $value }}% de la RAM"
+
+        - alert: NodeDiskPressure
+          expr: |
+            (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100 > 80
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Disque VPS presque plein"
+            description: "Le disque racine du VPS est à {{ $value }}%"
+
+        - alert: NodeDiskCritical
+          expr: |
+            (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100 > 95
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Disque VPS critique"
+            description: "Le disque racine est à {{ $value }}% — nettoyage images Docker urgente"
+
+    # ── Ingress / HTTP ───────────────────────────────────────
+    - name: ingress-health
+      interval: 30s
+      rules:
+        - alert: HighHTTPErrorRate
+          expr: |
+            sum(rate(traefik_service_requests_total{
+              code=~"5..",
+              namespace=~"staging|production"
+            }[5m])) by (service, namespace) /
+            sum(rate(traefik_service_requests_total{
+              namespace=~"staging|production"
+            }[5m])) by (service, namespace) * 100 > 5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Taux d'erreurs HTTP élevé sur {{ $labels.service }}"
+            description: "{{ $labels.service }} dans {{ $labels.namespace }} : {{ $value }}% d'erreurs 5xx"
+
+        - alert: HighHTTPLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(traefik_service_request_duration_seconds_bucket{
+                namespace="production"
+              }[5m])) by (le, service)
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Latence P95 élevée sur {{ $labels.service }}"
+            description: "P95 de {{ $labels.service }} est à {{ $value }}s (seuil : 2s)"
+
+    # ── Certificats TLS ──────────────────────────────────────
+    - name: tls-certificates
+      interval: 3600s   # Vérifier toutes les heures
+      rules:
+        - alert: CertificateExpiringSoon
+          expr: |
+            certmanager_certificate_expiration_timestamp_seconds - time() < 86400 * 14
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Certificat TLS expire dans moins de 14 jours"
+            description: "Le certificat {{ $labels.name }} dans {{ $labels.namespace }} expire dans {{ $value | humanizeDuration }}"
+
+        - alert: CertificateExpired
+          expr: |
+            certmanager_certificate_ready_status{condition="False"} == 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Certificat TLS non valide : {{ $labels.name }}"
+            description: "Le certificat {{ $labels.name }} dans {{ $labels.namespace }} n'est pas Ready"
+---
+# ============================================================
+# SERVICE MONITOR — Scraper les métriques de l'application
+# À créer dans chaque namespace si l'app expose /metrics
+# ============================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend-metrics
+  namespace: production
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - production
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend-metrics
+  namespace: staging
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 60s
+  namespaceSelector:
+    matchNames:
+      - staging

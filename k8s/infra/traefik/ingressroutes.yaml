@@ -1,0 +1,76 @@
+---
+# ============================================================
+# INGRESSROUTE PRODUCTION — Traefik CRD
+# Alternative à l'Ingress standard — plus de contrôle
+# sur le chaînage des middlewares
+# ============================================================
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: app-production
+  namespace: production
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    # Route API — rate limiting strict
+    - match: Host(`votre-domaine.com`) && PathPrefix(`/api`)
+      kind: Rule
+      middlewares:
+        - name: security-headers
+          namespace: production
+        - name: api-rate-limit
+          namespace: production
+        - name: compress
+          namespace: kube-system
+      services:
+        - name: backend
+          port: 80
+    # Route Frontend
+    - match: Host(`votre-domaine.com`) || Host(`www.votre-domaine.com`)
+      kind: Rule
+      middlewares:
+        - name: security-headers
+          namespace: production
+        - name: rate-limit
+          namespace: production
+        - name: compress
+          namespace: kube-system
+      services:
+        - name: frontend
+          port: 80
+  tls:
+    secretName: production-tls-secret
+---
+# ============================================================
+# INGRESSROUTE STAGING — Accès restreint par BasicAuth
+# ============================================================
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: app-staging
+  namespace: staging
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`staging.votre-domaine.com`)
+      kind: Rule
+      middlewares:
+        - name: staging-auth
+          namespace: staging
+        - name: compress
+          namespace: kube-system
+      services:
+        - name: frontend
+          port: 80
+    - match: Host(`staging.votre-domaine.com`) && PathPrefix(`/api`)
+      kind: Rule
+      middlewares:
+        - name: staging-auth
+          namespace: staging
+      services:
+        - name: backend
+          port: 80
+  tls:
+    secretName: staging-tls-secret

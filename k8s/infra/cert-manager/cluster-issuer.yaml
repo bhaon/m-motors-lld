@@ -1,0 +1,38 @@
+---
+# ============================================================
+# CERT-MANAGER — ClusterIssuer Let's Encrypt
+# Gère TLS pour les 3 environnements depuis un seul issuer
+# Installation préalable : kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+# ============================================================
+
+# Staging issuer (rate limits moins stricts, pour les tests)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: admin@votre-domaine.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-key
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
+---
+# Production issuer (vraie validation, certificats valides)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@votre-domaine.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+      - http01:
+          ingress:
+            class: traefik

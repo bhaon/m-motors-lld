@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: production
+data:
+  NODE_ENV: "production"
+  ENVIRONMENT: "production"
+  API_INTERNAL_URL: "http://backend"
+  API_URL: "https://netdevops.fr/api"
+  ALLOWED_HOSTS: "netdevops.fr,www.netdevops.fr"
+  LOG_LEVEL: "warning"
+  DEBUG: "false"

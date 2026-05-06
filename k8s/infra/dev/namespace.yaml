@@ -1,0 +1,12 @@
+---
+# ============================================================
+# NAMESPACE — dev
+# Label requis pour les NetworkPolicy namespaceSelector
+# ============================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    kubernetes.io/metadata.name: dev
+    environment: dev

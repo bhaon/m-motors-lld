@@ -1,0 +1,42 @@
+---
+# ============================================================
+# RESOURCE QUOTA — Namespace production
+# Limite les ressources consommables pour éviter le noisy neighbor
+# ============================================================
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: production-quota
+  namespace: production
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+    persistentvolumeclaims: "5"
+    pods: "20"
+    services: "10"
+---
+# ============================================================
+# LIMIT RANGE — Valeurs par défaut si non spécifiées dans le pod
+# ============================================================
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: production-limits
+  namespace: production
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "200m"
+        memory: "256Mi"
+      defaultRequest:
+        cpu: "50m"
+        memory: "64Mi"
+      # Max par conteneur : doit être >= aux limits définies dans overlays/production/patches/resources.yaml
+      # (backend: 2Gi, frontend: 1Gi). Sinon ReplicaSet FailedCreate avec quota/limit denial.
+      max:
+        cpu: "1"
+        memory: "2Gi"

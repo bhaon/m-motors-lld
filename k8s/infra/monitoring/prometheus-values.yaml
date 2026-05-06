@@ -1,0 +1,242 @@
+# ============================================================
+# kube-prometheus-stack — values.yaml
+# Helm chart : prometheus-community/kube-prometheus-stack
+#
+# Installation :
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm repo update
+#   helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     -n monitoring \
+#     -f k8s/infra/monitoring/prometheus-values.yaml
+#
+# Mise à jour :
+#   helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     -n monitoring \
+#     -f k8s/infra/monitoring/prometheus-values.yaml
+# ============================================================
+
+# ── Grafana ────────────────────────────────────────────────
+grafana:
+  enabled: true
+
+  adminPassword: "CHANGER_CE_MOT_DE_PASSE"   # À stocker dans un Secret K8s
+
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 5Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Ingress Grafana via Traefik
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      traefik.ingress.kubernetes.io/router.tls: "true"
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - grafana.votre-domaine.com
+    tls:
+      - secretName: grafana-tls-secret
+        hosts:
+          - grafana.votre-domaine.com
+
+  # Datasources préconfigurées
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://kube-prometheus-stack-prometheus:9090
+          isDefault: true
+          access: proxy
+        - name: Loki
+          type: loki
+          url: http://loki:3100
+          access: proxy
+
+  # Dashboards préconfigurés — importés automatiquement
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: 'Kubernetes'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+
+  dashboards:
+    default:
+      # Dashboard K8s Cluster Overview
+      k8s-cluster:
+        gnetId: 7249
+        revision: 1
+        datasource: Prometheus
+      # Dashboard Pods par namespace
+      k8s-pods:
+        gnetId: 6336
+        revision: 1
+        datasource: Prometheus
+      # Dashboard Traefik
+      traefik:
+        gnetId: 17346
+        revision: 1
+        datasource: Prometheus
+      # Dashboard Node Exporter
+      node-exporter:
+        gnetId: 1860
+        revision: 37
+        datasource: Prometheus
+
+  # SMTP pour alertes email (optionnel)
+  grafana.ini:
+    server:
+      root_url: "https://grafana.votre-domaine.com"
+    smtp:
+      enabled: false
+      # host: smtp.gmail.com:587
+      # user: alerts@votre-domaine.com
+      # password: ""
+    security:
+      admin_user: admin
+      cookie_secure: true
+      strict_transport_security: true
+
+# ── Prometheus ─────────────────────────────────────────────
+prometheus:
+  enabled: true
+
+  prometheusSpec:
+    retention: 15d               # Garder 15 jours de métriques
+    retentionSize: "10GB"
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 15Gi
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+    # Scraper TOUS les namespaces (dev, staging, production, kube-system)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+
+    # Règles d'alerte globales
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+
+# ── Alertmanager ───────────────────────────────────────────
+alertmanager:
+  enabled: true
+
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  config:
+    global:
+      resolve_timeout: 5m
+      # Slack webhook (configurer si besoin)
+      slack_api_url: ""
+
+    route:
+      group_by: ['alertname', 'namespace', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'slack-notifications'
+      routes:
+        - match:
+            severity: critical
+          receiver: 'slack-critical'
+          repeat_interval: 1h
+        - match:
+            severity: warning
+          receiver: 'slack-notifications'
+
+    receivers:
+      - name: 'slack-notifications'
+        slack_configs:
+          - api_url: "SLACK_WEBHOOK_URL_ICI"
+            channel: '#alerting'
+            title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+            text: >-
+              {{ range .Alerts }}
+              *Namespace:* {{ .Labels.namespace }}
+              *Severity:* {{ .Labels.severity }}
+              *Description:* {{ .Annotations.description }}
+              {{ end }}
+            send_resolved: true
+
+      - name: 'slack-critical'
+        slack_configs:
+          - api_url: "SLACK_WEBHOOK_URL_ICI"
+            channel: '#alerting-critical'
+            title: '🚨 CRITICAL: {{ .CommonLabels.alertname }}'
+            text: >-
+              {{ range .Alerts }}
+              *Namespace:* {{ .Labels.namespace }}
+              *Description:* {{ .Annotations.description }}
+              *Runbook:* {{ .Annotations.runbook_url }}
+              {{ end }}
+            send_resolved: true
+
+# ── Node Exporter (métriques système VPS) ──────────────────
+nodeExporter:
+  enabled: true
+
+# ── Kube State Metrics (métriques objets K8s) ──────────────
+kubeStateMetrics:
+  enabled: true
+
+# ── Composants K3S — désactiver ce qui n'existe pas ────────
+kubeEtcd:
+  enabled: false           # K3S utilise SQLite ou etcd intégré, pas exposé
+kubeControllerManager:
+  enabled: false           # Non exposé dans K3S
+kubeScheduler:
+  enabled: false           # Non exposé dans K3S
+kubeProxy:
+  enabled: false           # K3S utilise kube-proxy natif, non exposé via métriques standard

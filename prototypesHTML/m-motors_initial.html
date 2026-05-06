@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>M-Motors — Catalogue véhicules</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0D1B4B;
+  --navy2:#1a2d6b;
+  --cyan:#00B4D8;
+  --cyan2:#0090b0;
+  --gold:#F4A024;
+  --white:#fff;
+  --off:#F7F8FC;
+  --muted:#6B7280;
+  --border:#E5E7EB;
+  --radius:12px;
+  --shadow:0 2px 16px rgba(13,27,75,.10);
+}
+body{font-family:'DM Sans',sans-serif;background:var(--off);color:var(--navy);min-height:100vh}
+
+/* ── NAV ── */
+nav{
+  background:var(--navy);
+  padding:0 2rem;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  height:60px;
+  position:sticky;
+  top:0;
+  z-index:100;
+  box-shadow:0 2px 12px rgba(0,0,0,.25);
+}
+.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:1.3rem;color:var(--white);letter-spacing:.04em}
+.logo span{color:var(--cyan)}
+.nav-links{display:flex;gap:1.5rem;align-items:center}
+.nav-links a{color:rgba(255,255,255,.7);text-decoration:none;font-size:.85rem;font-weight:500;transition:color .2s}
+.nav-links a:hover,.nav-links a.active{color:var(--white)}
+.nav-cta{
+  background:var(--cyan);
+  color:var(--white);
+  border:none;
+  padding:.45rem 1.1rem;
+  border-radius:6px;
+  font-size:.82rem;
+  font-weight:600;
+  cursor:pointer;
+  font-family:'DM Sans',sans-serif;
+  transition:background .2s;
+}
+.nav-cta:hover{background:var(--cyan2)}
+
+/* ── HERO ── */
+.hero{
+  background:linear-gradient(135deg,var(--navy) 0%,#1a3070 60%,#0e4d6b 100%);
+  padding:3.5rem 2rem 2.5rem;
+  text-align:center;
+  position:relative;
+  overflow:hidden;
+}
+.hero::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2300B4D8' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.hero h1{font-family:'Syne',sans-serif;font-weight:800;font-size:2.4rem;color:var(--white);margin-bottom:.6rem;position:relative}
+.hero h1 em{color:var(--cyan);font-style:normal}
+.hero p{color:rgba(255,255,255,.65);font-size:.95rem;position:relative;max-width:480px;margin:0 auto 1.5rem}
+.hero-stats{display:flex;gap:2rem;justify-content:center;position:relative}
+.hero-stat{text-align:center}
+.hero-stat strong{display:block;font-family:'Syne',sans-serif;font-weight:700;font-size:1.5rem;color:var(--gold)}
+.hero-stat span{font-size:.78rem;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.06em}
+
+/* ── SEARCH BAR ── */
+.search-wrap{
+  background:var(--white);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  padding:1.25rem 1.5rem;
+  margin:0 2rem;
+  position:relative;
+  z-index:10;
+  top:-1.2rem;
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:1rem;
+  align-items:end;
+}
+.search-fields{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:.75rem}
+.sf-group{display:flex;flex-direction:column;gap:.35rem}
+.sf-group label{font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.sf-group select,.sf-group input{
+  border:1px solid var(--border);
+  border-radius:7px;
+  padding:.48rem .7rem;
+  font-size:.85rem;
+  font-family:'DM Sans',sans-serif;
+  color:var(--navy);
+  background:var(--white);
+  outline:none;
+  transition:border-color .2s;
+}
+.sf-group select:focus,.sf-group input:focus{border-color:var(--cyan)}
+.search-btn{
+  background:var(--cyan);
+  color:var(--white);
+  border:none;
+  border-radius:8px;
+  padding:.72rem 1.5rem;
+  font-size:.9rem;
+  font-weight:600;
+  cursor:pointer;
+  font-family:'Syne',sans-serif;
+  white-space:nowrap;
+  transition:background .2s;
+}
+.search-btn:hover{background:var(--cyan2)}
+
+/* ── FILTERS ROW ── */
+.filters-row{
+  display:flex;
+  align-items:center;
+  gap:.6rem;
+  padding:.8rem 2rem;
+  flex-wrap:wrap;
+}
+.filters-row .label{font-size:.8rem;font-weight:600;color:var(--muted);margin-right:.2rem}
+.chip{
+  display:inline-flex;
+  align-items:center;
+  gap:.4rem;
+  padding:.38rem .9rem;
+  border-radius:20px;
+  font-size:.8rem;
+  font-weight:500;
+  cursor:pointer;
+  border:1px solid var(--border);
+  background:var(--white);
+  color:var(--navy);
+  transition:all .2s;
+  user-select:none;
+}
+.chip.active-all{background:var(--navy);color:var(--white);border-color:var(--navy)}
+.chip.active-achat{background:#EAF3DE;color:#27500A;border-color:#C0DD97}
+.chip.active-lld{background:#E6F1FB;color:#0C447C;border-color:#85B7EB}
+.chip-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dot-achat{background:#639922}
+.dot-lld{background:#185FA5}
+.results-count{margin-left:auto;font-size:.82rem;color:var(--muted)}
+.reset-link{font-size:.8rem;color:var(--cyan);cursor:pointer;text-decoration:underline}
+.reset-link:hover{color:var(--cyan2)}
+
+/* ── GRID ── */
+.catalogue-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+  gap:1.25rem;
+  padding:0 2rem 3rem;
+}
+
+/* ── CARD ── */
+.vehicle-card{
+  background:var(--white);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  overflow:hidden;
+  cursor:pointer;
+  transition:transform .2s,box-shadow .2s;
+  border:1px solid var(--border);
+}
+.vehicle-card:hover{transform:translateY(-3px);box-shadow:0 8px 28px rgba(13,27,75,.14)}
+.card-img{position:relative;height:175px;overflow:hidden;background:#e8eaf0}
+.card-img img{width:100%;height:100%;object-fit:cover;transition:transform .3s;display:block}
+.vehicle-card:hover .card-img img{transform:scale(1.04)}
+.card-badge{
+  position:absolute;
+  top:.6rem;
+  left:.6rem;
+  padding:.3rem .7rem;
+  border-radius:5px;
+  font-size:.72rem;
+  font-weight:700;
+  letter-spacing:.04em;
+  display:flex;
+  align-items:center;
+  gap:.35rem;
+}
+.badge-achat{background:#EAF3DE;color:#27500A;border:1px solid #C0DD97}
+.badge-lld{background:#E6F1FB;color:#0C447C;border:1px solid #85B7EB}
+.badge-achat .badge-icon,.badge-lld .badge-icon{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.badge-achat .badge-icon{background:#639922}
+.badge-lld .badge-icon{background:#185FA5}
+.card-body{padding:1rem}
+.card-make{font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.15rem}
+.card-model{font-family:'Syne',sans-serif;font-weight:700;font-size:1.05rem;color:var(--navy);margin-bottom:.55rem}
+.card-specs{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.8rem}
+.spec{font-size:.74rem;background:var(--off);color:var(--muted);padding:.22rem .6rem;border-radius:4px;border:1px solid var(--border)}
+.card-price{display:flex;justify-content:space-between;align-items:flex-end;padding-top:.7rem;border-top:1px solid var(--border)}
+.price-label{font-size:.7rem;color:var(--muted);margin-bottom:.1rem}
+.price-value{font-family:'Syne',sans-serif;font-weight:700;font-size:1.1rem;color:var(--navy)}
+.price-monthly{font-size:.75rem;color:var(--muted);margin-top:.1rem}
+.price-monthly strong{color:#185FA5;font-weight:600}
+.card-cta{
+  background:var(--navy);
+  color:var(--white);
+  border:none;
+  padding:.45rem .9rem;
+  border-radius:6px;
+  font-size:.78rem;
+  font-weight:600;
+  cursor:pointer;
+  font-family:'DM Sans',sans-serif;
+  transition:background .2s;
+  flex-shrink:0;
+}
+.card-cta:hover{background:var(--navy2)}
+
+/* ── MODAL OVERLAY ── */
+.overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.55);
+  z-index:200;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:1rem;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s;
+}
+.overlay.open{opacity:1;pointer-events:all}
+.detail-modal{
+  background:var(--white);
+  border-radius:16px;
+  width:100%;
+  max-width:820px;
+  max-height:90vh;
+  overflow-y:auto;
+  box-shadow:0 20px 60px rgba(0,0,0,.3);
+}
+.detail-header{position:relative;height:280px;overflow:hidden;background:#0D1B4B}
+.detail-header img{width:100%;height:100%;object-fit:cover;opacity:.85;display:block}
+.detail-header-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(13,27,75,.85) 0%,transparent 55%)}
+.detail-close{
+  position:absolute;top:1rem;right:1rem;
+  background:rgba(255,255,255,.15);
+  border:none;color:var(--white);
+  width:34px;height:34px;border-radius:50%;
+  cursor:pointer;font-size:1.1rem;
+  display:flex;align-items:center;justify-content:center;
+}
+.detail-close:hover{background:rgba(255,255,255,.25)}
+.detail-badge-wrap{position:absolute;top:1rem;left:1rem}
+.detail-title-area{position:absolute;bottom:1rem;left:1.5rem;right:1.5rem}
+.detail-title-area .make{font-size:.75rem;font-weight:600;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.08em}
+.detail-title-area h2{font-family:'Syne',sans-serif;font-weight:800;font-size:1.8rem;color:var(--white)}
+.detail-body{padding:1.5rem}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.5rem}
+.detail-box{background:var(--off);border-radius:10px;padding:1rem 1.25rem;border:1px solid var(--border)}
+.detail-box h4{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem}
+.spec-row{display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border);font-size:.85rem}
+.spec-row:last-child{border-bottom:none}
+.spec-row .sk{color:var(--muted)}
+.spec-row .sv{font-weight:500;color:var(--navy)}
+.price-main{font-family:'Syne',sans-serif;font-weight:800;font-size:1.9rem;color:var(--navy);margin-bottom:.25rem}
+.price-mention{font-size:.78rem;color:var(--muted);margin-bottom:1rem}
+.price-lld-block{background:#E6F1FB;border:1px solid #85B7EB;border-radius:8px;padding:.7rem 1rem}
+.price-lld-block .lld-label{font-size:.72rem;font-weight:600;color:#185FA5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.2rem}
+.price-lld-block .lld-amount{font-family:'Syne',sans-serif;font-weight:700;font-size:1.25rem;color:#0C447C}
+.price-lld-block .lld-sub{font-size:.74rem;color:#378ADD;margin-top:.15rem}
+.price-achat-only{background:var(--off);border:1px solid var(--border);border-radius:8px;padding:.7rem 1rem;font-size:.82rem;color:var(--muted)}
+.options-section{margin-bottom:1.5rem}
+.options-section h4{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem}
+.options-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.option-pill{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--off);border:1px solid var(--border);
+  border-radius:8px;padding:.55rem .9rem;font-size:.82rem;
+}
+.option-pill .oname{font-weight:500;color:var(--navy)}
+.option-pill .oprice{font-weight:600;color:#185FA5;font-size:.78rem}
+.detail-actions{display:flex;gap:.75rem}
+.btn-primary{
+  flex:1;background:var(--navy);color:var(--white);border:none;
+  padding:.85rem;border-radius:9px;font-size:.9rem;font-weight:600;
+  cursor:pointer;font-family:'Syne',sans-serif;transition:background .2s;
+}
+.btn-primary:hover{background:var(--navy2)}
+.btn-secondary{
+  flex:1;background:var(--white);color:var(--navy);
+  border:1.5px solid var(--navy);padding:.85rem;border-radius:9px;
+  font-size:.9rem;font-weight:600;cursor:pointer;
+  font-family:'Syne',sans-serif;transition:background .2s;
+}
+.btn-secondary:hover{background:var(--off)}
+
+/* ── EMPTY STATE ── */
+.empty{text-align:center;padding:4rem 2rem;color:var(--muted)}
+.empty .e-icon{font-size:3rem;margin-bottom:1rem;opacity:.4}
+.empty h3{font-family:'Syne',sans-serif;font-size:1.1rem;color:var(--navy);margin-bottom:.5rem}
+
+/* ── TOAST ── */
+.toast{
+  position:fixed;bottom:2rem;right:2rem;z-index:300;
+  background:var(--navy);color:var(--white);
+  padding:.8rem 1.4rem;border-radius:10px;
+  font-size:.85rem;font-weight:500;
+  box-shadow:0 4px 20px rgba(0,0,0,.25);
+  transform:translateY(80px);opacity:0;
+  transition:transform .3s,opacity .3s;
+  pointer-events:none;
+  max-width:320px;
+}
+.toast.show{transform:translateY(0);opacity:1}
+.toast strong{color:var(--cyan)}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  .search-fields{grid-template-columns:1fr 1fr 1fr}
+  .search-wrap{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .hero h1{font-size:1.7rem}
+  .search-fields{grid-template-columns:1fr 1fr}
+  .catalogue-grid{padding:0 1rem 2rem;grid-template-columns:1fr}
+  .detail-grid{grid-template-columns:1fr}
+  .search-wrap{margin:0 1rem}
+  .filters-row{padding:.8rem 1rem}
+  nav{padding:0 1rem}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">M-<span>MOTORS</span></div>
+  <div class="nav-links">
+    <a href="#" class="active">Catalogue</a>
+    <a href="#">Nos offres LLD</a>
+    <a href="#">À propos</a>
+    <button class="nav-cta">Mon espace</button>
+  </div>
+</nav>
+
+<div class="hero">
+  <h1>Trouvez votre véhicule<br><em>à l'achat ou en LLD</em></h1>
+  <p>Plus de 800 véhicules d'occasion sélectionnés — Location longue durée avec option d'achat disponible</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><strong id="stat-total">12</strong><span>véhicules</span></div>
+    <div class="hero-stat"><strong>LLD</strong><span>dès 199€/mois</span></div>
+    <div class="hero-stat"><strong>100%</strong><span>dématérialisé</span></div>
+  </div>
+</div>
+
+<div class="search-wrap">
+  <div class="search-fields">
+    <div class="sf-group">
+      <label>Marque</label>
+      <select id="f-marque"><option value="">Toutes</option></select>
+    </div>
+    <div class="sf-group">
+      <label>Modèle</label>
+      <select id="f-modele"><option value="">Tous</option></select>
+    </div>
+    <div class="sf-group">
+      <label>Motorisation</label>
+      <select id="f-moteur">
+        <option value="">Toutes</option>
+        <option>Essence</option>
+        <option>Diesel</option>
+        <option>Hybride</option>
+        <option>Électrique</option>
+      </select>
+    </div>
+    <div class="sf-group">
+      <label>Km max</label>
+      <select id="f-km">
+        <option value="">Tous</option>
+        <option value="30000">— 30 000 km</option>
+        <option value="60000">— 60 000 km</option>
+        <option value="100000">— 100 000 km</option>
+        <option value="150000">— 150 000 km</option>
+      </select>
+    </div>
+    <div class="sf-group">
+      <label>Budget max (€)</label>
+      <input type="number" id="f-prix" placeholder="Ex: 25000" min="0" step="1000"/>
+    </div>
+  </div>
+  <button class="search-btn" onclick="applyFilters()">Rechercher</button>
+</div>
+
+<div class="filters-row">
+  <span class="label">Type :</span>
+  <div class="chip active-all" id="chip-all" onclick="setType('all')">Tous</div>
+  <div class="chip" id="chip-achat" onclick="setType('achat')">
+    <span class="chip-dot dot-achat"></span>Achat
+  </div>
+  <div class="chip" id="chip-lld" onclick="setType('lld')">
+    <span class="chip-dot dot-lld"></span>LLD disponible
+  </div>
+  <span class="results-count" id="results-count"></span>
+  <span class="reset-link" onclick="resetFilters()">Réinitialiser les filtres</span>
+</div>
+
+<div class="catalogue-grid" id="grid"></div>
+
+<div class="overlay" id="overlay" onclick="handleOverlayClick(event)">
+  <div class="detail-modal" id="modal"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const VEHICLES = [
+  {
+    id:1, make:"Renault", model:"Clio V", year:2021, km:28000, moteur:"Essence",
+    prix:13900, lld:true, mensualite:199,
+    options:[
+      {n:"Assurance tous risques",p:"+39€/mois"},
+      {n:"Assistance dépannage",p:"+9€/mois"},
+      {n:"Entretien & SAV",p:"+29€/mois"},
+      {n:"Contrôle technique",p:"+5€/mois"}
+    ],
+    img:"https://images.unsplash.com/photo-1609521263047-f8f205293f24?w=600&q=70",
+    specs:{carburant:"Essence TCe 100",boite:"Manuelle 6v",couleur:"Rouge Flamme",places:5,puissance:"100 ch"}
+  },
+  {
+    id:2, make:"Peugeot", model:"308 SW", year:2020, km:52000, moteur:"Diesel",
+    prix:19500, lld:true, mensualite:269,
+    options:[
+      {n:"Assurance tous risques",p:"+45€/mois"},
+      {n:"Assistance dépannage",p:"+9€/mois"},
+      {n:"Entretien & SAV",p:"+35€/mois"},
+      {n:"Contrôle technique",p:"+5€/mois"}
+    ],
+    img:"https://images.unsplash.com/photo-1555215695-3004980ad54e?w=600&q=70",
+    specs:{carburant:"BlueHDi 130",boite:"EAT8 automatique",couleur:"Gris Platinium",places:5,puissance:"130 ch"}
+  },
+  {
+    id:3, make:"Volkswagen", model:"Golf 8", year:2022, km:18000, moteur:"Essence",
+    prix:24900, lld:true, mensualite:319,
+    options:[
+      {n:"Assurance tous risques",p:"+52€/mois"},
+      {n:"Assistance dépannage",p:"+9€/mois"},
+      {n:"Entretien & SAV",p:"+39€/mois"},
+      {n:"Contrôle technique",p:"+5€/mois"}
+    ],
+    img:"https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=600&q=70",
+    specs:{carburant:"TSI 150 Essence",boite:"DSG7 automatique",couleur:"Bleu Atlantis",places:5,puissance:"150 ch"}
+  },
+  {
+    id:4, make:"Toyota", model:"Yaris", year:2021, km:33000, moteur:"Hybride",
+    prix:16800, lld:false, mensualite:null,
+    options:[],
+    img:"https://images.unsplash.com/photo-1571607388263-1044f9ea01dd?w=600&q=70",
+    specs:{carburant:"Hybride 116 ch",boite:"CVT automatique",couleur:"Blanc Nacré",places:5,puissance:"116 ch"}
+  },
+  {
+    id:5, make:"BMW", model:"Série 3", year:2020, km:61000, moteur:"Diesel",
+    prix:31500, lld:true, mensualite:419,
+    options:[
+      {n:"Assurance tous risques",p:"+65€/mois"},
+      {n:"Assistance dépannage",p:"+9€/mois"},
+      {n:"Entretien & SAV",p:"+55€/mois"},
+      {n:"Contrôle technique",p:"+5€/mois"}
+    ],
+    img:"https://images.unsplash.com/photo-1555215695-3004980ad54e?w=600&q=70",
+    specs:{carburant:"Diesel 190 xDrive",boite:"Steptronic 8",couleur:"Noir Saphir",places:5,puissance:"190 ch"}
+  },
+  {
+    id:6, make:"Citroën", model:"C3 Aircross", year:2021, km:41000, moteur:"Essence",
+    prix:17200, lld:true, mensualite:229,
+    options:[
+      {n:"Assurance tous risques",p:"+41€/mois"},
+      {n:"Assistance dépannage",p:"+9€/mois"},
+      {n:"Entretien & SAV",p:"+29€/mois"},
+      {n:"Contrôle technique",p:"+5€/mois"}
+    ],
+    img:"https://images.unsplash.com/photo-1609521263047-f8f205293f24?w=600&q=70",
+    specs:{carburant:"PureTech 130",boite:"EAT6 automatique",couleur:"Orange Copper",places:5,puissance:"130 ch"}
+  },
+  {
+    id:7, make:"Tesla", model:"Model 3", year:2022, km:22000, moteur:"Électrique",
+    prix:38900, lld:true, mensualite:499,
+    options:[
+      {n:"Assurance tous risques",p:"+72€/mois"},
+      {n:"Assistance dépannage",p:"+9€/mois"},
+      {n:"Entretien & SAV",p:"+45€/mois"},
+      {n:"Contrôle technique",p:"+5€/mois"}
+    ],
+    img:"https://images.unsplash.com/photo-1551522435-a13afa10f103?w=600&q=70",
+    specs:{carburant:"100% Électrique",boite:"Auto (1 vitesse)",couleur:"Blanc Perle",places:5,puissance:"283 ch"}
+  },
+  {
+    id:8, make:"Ford", model:"Focus", year:2019, km:87000, moteur:"Diesel",
+    prix:11900, lld:false, mensualite:null,
+    options:[],
+    img:"https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=600&q=70",
+    specs:{carburant:"EcoBlue 120 Diesel",boite:"Manuelle 6v",couleur:"Gris Magnétique",places:5,puissance:"120 ch"}
+  },
+  {
+    id:9, make:"Mercedes", model:"Classe A", year:2021, km:29000, moteur:"Essence",
+    prix:27800, lld:true, mensualite:359,
+    options:[
+      {n:"Assurance tous risques",p:"+58€/mois"},
+      {n:"Assistance dépannage",p:"+9€/mois"},
+      {n:"Entretien & SAV",p:"+49€/mois"},
+      {n:"Contrôle technique",p:"+5€/mois"}
+    ],
+    img:"https://images.unsplash.com/photo-1553440569-bcc63803a83d?w=600&q=70",
+    specs:{carburant:"EQ Boost 163 ch",boite:"DCT7 automatique",couleur:"Blanc Polaire",places:5,puissance:"163 ch"}
+  },
+  {
+    id:10, make:"Dacia", model:"Sandero", year:2022, km:15000, moteur:"Essence",
+    prix:9900, lld:false, mensualite:null,
+    options:[],
+    img:"https://images.unsplash.com/photo-1609521263047-f8f205293f24?w=600&q=70",
+    specs:{carburant:"TCe 90 Essence",boite:"Manuelle 5v",couleur:"Vert Komodo",places:5,puissance:"90 ch"}
+  },
+  {
+    id:11, make:"Audi", model:"A3 Sportback", year:2020, km:48000, moteur:"Essence",
+    prix:26500, lld:true, mensualite:339,
+    options:[
+      {n:"Assurance tous risques",p:"+55€/mois"},
+      {n:"Assistance dépannage",p:"+9€/mois"},
+      {n:"Entretien & SAV",p:"+45€/mois"},
+      {n:"Contrôle technique",p:"+5€/mois"}
+    ],
+    img:"https://images.unsplash.com/photo-1542362567-b07e54358753?w=600&q=70",
+    specs:{carburant:"TFSI 150 Essence",boite:"S-Tronic 7",couleur:"Gris Daytona",places:5,puissance:"150 ch"}
+  },
+  {
+    id:12, make:"Hyundai", model:"Tucson", year:2021, km:37000, moteur:"Hybride",
+    prix:28500, lld:true, mensualite:379,
+    options:[
+      {n:"Assurance tous risques",p:"+59€/mois"},
+      {n:"Assistance dépannage",p:"+9€/mois"},
+      {n:"Entretien & SAV",p:"+42€/mois"},
+      {n:"Contrôle technique",p:"+5€/mois"}
+    ],
+    img:"https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=600&q=70",
+    specs:{carburant:"Hybride 48V 180 ch",boite:"DCT6 automatique",couleur:"Phantom Black",places:5,puissance:"180 ch"}
+  }
+];
+
+let activeType = 'all';
+let filtered = [...VEHICLES];
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.innerHTML = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function initMarques() {
+  const s = document.getElementById('f-marque');
+  const ms = [...new Set(VEHICLES.map(v => v.make))].sort();
+  ms.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = m;
+    s.appendChild(o);
+  });
+  s.addEventListener('change', updateModeles);
+}
+
+function updateModeles() {
+  const marque = document.getElementById('f-marque').value;
+  const s = document.getElementById('f-modele');
+  s.innerHTML = '<option value="">Tous</option>';
+  const ms = [...new Set(VEHICLES.filter(v => !marque || v.make === marque).map(v => v.model))].sort();
+  ms.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = m;
+    s.appendChild(o);
+  });
+}
+
+function setType(t) {
+  activeType = t;
+  document.getElementById('chip-all').className = 'chip' + (t === 'all' ? ' active-all' : '');
+  document.getElementById('chip-achat').className = 'chip' + (t === 'achat' ? ' active-achat' : '');
+  document.getElementById('chip-lld').className = 'chip' + (t === 'lld' ? ' active-lld' : '');
+  // Restore chip content with dots
+  document.getElementById('chip-achat').innerHTML = '<span class="chip-dot dot-achat"></span>Achat';
+  document.getElementById('chip-lld').innerHTML = '<span class="chip-dot dot-lld"></span>LLD disponible';
+  applyFilters();
+}
+
+function applyFilters() {
+  const marque = document.getElementById('f-marque').value;
+  const modele = document.getElementById('f-modele').value;
+  const moteur = document.getElementById('f-moteur').value;
+  const km = parseInt(document.getElementById('f-km').value) || Infinity;
+  const prix = parseInt(document.getElementById('f-prix').value) || Infinity;
+
+  filtered = VEHICLES.filter(v => {
+    if (marque && v.make !== marque) return false;
+    if (modele && v.model !== modele) return false;
+    if (moteur && v.moteur !== moteur) return false;
+    if (v.km > km) return false;
+    if (v.prix > prix) return false;
+    if (activeType === 'achat' && v.lld) return false;
+    if (activeType === 'lld' && !v.lld) return false;
+    return true;
+  });
+  renderGrid();
+}
+
+function resetFilters() {
+  document.getElementById('f-marque').value = '';
+  document.getElementById('f-modele').value = '';
+  document.getElementById('f-moteur').value = '';
+  document.getElementById('f-km').value = '';
+  document.getElementById('f-prix').value = '';
+  updateModeles();
+  activeType = 'all';
+  setType('all');
+}
+
+function renderGrid() {
+  const g = document.getElementById('grid');
+  const cnt = document.getElementById('results-count');
+  cnt.textContent = filtered.length + ' véhicule' + (filtered.length > 1 ? 's' : '');
+  document.getElementById('stat-total').textContent = filtered.length;
+
+  if (!filtered.length) {
+    g.innerHTML = `
+      <div class="empty" style="grid-column:1/-1">
+        <div class="e-icon">🔍</div>
+        <h3>Aucun véhicule trouvé</h3>
+        <p>Essayez d'élargir vos critères de recherche</p>
+      </div>`;
+    return;
+  }
+
+  g.innerHTML = filtered.map(v => `
+    <div class="vehicle-card" onclick="openDetail(${v.id})">
+      <div class="card-img">
+        <img
+          src="${v.img}"
+          alt="${v.make} ${v.model}"
+          loading="lazy"
+          onerror="this.parentElement.style.background='#c8cad6';this.style.display='none'"
+        />
+        <div class="card-badge ${v.lld ? 'badge-lld' : 'badge-achat'}">
+          <span class="badge-icon"></span>
+          ${v.lld ? 'LLD disponible' : 'Achat uniquement'}
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-make">${v.make}</div>
+        <div class="card-model">${v.model} ${v.year}</div>
+        <div class="card-specs">
+          <span class="spec">${v.km.toLocaleString('fr-FR')} km</span>
+          <span class="spec">${v.moteur}</span>
+          <span class="spec">${v.specs.boite}</span>
+        </div>
+        <div class="card-price">
+          <div>
+            <div class="price-label">Prix de vente</div>
+            <div class="price-value">${v.prix.toLocaleString('fr-FR')} €</div>
+            ${v.lld ? `<div class="price-monthly">LLD dès <strong>${v.mensualite} €</strong>/mois</div>` : ''}
+          </div>
+          <button class="card-cta" onclick="event.stopPropagation();openDetail(${v.id})">Voir la fiche</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openDetail(id) {
+  const v = VEHICLES.find(x => x.id === id);
+  if (!v) return;
+  const m = document.getElementById('modal');
+  m.innerHTML = `
+    <div class="detail-header">
+      <img
+        src="${v.img}"
+        alt="${v.make} ${v.model}"
+        onerror="this.style.display='none'"
+      />
+      <div class="detail-header-overlay"></div>
+      <button class="detail-close" onclick="closeDetail()" aria-label="Fermer">✕</button>
+      <div class="detail-badge-wrap">
+        <div class="card-badge ${v.lld ? 'badge-lld' : 'badge-achat'}">
+          <span class="badge-icon"></span>
+          ${v.lld ? 'LLD disponible' : 'Achat uniquement'}
+        </div>
+      </div>
+      <div class="detail-title-area">
+        <div class="make">${v.make} · ${v.year}</div>
+        <h2>${v.model}</h2>
+      </div>
+    </div>
+    <div class="detail-body">
+      <div class="detail-grid">
+        <div class="detail-box">
+          <h4>Caractéristiques techniques</h4>
+          ${[
+            ['Kilométrage', v.km.toLocaleString('fr-FR') + ' km'],
+            ['Carburant', v.specs.carburant],
+            ['Boîte de vitesses', v.specs.boite],
+            ['Puissance', v.specs.puissance],
+            ['Couleur', v.specs.couleur],
+            ['Places', v.specs.places + ' places'],
+          ].map(([k, val]) => `
+            <div class="spec-row">
+              <span class="sk">${k}</span>
+              <span class="sv">${val}</span>
+            </div>`).join('')}
+        </div>
+        <div class="detail-box">
+          <h4>Tarification</h4>
+          <div class="price-main">${v.prix.toLocaleString('fr-FR')} €</div>
+          <div class="price-mention">Prix de vente HT · TVA récupérable en entreprise</div>
+          ${v.lld ? `
+          <div class="price-lld-block">
+            <div class="lld-label">Offre LLD</div>
+            <div class="lld-amount">${v.mensualite} € <span style="font-size:.8rem;font-weight:400">/mois HT</span></div>
+            <div class="lld-sub">Mensualité de base · Options en sus</div>
+          </div>` : `
+          <div class="price-achat-only">
+            Ce véhicule est proposé à la vente uniquement — pas d'offre LLD disponible.
+          </div>`}
+        </div>
+      </div>
+      ${v.lld && v.options.length ? `
+      <div class="options-section">
+        <h4>Options LLD disponibles</h4>
+        <div class="options-grid">
+          ${v.options.map(o => `
+            <div class="option-pill">
+              <span class="oname">${o.n}</span>
+              <span class="oprice">${o.p}</span>
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+      <div class="detail-actions">
+        <button class="btn-primary" onclick="handleDossier(${v.id}, '${v.lld ? 'lld' : 'achat'}')">
+          ${v.lld ? 'Déposer un dossier LLD' : 'Déposer un dossier Achat'}
+        </button>
+        ${v.lld ? `<button class="btn-secondary" onclick="handleDossier(${v.id}, 'achat')">Déposer un dossier Achat</button>` : ''}
+      </div>
+    </div>`;
+
+  document.getElementById('overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function handleDossier(id, type) {
+  const v = VEHICLES.find(x => x.id === id);
+  closeDetail();
+  showToast(`Dossier <strong>${type.toUpperCase()}</strong> initié pour <strong>${v.make} ${v.model}</strong> — Redirection vers EP-03`);
+}
+
+function closeDetail() {
+  document.getElementById('overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('overlay')) closeDetail();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeDetail();
+});
+
+initMarques();
+applyFilters();
+</script>
+</body>
+</html>

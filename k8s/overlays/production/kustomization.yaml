@@ -1,0 +1,33 @@
+---
+# ============================================================
+# OVERLAY PRODUCTION — Kustomization
+# Déployé uniquement sur tag Git vX.Y.Z avec approbation manuelle
+# ============================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: production
+
+resources:
+  - ../../base
+  - ingress.yaml
+  - configmap.yaml
+
+patchesStrategicMerge:
+  - patches/replicas.yaml
+  - patches/resources.yaml
+  - patches/storage.yaml
+  - patches/security.yaml
+
+images:
+  - name: ghcr.io/bhaon/studi-bloc3-mmotors-frontend
+    newTag: v0.0.2  # Remplacé par le tag Git réel via GitHub Actions
+  - name: ghcr.io/bhaon/studi-bloc3-mmotors-backend
+    newTag: v0.0.2
+
+commonLabels:
+  environment: production
+
+commonAnnotations:
+  managed-by: kustomize
+  environment: production

@@ -1,0 +1,97 @@
+---
+# ============================================================
+# CRONJOB — Backup PostgreSQL production
+# Sauvegarde quotidienne à 2h00 UTC
+# Stocke les backups dans un PVC dédié
+# ============================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgresql-backup
+  namespace: production
+spec:
+  schedule: "0 2 * * *"        # 2h00 UTC chaque nuit
+  concurrencyPolicy: Forbid    # Ne pas lancer si le précédent tourne encore
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: app-service-account
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: postgres:16-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  DATE=$(date +%Y%m%d-%H%M%S)
+                  BACKUP_FILE="/backups/prod-backup-${DATE}.sql.gz"
+
+                  echo "Démarrage backup : ${BACKUP_FILE}"
+                  pg_dump \
+                    -h postgresql \
+                    -U ${POSTGRES_USER} \
+                    -d ${POSTGRES_DB} \
+                    --no-password \
+                    | gzip > "${BACKUP_FILE}"
+
+                  # Vérification
+                  if [ $? -eq 0 ]; then
+                    SIZE=$(du -sh "${BACKUP_FILE}" | cut -f1)
+                    echo "Backup OK : ${BACKUP_FILE} (${SIZE})"
+                  else
+                    echo "ERREUR backup"
+                    exit 1
+                  fi
+
+                  # Nettoyage — garder 30 jours
+                  find /backups -name "prod-backup-*.sql.gz" -mtime +30 -delete
+                  echo "Backups conservés : $(ls /backups | wc -l)"
+              env:
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-credentials
+                      key: POSTGRES_USER
+                - name: POSTGRES_DB
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-credentials
+                      key: POSTGRES_DB
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-credentials
+                      key: POSTGRES_PASSWORD
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "256Mi"
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: postgresql-backup-pvc
+---
+# PVC dédié aux backups
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-backup-pvc
+  namespace: production
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi

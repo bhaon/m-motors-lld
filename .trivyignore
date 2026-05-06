@@ -1,0 +1,5 @@
+# CVE-2026-33671 (picomatch) est ignoré temporairement.
+# Contexte: la résolution effective du projet est en 4.0.4 (version corrigée),
+# mais Trivy peut signaler un faux positif à partir de manifests package.json
+# contenant des contraintes de type ^4.0.3.
+CVE-2026-33671
