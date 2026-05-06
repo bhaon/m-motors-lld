@@ -20,9 +20,9 @@ patchesStrategicMerge:
   - patches/security.yaml
 
 images:
-  - name: ghcr.io/bhaon/studi-bloc3-mmotors-frontend
+  - name: ghcr.io/bhaon/m-motors-lld-frontend
     newTag: v0.0.0  # Remplacé par le tag Git réel via GitHub Actions
-  - name: ghcr.io/bhaon/studi-bloc3-mmotors-backend
+  - name: ghcr.io/bhaon/m-motors-lld-backend
     newTag: v0.0.0
 
 commonLabels:

@@ -33,7 +33,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: frontend
-          image: ghcr.io/bhaon/studi-bloc3-mmotors-frontend:latest
+          image: ghcr.io/bhaon/m-motors-lld-frontend:latest
           imagePullPolicy: Always
           ports:
             - name: http
@@ -130,7 +130,7 @@ spec:
       initContainers:
         # Migrations via backend/manage.py (Alembic) — URL DB calculée depuis POSTGRES_*.
         - name: db-migrate
-          image: ghcr.io/bhaon/studi-bloc3-mmotors-backend:latest
+          image: ghcr.io/bhaon/m-motors-lld-backend:latest
           command: ["python", "manage.py", "migrate", "--noinput"]
           env:
             - name: POSTGRES_DB
@@ -175,7 +175,7 @@ spec:
               memory: "256Mi"
       containers:
         - name: backend
-          image: ghcr.io/bhaon/studi-bloc3-mmotors-backend:latest
+          image: ghcr.io/bhaon/m-motors-lld-backend:latest
           imagePullPolicy: Always
           ports:
             - name: http
