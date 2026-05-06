@@ -1,0 +1,16 @@
+fastapi==0.136.1
+starlette==0.49.1
+gunicorn==22.0.0
+uvicorn[standard]==0.30.1
+sqlalchemy==2.0.31
+alembic==1.13.2
+psycopg2-binary==2.9.9
+pydantic==2.9.2
+pydantic-settings==2.6.1
+python-jose[cryptography]==3.5.0
+pyasn1==0.6.3
+passlib[bcrypt]==1.7.4
+# passlib 1.7.4 n'est pas compatible avec bcrypt 4.x (init / __about__)
+bcrypt==3.2.2
+python-multipart==0.0.22
+httpx==0.27.0

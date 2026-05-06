@@ -1,0 +1,287 @@
+[
+  {
+    "id": 1,
+    "make": "Renault",
+    "model": "Clio V",
+    "year": 2021,
+    "km": 28000,
+    "moteur": "Essence",
+    "prix": 13900,
+    "lld": true,
+    "mensualite": 199,
+    "options": [
+      { "n": "Assurance tous risques", "p": "+39€/mois" },
+      { "n": "Assistance dépannage", "p": "+9€/mois" },
+      { "n": "Entretien & SAV", "p": "+29€/mois" },
+      { "n": "Contrôle technique", "p": "+5€/mois" }
+    ],
+    "img": "https://images.unsplash.com/photo-1609521263047-f8f205293f24?w=600&q=70",
+    "specs": {
+      "carburant": "Essence TCe 100",
+      "boite": "Manuelle 6v",
+      "couleur": "Rouge Flamme",
+      "places": 5,
+      "puissance": "100 ch"
+    }
+  },
+  {
+    "id": 2,
+    "make": "Peugeot",
+    "model": "308 SW",
+    "year": 2020,
+    "km": 52000,
+    "moteur": "Diesel",
+    "prix": 19500,
+    "lld": true,
+    "mensualite": 269,
+    "options": [
+      { "n": "Assurance tous risques", "p": "+45€/mois" },
+      { "n": "Assistance dépannage", "p": "+9€/mois" },
+      { "n": "Entretien & SAV", "p": "+35€/mois" },
+      { "n": "Contrôle technique", "p": "+5€/mois" }
+    ],
+    "img": "https://images.unsplash.com/photo-1555215695-3004980ad54e?w=600&q=70",
+    "specs": {
+      "carburant": "BlueHDi 130",
+      "boite": "EAT8 automatique",
+      "couleur": "Gris Platinium",
+      "places": 5,
+      "puissance": "130 ch"
+    }
+  },
+  {
+    "id": 3,
+    "make": "Volkswagen",
+    "model": "Golf 8",
+    "year": 2022,
+    "km": 18000,
+    "moteur": "Essence",
+    "prix": 24900,
+    "lld": true,
+    "mensualite": 319,
+    "options": [
+      { "n": "Assurance tous risques", "p": "+52€/mois" },
+      { "n": "Assistance dépannage", "p": "+9€/mois" },
+      { "n": "Entretien & SAV", "p": "+39€/mois" },
+      { "n": "Contrôle technique", "p": "+5€/mois" }
+    ],
+    "img": "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=600&q=70",
+    "specs": {
+      "carburant": "TSI 150 Essence",
+      "boite": "DSG7 automatique",
+      "couleur": "Bleu Atlantis",
+      "places": 5,
+      "puissance": "150 ch"
+    }
+  },
+  {
+    "id": 4,
+    "make": "Toyota",
+    "model": "Yaris",
+    "year": 2021,
+    "km": 33000,
+    "moteur": "Hybride",
+    "prix": 16800,
+    "lld": false,
+    "mensualite": null,
+    "options": [],
+    "img": "https://images.unsplash.com/photo-1571607388263-1044f9ea01dd?w=600&q=70",
+    "specs": {
+      "carburant": "Hybride 116 ch",
+      "boite": "CVT automatique",
+      "couleur": "Blanc Nacré",
+      "places": 5,
+      "puissance": "116 ch"
+    }
+  },
+  {
+    "id": 5,
+    "make": "BMW",
+    "model": "Série 3",
+    "year": 2020,
+    "km": 61000,
+    "moteur": "Diesel",
+    "prix": 31500,
+    "lld": true,
+    "mensualite": 419,
+    "options": [
+      { "n": "Assurance tous risques", "p": "+65€/mois" },
+      { "n": "Assistance dépannage", "p": "+9€/mois" },
+      { "n": "Entretien & SAV", "p": "+55€/mois" },
+      { "n": "Contrôle technique", "p": "+5€/mois" }
+    ],
+    "img": "https://images.unsplash.com/photo-1555215695-3004980ad54e?w=600&q=70",
+    "specs": {
+      "carburant": "Diesel 190 xDrive",
+      "boite": "Steptronic 8",
+      "couleur": "Noir Saphir",
+      "places": 5,
+      "puissance": "190 ch"
+    }
+  },
+  {
+    "id": 6,
+    "make": "Citroën",
+    "model": "C3 Aircross",
+    "year": 2021,
+    "km": 41000,
+    "moteur": "Essence",
+    "prix": 17200,
+    "lld": true,
+    "mensualite": 229,
+    "options": [
+      { "n": "Assurance tous risques", "p": "+41€/mois" },
+      { "n": "Assistance dépannage", "p": "+9€/mois" },
+      { "n": "Entretien & SAV", "p": "+29€/mois" },
+      { "n": "Contrôle technique", "p": "+5€/mois" }
+    ],
+    "img": "https://images.unsplash.com/photo-1609521263047-f8f205293f24?w=600&q=70",
+    "specs": {
+      "carburant": "PureTech 130",
+      "boite": "EAT6 automatique",
+      "couleur": "Orange Copper",
+      "places": 5,
+      "puissance": "130 ch"
+    }
+  },
+  {
+    "id": 7,
+    "make": "Tesla",
+    "model": "Model 3",
+    "year": 2022,
+    "km": 22000,
+    "moteur": "Électrique",
+    "prix": 38900,
+    "lld": true,
+    "mensualite": 499,
+    "options": [
+      { "n": "Assurance tous risques", "p": "+72€/mois" },
+      { "n": "Assistance dépannage", "p": "+9€/mois" },
+      { "n": "Entretien & SAV", "p": "+45€/mois" },
+      { "n": "Contrôle technique", "p": "+5€/mois" }
+    ],
+    "img": "https://images.unsplash.com/photo-1551522435-a13afa10f103?w=600&q=70",
+    "specs": {
+      "carburant": "100% Électrique",
+      "boite": "Auto (1 vitesse)",
+      "couleur": "Blanc Perle",
+      "places": 5,
+      "puissance": "283 ch"
+    }
+  },
+  {
+    "id": 8,
+    "make": "Ford",
+    "model": "Focus",
+    "year": 2019,
+    "km": 87000,
+    "moteur": "Diesel",
+    "prix": 11900,
+    "lld": false,
+    "mensualite": null,
+    "options": [],
+    "img": "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=600&q=70",
+    "specs": {
+      "carburant": "EcoBlue 120 Diesel",
+      "boite": "Manuelle 6v",
+      "couleur": "Gris Magnétique",
+      "places": 5,
+      "puissance": "120 ch"
+    }
+  },
+  {
+    "id": 9,
+    "make": "Mercedes",
+    "model": "Classe A",
+    "year": 2021,
+    "km": 29000,
+    "moteur": "Essence",
+    "prix": 27800,
+    "lld": true,
+    "mensualite": 359,
+    "options": [
+      { "n": "Assurance tous risques", "p": "+58€/mois" },
+      { "n": "Assistance dépannage", "p": "+9€/mois" },
+      { "n": "Entretien & SAV", "p": "+49€/mois" },
+      { "n": "Contrôle technique", "p": "+5€/mois" }
+    ],
+    "img": "https://images.unsplash.com/photo-1553440569-bcc63803a83d?w=600&q=70",
+    "specs": {
+      "carburant": "EQ Boost 163 ch",
+      "boite": "DCT7 automatique",
+      "couleur": "Blanc Polaire",
+      "places": 5,
+      "puissance": "163 ch"
+    }
+  },
+  {
+    "id": 10,
+    "make": "Dacia",
+    "model": "Sandero",
+    "year": 2022,
+    "km": 15000,
+    "moteur": "Essence",
+    "prix": 9900,
+    "lld": false,
+    "mensualite": null,
+    "options": [],
+    "img": "https://images.unsplash.com/photo-1609521263047-f8f205293f24?w=600&q=70",
+    "specs": {
+      "carburant": "TCe 90 Essence",
+      "boite": "Manuelle 5v",
+      "couleur": "Vert Komodo",
+      "places": 5,
+      "puissance": "90 ch"
+    }
+  },
+  {
+    "id": 11,
+    "make": "Audi",
+    "model": "A3 Sportback",
+    "year": 2020,
+    "km": 48000,
+    "moteur": "Essence",
+    "prix": 26500,
+    "lld": true,
+    "mensualite": 339,
+    "options": [
+      { "n": "Assurance tous risques", "p": "+55€/mois" },
+      { "n": "Assistance dépannage", "p": "+9€/mois" },
+      { "n": "Entretien & SAV", "p": "+45€/mois" },
+      { "n": "Contrôle technique", "p": "+5€/mois" }
+    ],
+    "img": "https://images.unsplash.com/photo-1542362567-b07e54358753?w=600&q=70",
+    "specs": {
+      "carburant": "TFSI 150 Essence",
+      "boite": "S-Tronic 7",
+      "couleur": "Gris Daytona",
+      "places": 5,
+      "puissance": "150 ch"
+    }
+  },
+  {
+    "id": 12,
+    "make": "Hyundai",
+    "model": "Tucson",
+    "year": 2021,
+    "km": 37000,
+    "moteur": "Hybride",
+    "prix": 28500,
+    "lld": true,
+    "mensualite": 379,
+    "options": [
+      { "n": "Assurance tous risques", "p": "+59€/mois" },
+      { "n": "Assistance dépannage", "p": "+9€/mois" },
+      { "n": "Entretien & SAV", "p": "+42€/mois" },
+      { "n": "Contrôle technique", "p": "+5€/mois" }
+    ],
+    "img": "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=600&q=70",
+    "specs": {
+      "carburant": "Hybride 48V 180 ch",
+      "boite": "DCT6 automatique",
+      "couleur": "Phantom Black",
+      "places": 5,
+      "puissance": "180 ch"
+    }
+  }
+]
