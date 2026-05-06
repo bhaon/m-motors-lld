@@ -1,0 +1,284 @@
+---
+# ============================================================
+# WORKFLOW — Deploy PRODUCTION
+# Déclencheur : création d'un tag Git vX.Y.Z
+# Approbation manuelle obligatoire via GitHub Environments
+# ============================================================
+name: Deploy → PRODUCTION
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"  # Uniquement les tags semver (v1.2.3)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag à déployer (ex: v1.2.3)"
+        required: true
+        type: string
+
+# Permissions requises par le workflow réutilisable ci.yaml (job build : push GHCR + SARIF Trivy).
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+
+env:
+  NAMESPACE: production
+
+jobs:
+  # ----------------------------------------------------------
+  # Validation du tag et contexte
+  # ----------------------------------------------------------
+  validate:
+    name: Validate Tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Déploiement de la version: $VERSION"
+
+      - name: Verify tag exists on main
+        run: |
+          git fetch --tags
+          TAG_COMMIT=$(git rev-list -n 1 ${{ steps.get_version.outputs.version }} 2>/dev/null || echo "")
+          if [ -z "$TAG_COMMIT" ]; then
+            echo "❌ Tag ${{ steps.get_version.outputs.version }} introuvable"
+            exit 1
+          fi
+          echo "✅ Tag trouvé, commit: $TAG_COMMIT"
+
+  # ----------------------------------------------------------
+  # CI : rebuild avec le tag de production
+  # ----------------------------------------------------------
+  ci:
+    name: CI
+    needs: validate
+    uses: ./.github/workflows/ci.yaml
+    with:
+      environment: production
+      image_tag: ${{ needs.validate.outputs.version }}
+    secrets:
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+
+  # ----------------------------------------------------------
+  # APPROBATION MANUELLE — Bloque ici jusqu'à validation
+  # Configurer dans GitHub > Settings > Environments > production
+  # Ajouter des "Required reviewers"
+  # ----------------------------------------------------------
+  deploy:
+    name: Deploy to PRODUCTION
+    runs-on: ubuntu-latest
+    needs: [validate, ci]
+    environment: production  # 👈 Bloque jusqu'à approbation dans GitHub UI
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    # URL publique alignée avec l'Ingress prod (voir k8s/overlays/production/ingress.yaml).
+    # Override optionnel : variable dépôt PRODUCTION_SMOKE_BASE_URL (ex. https://www.netdevops.fr).
+    env:
+      PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_SMOKE_BASE_URL != '' && vars.PRODUCTION_SMOKE_BASE_URL || 'https://netdevops.fr' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.29.0"
+
+      - name: Setup kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Setup kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Snapshot état actuel (pour rollback manuel si besoin)
+        run: |
+          kubectl get deployments -n ${{ env.NAMESPACE }} -o yaml > /tmp/pre-deploy-state.yaml
+          CURRENT_FRONTEND=$(kubectl get deployment frontend -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.template.spec.containers[0].image}')
+          CURRENT_BACKEND=$(kubectl get deployment backend -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "Image frontend actuelle: $CURRENT_FRONTEND"
+          echo "Image backend actuelle: $CURRENT_BACKEND"
+          echo "PREVIOUS_FRONTEND=$CURRENT_FRONTEND" >> $GITHUB_ENV
+          echo "PREVIOUS_BACKEND=$CURRENT_BACKEND" >> $GITHUB_ENV
+
+      - name: Update image tags (production — tag semver)
+        working-directory: k8s/overlays/production
+        run: |
+          kustomize edit set image \
+            ghcr.io/${{ github.repository }}-frontend=ghcr.io/${{ github.repository }}-frontend:${{ needs.validate.outputs.version }} \
+            ghcr.io/${{ github.repository }}-backend=ghcr.io/${{ github.repository }}-backend:${{ needs.validate.outputs.version }}
+
+      - name: Apply manifests (production)
+        run: |
+          kustomize build k8s/overlays/production | kubectl apply -f -
+
+      - name: Wait for rollout — frontend (timeout 5 min)
+        id: rollout_frontend
+        run: |
+          kubectl rollout status deployment/frontend \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=300s
+
+      - name: Wait for rollout — backend (timeout 5 min)
+        id: rollout_backend
+        run: |
+          kubectl rollout status deployment/backend \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=300s
+
+      - name: Production smoke tests (via HTTPS public)
+        id: smoke_tests
+        run: |
+          echo "Attente stabilisation (30s)..."
+          sleep 30
+
+          # Smoke tests contre l'hôte défini dans PRODUCTION_PUBLIC_URL (Ingress TLS).
+          echo "Smoke tests sur: $PRODUCTION_PUBLIC_URL"
+
+          for endpoint in "/api/healthz" "/api/readyz"; do
+            STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
+              "${PRODUCTION_PUBLIC_URL}${endpoint}" \
+              --max-time 15 \
+              -k \
+              -H "User-Agent: GitHub-Actions-ProdSmokeTest")
+            if [ "$STATUS" != "200" ]; then
+              echo "❌ Endpoint $endpoint retourne HTTP $STATUS"
+              exit 1
+            fi
+            echo "✅ $endpoint → HTTP $STATUS"
+          done
+
+          # Test frontend
+          STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
+            "${PRODUCTION_PUBLIC_URL}/" --max-time 15 -k)
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Frontend retourne HTTP $STATUS"
+            exit 1
+          fi
+          echo "✅ Frontend → HTTP $STATUS"
+
+          echo "✅ Tous les smoke tests production passés"
+
+      # ----------------------------------------------------------
+      # ROLLBACK AUTOMATIQUE si une étape échoue
+      # ----------------------------------------------------------
+      - name: Rollback automatique
+        if: failure() && (steps.rollout_frontend.outcome == 'failure' || steps.rollout_backend.outcome == 'failure' || steps.smoke_tests.outcome == 'failure')
+        run: |
+          echo "🔄 Rollback production en cours..."
+          kubectl rollout undo deployment/frontend -n ${{ env.NAMESPACE }}
+          kubectl rollout undo deployment/backend -n ${{ env.NAMESPACE }}
+
+          echo "Attente du rollback..."
+          kubectl rollout status deployment/frontend -n ${{ env.NAMESPACE }} --timeout=180s
+          kubectl rollout status deployment/backend -n ${{ env.NAMESPACE }} --timeout=180s
+
+          echo "✅ Rollback terminé. Vérifier l'état du cluster."
+
+      - name: Créer GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.validate.outputs.version }}
+          name: "Release ${{ needs.validate.outputs.version }}"
+          body: |
+            ## Déploiement production — ${{ needs.validate.outputs.version }}
+
+            Déployé par : @${{ github.actor }}
+            Date : ${{ github.run_started_at }}
+
+            ### Images déployées
+            - Frontend : `ghcr.io/${{ github.repository }}-frontend:${{ needs.validate.outputs.version }}`
+            - Backend : `ghcr.io/${{ github.repository }}-backend:${{ needs.validate.outputs.version }}`
+          generate_release_notes: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Slack — Production déployée
+        if: success()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🚀 *PRODUCTION* déployée avec succès — ${{ needs.validate.outputs.version }}",
+              "attachments": [{
+                "color": "good",
+                "fields": [
+                  {"title": "Version", "value": "${{ needs.validate.outputs.version }}", "short": true},
+                  {"title": "Déployé par", "value": "${{ github.actor }}", "short": true},
+                  {"title": "URL", "value": "${{ env.PRODUCTION_PUBLIC_URL }}", "short": false},
+                  {"title": "Release notes", "value": "${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.validate.outputs.version }}", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Notify Slack — Rollback production
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🚨 *PRODUCTION* déploiement échoué — Rollback automatique effectué",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {"title": "Version tentée", "value": "${{ needs.validate.outputs.version }}", "short": true},
+                  {"title": "Initié par", "value": "${{ github.actor }}", "short": true},
+                  {"title": "Logs", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false},
+                  {"title": "ACTION REQUISE", "value": "Vérifier immédiatement l'état de production", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+  # ----------------------------------------------------------
+  # JOB de vérification post-déploiement (15 min après)
+  # ----------------------------------------------------------
+  post-deploy-check:
+    name: Post-Deploy Health Check
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()
+    env:
+      PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_SMOKE_BASE_URL != '' && vars.PRODUCTION_SMOKE_BASE_URL || 'https://netdevops.fr' }}
+
+    steps:
+      - name: Wait 15 minutes
+        run: sleep 900
+
+      - name: Extended health check
+        run: |
+          for i in {1..5}; do
+            STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
+              "${PRODUCTION_PUBLIC_URL}/api/healthz" --max-time 10 -k)
+            echo "Check $i/5 → HTTP $STATUS"
+            if [ "$STATUS" != "200" ]; then
+              echo "❌ Health check $i échoué"
+              exit 1
+            fi
+            sleep 60
+          done
+          echo "✅ Production stable après 15 minutes"

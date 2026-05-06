@@ -1,0 +1,158 @@
+---
+# ============================================================
+# WORKFLOW — Scan sécurité planifié
+# Lance un audit CVE hebdomadaire sur toutes les images en prod
+# et un audit de conformité Kubernetes avec kube-bench
+# ============================================================
+name: Security Scan (Scheduled)
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"    # Tous les lundis à 6h00 UTC
+  workflow_dispatch:        # Déclenchement manuel possible
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  # Scan CVE des images de production
+  # ────────────────────────────────────────────────────────────
+  scan-images:
+    name: CVE Scan — Images Production
+    runs-on: ubuntu-latest
+    env:
+      # Force Trivy CLI to load the ignore file regardless of action input mapping.
+      TRIVY_IGNOREFILE: .trivyignore
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Récupérer le tag de production actuel
+        id: get-tag
+        run: |
+          # Récupérer le dernier tag semver
+          LATEST_TAG=$(git tag -l 'v*.*.*' | sort -V | tail -1)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "❌ Aucun tag semver trouvé (format attendu: vX.Y.Z)"
+            exit 1
+          fi
+          echo "tag=${LATEST_TAG}" >> $GITHUB_OUTPUT
+          echo "Tag production actuel : ${LATEST_TAG}"
+
+      - name: Scan frontend — CVE complet
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}-frontend:${{ steps.get-tag.outputs.tag }}
+          format: "sarif"
+          output: "trivy-frontend-weekly.sarif"
+          severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+          trivyignores: ".trivyignore"
+          ignore-unfixed: false
+
+      - name: Scan backend — CVE complet
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}-backend:${{ steps.get-tag.outputs.tag }}
+          format: "sarif"
+          output: "trivy-backend-weekly.sarif"
+          severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+          trivyignores: ".trivyignore"
+          ignore-unfixed: false
+
+      - name: Upload résultats
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-frontend-weekly.sarif"
+          category: "weekly-scan-frontend"
+
+      - name: Upload résultats backend
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-backend-weekly.sarif"
+          category: "weekly-scan-backend"
+
+      - name: Générer rapport résumé
+        run: |
+          echo "## Rapport scan CVE hebdomadaire" >> $GITHUB_STEP_SUMMARY
+          echo "**Date :** $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag scanné :** ${{ steps.get-tag.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Résultats disponibles dans : Security → Code scanning alerts" >> $GITHUB_STEP_SUMMARY
+
+  # ────────────────────────────────────────────────────────────
+  # Audit conformité Kubernetes (kube-bench)
+  # ────────────────────────────────────────────────────────────
+  kube-bench:
+    name: Kube-bench CIS Benchmark
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Setup kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Lancer kube-bench sur le cluster
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
+          sleep 30
+          kubectl wait --for=condition=complete job/kube-bench --timeout=120s
+          kubectl logs job/kube-bench > kube-bench-results.txt
+          kubectl delete job kube-bench
+
+      - name: Afficher résumé
+        run: |
+          echo "## Résultats kube-bench CIS Benchmark" >> $GITHUB_STEP_SUMMARY
+          grep -E "^\[FAIL\]|^\[WARN\]|^== Summary" kube-bench-results.txt >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Upload résultats
+        uses: actions/upload-artifact@v5
+        with:
+          name: kube-bench-${{ github.run_id }}
+          path: kube-bench-results.txt
+          retention-days: 90
+
+  # ────────────────────────────────────────────────────────────
+  # Notification du rapport
+  # ────────────────────────────────────────────────────────────
+  notify:
+    name: Notify Weekly Report
+    runs-on: ubuntu-latest
+    needs: [scan-images, kube-bench]
+    if: always()
+
+    steps:
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "📊 Rapport sécurité hebdomadaire",
+              "attachments": [{
+                "color": "${{ (needs.scan-images.result == 'success' && needs.kube-bench.result == 'success') && 'good' || 'warning' }}",
+                "fields": [
+                  {"title": "Scan CVE images", "value": "${{ needs.scan-images.result }}", "short": true},
+                  {"title": "kube-bench", "value": "${{ needs.kube-bench.result }}", "short": true},
+                  {"title": "Détails", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false},
+                  {"title": "GitHub Security", "value": "${{ github.server_url }}/${{ github.repository }}/security/code-scanning", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

@@ -1,0 +1,169 @@
+---
+# ============================================================
+# WORKFLOW — Deploy STAGING
+# Déclencheur : push sur main (merge de PR)
+# Déploiement automatique + smoke tests étendus
+# ============================================================
+name: Deploy → STAGING
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Permissions requises par le workflow réutilisable ci.yaml (job build : push GHCR + SARIF Trivy).
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+env:
+  NAMESPACE: staging
+  IMAGE_TAG: staging-${{ github.sha }}
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yaml
+    with:
+      environment: staging
+      image_tag: staging-${{ github.sha }}
+    secrets:
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+
+  deploy:
+    name: Deploy to STAGING
+    runs-on: ubuntu-latest
+    needs: ci
+    environment: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false  # Ne pas annuler en staging, laisser finir
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.29.0"
+
+      - name: Setup kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Setup kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Verify cluster connectivity and RBAC
+        run: |
+          # Vérifie explicitement les permissions nécessaires au déploiement.
+          kubectl auth can-i get deployments -n ${{ env.NAMESPACE }}
+          kubectl auth can-i patch deployments -n ${{ env.NAMESPACE }}
+
+      - name: Update image tags
+        working-directory: k8s/overlays/staging
+        run: |
+          kustomize edit set image \
+            ghcr.io/${{ github.repository }}-frontend=ghcr.io/${{ github.repository }}-frontend:staging-${{ github.sha }} \
+            ghcr.io/${{ github.repository }}-backend=ghcr.io/${{ github.repository }}-backend:staging-${{ github.sha }}
+
+      - name: Apply manifests
+        run: |
+          kustomize build k8s/overlays/staging | kubectl apply -f -
+
+      - name: Wait for rollout — frontend
+        run: |
+          kubectl rollout status deployment/frontend \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=300s
+
+      - name: Wait for rollout — backend
+        run: |
+          kubectl rollout status deployment/backend \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=300s
+
+      - name: Extended smoke tests
+        run: |
+          echo "Attente stabilisation (30s)..."
+          sleep 30
+          BASE_URL="https://staging.netdevops.fr"
+
+          # Test via endpoint public HTTPS
+          curl -f --retry 5 --retry-delay 10 \
+            "$BASE_URL/api/healthz" \
+            -H "User-Agent: GitHub-Actions-SmokeTest"
+
+          # Test readiness backend
+          curl -f --retry 3 --retry-delay 5 \
+            "$BASE_URL/api/readyz"
+
+          # Test frontend répond
+          curl -f --retry 3 --retry-delay 5 \
+            "$BASE_URL/" \
+            -o /dev/null -w "HTTP Status: %{http_code}\n"
+
+          echo "✅ Tous les smoke tests passés"
+
+      - name: Run integration tests
+        run: |
+          # Optionnel : lancer des tests d'intégration Postman/Newman
+          # npm install -g newman
+          # newman run tests/integration/staging.postman_collection.json \
+          #   --environment tests/integration/staging.environment.json
+          echo "Tests d'intégration à configurer selon votre stack"
+        continue-on-error: true
+
+      - name: Rollback si déploiement échoué
+        if: failure()
+        run: |
+          echo "Déploiement staging échoué, rollback..."
+          kubectl rollout undo deployment/frontend -n ${{ env.NAMESPACE }}
+          kubectl rollout undo deployment/backend -n ${{ env.NAMESPACE }}
+          kubectl rollout status deployment/frontend -n ${{ env.NAMESPACE }} --timeout=120s
+          kubectl rollout status deployment/backend -n ${{ env.NAMESPACE }} --timeout=120s
+
+      - name: Notify Slack — Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🟡 *STAGING* déployé — prêt pour validation",
+              "attachments": [{
+                "color": "warning",
+                "fields": [
+                  {"title": "Commit", "value": "${{ github.sha }}", "short": true},
+                  {"title": "Auteur", "value": "${{ github.actor }}", "short": true},
+                  {"title": "URL Staging", "value": "https://staging.netdevops.fr", "short": false},
+                  {"title": "Action requise", "value": "Valider puis créer un tag pour déployer en production", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Notify Slack — Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🔴 *STAGING* déploiement échoué",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {"title": "Commit", "value": "${{ github.sha }}", "short": true},
+                  {"title": "Logs", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
