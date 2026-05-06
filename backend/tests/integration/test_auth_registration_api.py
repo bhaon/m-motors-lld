@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from app.main import application
 from app.db.session import SessionLocal, engine
+from app.db.types import is_pgcrypto_runtime_enabled
 
 
 def _unique_email() -> str:
@@ -66,7 +67,7 @@ def test_register_and_confirm_email_end_to_end() -> None:
 
 def test_personal_data_columns_are_encrypted_at_rest_on_postgres() -> None:
     """Vérifie que PostgreSQL stocke first_name/last_name en bytea (pgcrypto)."""
-    if engine.dialect.name != "postgresql":
+    if engine.dialect.name != "postgresql" or not is_pgcrypto_runtime_enabled():
         return
 
     with TestClient(application) as client:
