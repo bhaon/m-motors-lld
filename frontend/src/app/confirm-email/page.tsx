@@ -43,7 +43,7 @@ export default function ConfirmEmailPage() {
 
   return (
     <main style={{ maxWidth: 720, margin: "4rem auto", padding: "1.5rem", textAlign: "center" }}>
-      <h1 style={{ fontFamily: "Syne, sans-serif", marginBottom: "1rem" }}>Confirmation de l'email</h1>
+      <h1 style={{ fontFamily: "Syne, sans-serif", marginBottom: "1rem" }}>Confirmation de l&apos;email</h1>
       <p style={{ color: isError ? "#b91c1c" : "#166534" }}>{message}</p>
     </main>
   );

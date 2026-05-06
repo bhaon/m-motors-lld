@@ -96,7 +96,7 @@ export default function InscriptionPage() {
           <input type="date" required value={form.birth_date} onChange={(e) => setForm({ ...form, birth_date: e.target.value })} />
           <label style={{ display: "flex", gap: 8 }}>
             <input type="checkbox" checked={form.accepted_cgu} onChange={(e) => setForm({ ...form, accepted_cgu: e.target.checked })} />
-            J'accepte les CGU
+            J&apos;accepte les CGU
           </label>
           <label style={{ display: "flex", gap: 8 }}>
             <input
@@ -104,7 +104,7 @@ export default function InscriptionPage() {
               checked={form.accepted_privacy_policy}
               onChange={(e) => setForm({ ...form, accepted_privacy_policy: e.target.checked })}
             />
-            J'accepte la politique de confidentialite
+            J&apos;accepte la politique de confidentialite
           </label>
           <p style={{ color: "#6b7280", fontSize: ".85rem" }}>
             Mot de passe requis: 12 caracteres minimum, 1 majuscule, 1 chiffre, 1 caractere special.

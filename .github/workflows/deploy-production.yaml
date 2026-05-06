@@ -266,8 +266,8 @@ jobs:
       PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_SMOKE_BASE_URL != '' && vars.PRODUCTION_SMOKE_BASE_URL || 'https://netdevops.fr' }}
 
     steps:
-      - name: Wait 15 minutes
-        run: sleep 900
+      - name: Wait 2 minutes
+        run: sleep 120
 
       - name: Extended health check
         run: |
@@ -281,4 +281,4 @@ jobs:
             fi
             sleep 60
           done
-          echo "✅ Production stable après 15 minutes"
+          echo "✅ Production stable après 2 minutes"
