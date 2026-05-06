@@ -1,0 +1,157 @@
+---
+# ============================================================
+# WORKFLOW — Deploy DEV
+# Déclencheur : push sur la branche develop
+# Déploiement automatique, sans approbation
+# ============================================================
+name: Deploy → DEV
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:  # Déclenchement manuel possible
+
+# Permissions requises par le workflow réutilisable ci.yaml (job build : push GHCR + SARIF Trivy).
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+env:
+  NAMESPACE: dev
+  IMAGE_TAG: dev-${{ github.sha }}
+  # Optionnel : variable dépôt `DEV_SMOKE_HEALTH_URL` si l’URL par défaut ne correspond pas à l’ingress.
+  DEV_SMOKE_HEALTH_URL: ${{ vars.DEV_SMOKE_HEALTH_URL }}
+
+jobs:
+  # ----------------------------------------------------------
+  # Appel du workflow CI partagé (build + scan)
+  # ----------------------------------------------------------
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yaml
+    with:
+      environment: dev
+      image_tag: dev-${{ github.sha }}
+    secrets:
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+
+  # ----------------------------------------------------------
+  # Déploiement Kustomize vers namespace dev
+  # ----------------------------------------------------------
+  deploy:
+    name: Deploy to DEV
+    runs-on: ubuntu-latest
+    needs: ci
+    environment: dev
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: true  # Annule le déploiement précédent si un nouveau arrive
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.29.0"
+
+      - name: Setup kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DEV }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Setup kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Verify cluster connectivity and RBAC
+        run: |
+          # Vérifie explicitement les permissions nécessaires au déploiement.
+          kubectl auth can-i get deployments -n ${{ env.NAMESPACE }}
+          kubectl auth can-i patch deployments -n ${{ env.NAMESPACE }}
+
+      - name: Update image tags in kustomization
+        working-directory: k8s/overlays/dev
+        run: |
+          kustomize edit set image \
+            ghcr.io/${{ github.repository }}-frontend=ghcr.io/${{ github.repository }}-frontend:dev-${{ github.sha }} \
+            ghcr.io/${{ github.repository }}-backend=ghcr.io/${{ github.repository }}-backend:dev-${{ github.sha }}
+
+      - name: Apply manifests (Kustomize)
+        run: |
+          kustomize build k8s/overlays/dev | kubectl apply -f -
+
+      - name: Wait for rollout — frontend
+        run: |
+          kubectl rollout status deployment/frontend \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=180s
+
+      - name: Wait for rollout — backend
+        run: |
+          kubectl rollout status deployment/backend \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=180s
+
+      - name: Smoke tests
+        run: |
+          echo "Attente stabilisation (15s)..."
+          sleep 15
+          # Health check via l’ingress public : pas de pods/exec ni port-forward, donc pas de droit
+          # supplémentaire sur le service account Kubernetes (curl s’exécute sur le runner GitHub).
+          DEFAULT_URL="https://app-dev.netdevops.fr/api/healthz"
+          URL="${DEV_SMOKE_HEALTH_URL:-$DEFAULT_URL}"
+          echo "GET $URL"
+          # En DEV, le certificat peut être auto-signé ; on tolère ce cas pour éviter un faux négatif.
+          curl -k -fsS --retry 3 --retry-delay 3 --max-time 20 "$URL"
+        continue-on-error: true
+
+      - name: Rollback si déploiement échoué
+        if: failure()
+        run: |
+          echo "Déploiement échoué, rollback en cours..."
+          kubectl rollout undo deployment/frontend -n ${{ env.NAMESPACE }}
+          kubectl rollout undo deployment/backend -n ${{ env.NAMESPACE }}
+
+      - name: Notify Slack — Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "✅ *DEV* déployé avec succès",
+              "attachments": [{
+                "color": "good",
+                "fields": [
+                  {"title": "Commit", "value": "${{ github.sha }}", "short": true},
+                  {"title": "Auteur", "value": "${{ github.actor }}", "short": true},
+                  {"title": "URL", "value": "https://app-dev.votre-domaine.com", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Notify Slack — Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "❌ *DEV* déploiement échoué — rollback effectué",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {"title": "Commit", "value": "${{ github.sha }}", "short": true},
+                  {"title": "Auteur", "value": "${{ github.actor }}", "short": true},
+                  {"title": "Logs", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

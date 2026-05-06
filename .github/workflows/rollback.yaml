@@ -1,0 +1,194 @@
+---
+# ============================================================
+# WORKFLOW — Rollback Manuel
+# Déclenché manuellement depuis GitHub UI
+# Permet de rollback vers une version précédente ou un tag Git
+# ============================================================
+name: Rollback Manuel
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environnement à rollback"
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+      rollback_type:
+        description: "Type de rollback"
+        required: true
+        type: choice
+        options:
+          - previous    # Revenir au déploiement précédent (kubectl rollout undo)
+          - specific_tag  # Déployer un tag spécifique
+      target_tag:
+        description: "Tag Git cible (ex: v1.1.0) — uniquement si rollback_type = specific_tag"
+        required: false
+        type: string
+      reason:
+        description: "Raison du rollback (pour l'audit)"
+        required: true
+        type: string
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  # Validation des inputs
+  # ────────────────────────────────────────────────────────────
+  validate:
+    name: Validate Rollback Request
+    runs-on: ubuntu-latest
+    outputs:
+      namespace: ${{ steps.set-namespace.outputs.namespace }}
+      kubeconfig_secret: ${{ steps.set-namespace.outputs.kubeconfig_secret }}
+
+    steps:
+      - name: Set namespace and secret from environment
+        id: set-namespace
+        run: |
+          case "${{ inputs.environment }}" in
+            dev)
+              echo "namespace=dev" >> $GITHUB_OUTPUT
+              echo "kubeconfig_secret=KUBECONFIG_DEV" >> $GITHUB_OUTPUT
+              ;;
+            staging)
+              echo "namespace=staging" >> $GITHUB_OUTPUT
+              echo "kubeconfig_secret=KUBECONFIG_STAGING" >> $GITHUB_OUTPUT
+              ;;
+            production)
+              echo "namespace=production" >> $GITHUB_OUTPUT
+              echo "kubeconfig_secret=KUBECONFIG_PROD" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Validate specific tag if required
+        if: ${{ inputs.rollback_type == 'specific_tag' && inputs.target_tag == '' }}
+        run: |
+          echo "❌ target_tag est requis quand rollback_type = specific_tag"
+          exit 1
+
+  # ────────────────────────────────────────────────────────────
+  # Rollback — approbation requise pour production
+  # ────────────────────────────────────────────────────────────
+  rollback:
+    name: "Rollback ${{ inputs.environment }}"
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: ${{ inputs.environment }}    # Approbation prod si configurée
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.29.0"
+
+      - name: Setup kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          # Sélection dynamique du bon kubeconfig secret
+          case "${{ inputs.environment }}" in
+            dev)      echo "${{ secrets.KUBECONFIG_DEV }}" | base64 -d > ~/.kube/config ;;
+            staging)  echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > ~/.kube/config ;;
+            production) echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > ~/.kube/config ;;
+          esac
+          chmod 600 ~/.kube/config
+
+      - name: Afficher l'état actuel avant rollback
+        run: |
+          echo "═══════════════════════════════════════"
+          echo "ÉTAT ACTUEL — ${{ inputs.environment }}"
+          echo "═══════════════════════════════════════"
+          kubectl get deployments -n ${{ needs.validate.outputs.namespace }} -o wide
+          echo ""
+          echo "Historique frontend :"
+          kubectl rollout history deployment/frontend -n ${{ needs.validate.outputs.namespace }}
+          echo ""
+          echo "Historique backend :"
+          kubectl rollout history deployment/backend -n ${{ needs.validate.outputs.namespace }}
+
+      # ── Option 1 : Rollback vers le déploiement précédent ─
+      - name: Rollback vers déploiement précédent
+        if: ${{ inputs.rollback_type == 'previous' }}
+        run: |
+          echo "🔄 Rollback vers la version précédente..."
+          kubectl rollout undo deployment/frontend -n ${{ needs.validate.outputs.namespace }}
+          kubectl rollout undo deployment/backend  -n ${{ needs.validate.outputs.namespace }}
+
+      # ── Option 2 : Rollback vers un tag spécifique ────────
+      - name: Rollback vers tag spécifique
+        if: ${{ inputs.rollback_type == 'specific_tag' }}
+        run: |
+          echo "🔄 Déploiement du tag ${{ inputs.target_tag }} sur ${{ inputs.environment }}..."
+          kubectl set image deployment/frontend \
+            frontend=ghcr.io/${{ github.repository }}-frontend:${{ inputs.target_tag }} \
+            -n ${{ needs.validate.outputs.namespace }}
+          kubectl set image deployment/backend \
+            db-migrate=ghcr.io/${{ github.repository }}-backend:${{ inputs.target_tag }} \
+            backend=ghcr.io/${{ github.repository }}-backend:${{ inputs.target_tag }} \
+            -n ${{ needs.validate.outputs.namespace }}
+
+      - name: Attendre la fin du rollback — frontend
+        run: |
+          kubectl rollout status deployment/frontend \
+            -n ${{ needs.validate.outputs.namespace }} \
+            --timeout=300s
+
+      - name: Attendre la fin du rollback — backend
+        run: |
+          kubectl rollout status deployment/backend \
+            -n ${{ needs.validate.outputs.namespace }} \
+            --timeout=300s
+
+      - name: Vérification post-rollback
+        run: |
+          echo "═══════════════════════════════════════"
+          echo "ÉTAT APRÈS ROLLBACK"
+          echo "═══════════════════════════════════════"
+          kubectl get deployments -n ${{ needs.validate.outputs.namespace }} -o wide
+          echo ""
+          echo "Images actuellement déployées :"
+          kubectl get pods -n ${{ needs.validate.outputs.namespace }} \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.image}{"\n"}{end}{end}'
+
+      - name: Smoke test post-rollback
+        run: |
+          sleep 20
+          case "${{ inputs.environment }}" in
+            dev)       URL="https://app-dev.votre-domaine.com" ;;
+            staging)   URL="https://staging.votre-domaine.com" ;;
+            production) URL="https://votre-domaine.com" ;;
+          esac
+          STATUS=$(curl -o /dev/null -s -w "%{http_code}" "${URL}/api/healthz" --max-time 15)
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Health check échoué après rollback : HTTP $STATUS"
+            exit 1
+          fi
+          echo "✅ Health check OK après rollback : HTTP $STATUS"
+
+      - name: Notify Slack — Rollback effectué
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '✅' || '❌' }} Rollback *${{ inputs.environment }}* — ${{ job.status }}",
+              "attachments": [{
+                "color": "${{ job.status == 'success' && 'good' || 'danger' }}",
+                "fields": [
+                  {"title": "Environnement", "value": "${{ inputs.environment }}", "short": true},
+                  {"title": "Type", "value": "${{ inputs.rollback_type }}", "short": true},
+                  {"title": "Tag cible", "value": "${{ inputs.target_tag || 'précédent' }}", "short": true},
+                  {"title": "Initié par", "value": "${{ github.actor }}", "short": true},
+                  {"title": "Raison", "value": "${{ inputs.reason }}", "short": false},
+                  {"title": "Logs", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
