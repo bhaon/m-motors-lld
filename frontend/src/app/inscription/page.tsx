@@ -33,9 +33,19 @@ function isPasswordStrong(password: string): boolean {
  * Lit la reponse HTTP en JSON si possible, sinon en texte.
  */
 async function readApiPayload(response: Response): Promise<{ message?: string; detail?: string }> {
-  const contentType = response.headers.get("content-type") || "";
+  const contentType = response.headers?.get?.("content-type") || "";
   if (contentType.includes("application/json")) {
     return (await response.json()) as { message?: string; detail?: string };
+  }
+  if (typeof response.json === "function") {
+    try {
+      return (await response.json()) as { message?: string; detail?: string };
+    } catch {
+      // Le fallback texte ci-dessous couvre les réponses non-JSON.
+    }
+  }
+  if (typeof response.text !== "function") {
+    return {};
   }
   const text = await response.text();
   return { detail: text || undefined };
