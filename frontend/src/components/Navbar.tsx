@@ -55,6 +55,17 @@ export default function Navbar() {
         >
           Inscription
         </Link>
+        <Link
+          href="/connexion"
+          style={{
+            color: "var(--white)",
+            textDecoration: "none",
+            fontSize: ".85rem",
+            fontWeight: 500,
+          }}
+        >
+          Connexion
+        </Link>
         {/* Lien placeholder en attendant une page "À propos" dédiée. */}
         <Link
           href="#"

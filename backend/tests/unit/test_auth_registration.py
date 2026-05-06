@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.models.user import User
 from app.api.v1.endpoints import auth as auth_endpoint
+from tests.conftest import create_user
 
 
 def test_register_client_success(client, db) -> None:
@@ -171,4 +172,64 @@ def test_confirm_email_rejects_expired_token(client, db) -> None:
 
     response = client.get("/api/v1/auth/confirm-email", params={"token": raw_token})
     assert response.status_code == 400
+
+
+def test_login_client_success_sets_http_only_cookie(client, db) -> None:
+    """Retourne 200 et pose un cookie JWT HTTP-only en cas de credentials valides."""
+    user = create_user(db, email="login.ok@example.com", password="UltraSecure123!")
+    assert user is not None
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "login.ok@example.com", "password": "UltraSecure123!"},
+    )
+
+    assert response.status_code == 200
+    assert "connexion reussie" in response.json()["message"].lower()
+    cookie_header = response.headers.get("set-cookie", "")
+    assert "access_token=" in cookie_header
+    assert "HttpOnly" in cookie_header
+
+
+def test_login_client_rejects_invalid_email_with_generic_message(client) -> None:
+    """Retourne 401 avec un message générique si l'email n'existe pas."""
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "unknown@example.com", "password": "UltraSecure123!"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Email ou mot de passe invalide."
+
+
+def test_login_client_rejects_invalid_password_with_generic_message(client, db) -> None:
+    """Retourne 401 avec le même message si le mot de passe est invalide."""
+    create_user(db, email="login.fail@example.com", password="UltraSecure123!")
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "login.fail@example.com", "password": "WrongPassword"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Email ou mot de passe invalide."
+
+
+def test_get_current_authenticated_user_with_cookie(client, db) -> None:
+    """Retourne l'utilisateur courant quand le cookie access_token est valide."""
+    create_user(db, email="me@example.com", password="UltraSecure123!")
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "me@example.com", "password": "UltraSecure123!"},
+    )
+    cookie_header = login_response.headers.get("set-cookie", "")
+    access_token = cookie_header.split("access_token=")[1].split(";")[0]
+
+    response = client.get("/api/v1/auth/me", cookies={"access_token": access_token})
+    assert response.status_code == 200
+    assert response.json()["email"] == "me@example.com"
+
+
+def test_get_current_authenticated_user_without_cookie_rejected(client) -> None:
+    """Retourne 401 quand le cookie d'authentification est absent."""
+    response = client.get("/api/v1/auth/me")
+    assert response.status_code == 401
 

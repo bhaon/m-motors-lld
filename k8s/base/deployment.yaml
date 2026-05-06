@@ -148,6 +148,16 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: POSTGRES_PASSWORD
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: resend-credentials
+                  key: RESEND_API_KEY
+            - name: RESEND_FROM_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: resend-credentials
+                  key: RESEND_FROM_EMAIL
             - name: POSTGRES_HOST
               value: postgresql
             - name: POSTGRES_PORT
@@ -220,6 +230,16 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: SECRET_KEY
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: resend-credentials
+                  key: RESEND_API_KEY
+            - name: RESEND_FROM_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: resend-credentials
+                  key: RESEND_FROM_EMAIL
             - name: ALLOWED_HOSTS
               valueFrom:
                 configMapKeyRef:

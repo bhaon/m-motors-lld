@@ -1,4 +1,4 @@
-"""Schémas de validation pour l'inscription client."""
+"""Schémas de validation pour l'inscription et la connexion client."""
 
 from __future__ import annotations
 
@@ -52,6 +52,33 @@ class RegisterResponse(BaseModel):
     """Réponse standard après inscription d'un compte client."""
 
     message: str
+
+
+class LoginRequest(BaseModel):
+    """Corps de requête pour authentifier un utilisateur."""
+
+    email: str = Field(min_length=5, max_length=255)
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        """Normalise l'email pour fiabiliser la recherche en base."""
+        return value.strip().lower()
+
+
+class LoginResponse(BaseModel):
+    """Réponse standard après authentification réussie."""
+
+    message: str
+
+
+class CurrentUserResponse(BaseModel):
+    """Représentation minimale de l'utilisateur connecté."""
+
+    id: int
+    email: str
+    role: str
 
 
 class EmailVerificationResponse(BaseModel):

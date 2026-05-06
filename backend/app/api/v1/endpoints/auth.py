@@ -6,16 +6,25 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Cookie, HTTPException, Response, status
+from jose import JWTError
 
 from app.core.config import settings
 from app.core.deps import DbSession
-from app.core.security import hash_password
+from app.core.security import create_access_token, decode_token, hash_password, verify_password
 from app.models.user import RoleEnum, User
-from app.schemas.auth import EmailVerificationResponse, RegisterRequest, RegisterResponse
+from app.schemas.auth import (
+    CurrentUserResponse,
+    EmailVerificationResponse,
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    RegisterResponse,
+)
 from app.services.emailing import send_verification_email
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
+GENERIC_LOGIN_ERROR = "Email ou mot de passe invalide."
 
 
 def _generate_email_verification_token() -> str:
@@ -40,6 +49,30 @@ def _is_token_expired(expires_at: datetime | None, now: datetime) -> bool:
     if expires_at.tzinfo is None:
         return now.replace(tzinfo=None) > expires_at
     return now > expires_at
+
+
+def _is_secure_cookie() -> bool:
+    """Active Secure quand le frontend est servi en HTTPS."""
+    return settings.FRONTEND_BASE_URL.startswith("https://")
+
+
+def _resolve_user_from_token(token: str | None, db: DbSession) -> User:
+    """Résout l'utilisateur courant à partir d'un JWT, sinon lève 401."""
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentification requise.")
+    try:
+        payload = decode_token(token)
+        sub = payload.get("sub")
+        if sub is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide.")
+        user_id = int(str(sub))
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide.")
+
+    user = db.query(User).filter(User.id == user_id, User.deleted_at.is_(None)).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentification requise.")
+    return user
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
@@ -78,6 +111,33 @@ def register_client(payload: RegisterRequest, db: DbSession) -> RegisterResponse
     return RegisterResponse(
         message="Inscription reussie. Un email de confirmation vous a ete envoye pour activer votre compte.",
     )
+
+
+@router.post("/login", response_model=LoginResponse)
+def login_client(payload: LoginRequest, response: Response, db: DbSession) -> LoginResponse:
+    """Authentifie un client par email/mot de passe et pose un cookie JWT HTTP-only."""
+    user = db.query(User).filter(User.email == payload.email, User.deleted_at.is_(None)).first()
+    if not user or not user.is_active or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_LOGIN_ERROR)
+
+    token = create_access_token(subject=str(user.id), role=user.role.value)
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=_is_secure_cookie(),
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+    return LoginResponse(message="Connexion reussie.")
+
+
+@router.get("/me", response_model=CurrentUserResponse)
+def get_current_authenticated_user(db: DbSession, access_token: str | None = Cookie(default=None)) -> CurrentUserResponse:
+    """Retourne l'utilisateur authentifié à partir du cookie HTTP-only."""
+    user = _resolve_user_from_token(access_token, db)
+    return CurrentUserResponse(id=user.id, email=user.email, role=user.role.value)
 
 
 @router.get("/confirm-email", response_model=EmailVerificationResponse)
