@@ -29,6 +29,18 @@ function isPasswordStrong(password: string): boolean {
   return /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/.test(password);
 }
 
+/**
+ * Lit la reponse HTTP en JSON si possible, sinon en texte.
+ */
+async function readApiPayload(response: Response): Promise<{ message?: string; detail?: string }> {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return (await response.json()) as { message?: string; detail?: string };
+  }
+  const text = await response.text();
+  return { detail: text || undefined };
+}
+
 export default function InscriptionPage() {
   const [form, setForm] = useState<RegisterPayload>({
     email: "",
@@ -71,7 +83,7 @@ export default function InscriptionPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const payload = (await response.json()) as { message?: string; detail?: string };
+      const payload = await readApiPayload(response);
       if (!response.ok) {
         throw new Error(payload.detail || "Inscription impossible.");
       }

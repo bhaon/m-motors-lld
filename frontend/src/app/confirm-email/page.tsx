@@ -12,6 +12,18 @@ function resolveConfirmUrl(token: string): string {
   return base ? `${base}${path}` : path;
 }
 
+/**
+ * Lit la reponse HTTP en JSON si possible, sinon en texte.
+ */
+async function readApiPayload(response: Response): Promise<{ message?: string; detail?: string }> {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return (await response.json()) as { message?: string; detail?: string };
+  }
+  const text = await response.text();
+  return { detail: text || undefined };
+}
+
 export default function ConfirmEmailPage() {
   const [message, setMessage] = useState("Validation de votre email en cours...");
   const [isError, setIsError] = useState(false);
@@ -28,7 +40,7 @@ export default function ConfirmEmailPage() {
     async function confirmEmail() {
       try {
         const response = await fetch(resolveConfirmUrl(confirmedToken));
-        const payload = (await response.json()) as { message?: string; detail?: string };
+        const payload = await readApiPayload(response);
         if (!response.ok) {
           throw new Error(payload.detail || "Confirmation impossible.");
         }
