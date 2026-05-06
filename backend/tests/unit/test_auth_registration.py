@@ -48,6 +48,40 @@ def test_register_client_rejects_weak_password(client) -> None:
     assert response.status_code == 422
 
 
+def test_register_client_requires_legal_consents(client) -> None:
+    """Refuse l'inscription si les consentements CGU/RGPD ne sont pas tous acceptés."""
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "consent.missing@example.com",
+            "password": "UltraSecure123!",
+            "first_name": "Luc",
+            "last_name": "Petit",
+            "birth_date": "1993-06-21",
+            "accepted_cgu": False,
+            "accepted_privacy_policy": True,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_register_client_rejects_duplicate_email(client) -> None:
+    """Refuse la création d'un second compte avec le même email."""
+    payload = {
+        "email": "already.used@example.com",
+        "password": "UltraSecure123!",
+        "first_name": "Aline",
+        "last_name": "Thomas",
+        "birth_date": "1991-05-12",
+        "accepted_cgu": True,
+        "accepted_privacy_policy": True,
+    }
+    first = client.post("/api/v1/auth/register", json=payload)
+    second = client.post("/api/v1/auth/register", json=payload)
+    assert first.status_code == 201
+    assert second.status_code == 409
+
+
 def test_confirm_email_success(client, db) -> None:
     """Confirme l'email avec un token valide."""
     client.post(
@@ -72,4 +106,39 @@ def test_confirm_email_success(client, db) -> None:
     response = client.get("/api/v1/auth/confirm-email", params={"token": raw_token})
     assert response.status_code == 200
     assert "confirme" in response.json()["message"].lower()
+
+    db.refresh(user)
+    assert user.email_verified is True
+    assert user.email_verification_token is None
+
+
+def test_confirm_email_rejects_invalid_token(client) -> None:
+    """Retourne 400 quand le token ne correspond à aucun utilisateur."""
+    response = client.get("/api/v1/auth/confirm-email", params={"token": "invalid-token"})
+    assert response.status_code == 400
+
+
+def test_confirm_email_rejects_expired_token(client, db) -> None:
+    """Retourne 400 quand le token existe mais a dépassé sa date d'expiration."""
+    client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "expired.token@example.com",
+            "password": "UltraSecure123!",
+            "first_name": "Paul",
+            "last_name": "Roux",
+            "birth_date": "1989-04-03",
+            "accepted_cgu": True,
+            "accepted_privacy_policy": True,
+        },
+    )
+    user = db.query(User).filter(User.email == "expired.token@example.com").first()
+    assert user is not None
+    raw_token = "expired-token-for-test"
+    user.email_verification_token = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    user.email_verification_expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    db.commit()
+
+    response = client.get("/api/v1/auth/confirm-email", params={"token": raw_token})
+    assert response.status_code == 400
 
