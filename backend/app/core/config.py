@@ -89,6 +89,14 @@ class Settings(BaseSettings):
         ...,
         description="Secret pour signer les JWT — obligatoire (variable d'environnement uniquement).",
     )
+    PII_ENCRYPTION_KEY: str | None = Field(
+        default=None,
+        description="Clé pgcrypto pour chiffrer les données personnelles au repos.",
+    )
+    FRONTEND_BASE_URL: str = Field(
+        default="https://netdevops.fr",
+        description="URL publique du frontend utilisée pour les liens de confirmation email.",
+    )
 
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
@@ -110,6 +118,8 @@ class Settings(BaseSettings):
         2) Construction à partir de POSTGRES_* pour éviter les divergences de secrets
         """
         if self.DATABASE_URL:
+            if not self.PII_ENCRYPTION_KEY:
+                self.PII_ENCRYPTION_KEY = self.SECRET_KEY
             return self
         if self.POSTGRES_DB and self.POSTGRES_USER and self.POSTGRES_PASSWORD:
             encoded_password = quote_plus(self.POSTGRES_PASSWORD)
@@ -117,6 +127,8 @@ class Settings(BaseSettings):
                 f"postgresql://{self.POSTGRES_USER}:{encoded_password}"
                 f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
             )
+            if not self.PII_ENCRYPTION_KEY:
+                self.PII_ENCRYPTION_KEY = self.SECRET_KEY
             return self
         raise ValueError(
             "Configuration DB invalide: fournir DATABASE_URL ou POSTGRES_DB/POSTGRES_USER/POSTGRES_PASSWORD."

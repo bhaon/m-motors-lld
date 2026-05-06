@@ -131,19 +131,19 @@ jobs:
         run: |
           kustomize build k8s/overlays/production | kubectl apply -f -
 
-      - name: Wait for rollout — frontend (timeout 5 min)
+      - name: Wait for rollout — frontend (timeout 2 min)
         id: rollout_frontend
         run: |
           kubectl rollout status deployment/frontend \
             -n ${{ env.NAMESPACE }} \
-            --timeout=300s
+            --timeout=120s
 
-      - name: Wait for rollout — backend (timeout 5 min)
+      - name: Wait for rollout — backend (timeout 2 min)
         id: rollout_backend
         run: |
           kubectl rollout status deployment/backend \
             -n ${{ env.NAMESPACE }} \
-            --timeout=300s
+            --timeout=120s
 
       - name: Production smoke tests (via HTTPS public)
         id: smoke_tests

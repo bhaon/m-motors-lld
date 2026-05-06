@@ -41,15 +41,15 @@ export default function Navbar() {
           Catalogue
         </Link>
         <Link
-          href="#"
+          href="/inscription"
           style={{
-            color: "rgba(255,255,255,.7)",
+            color: "var(--white)",
             textDecoration: "none",
             fontSize: ".85rem",
             fontWeight: 500,
           }}
         >
-          Nos offres LLD
+          Inscription
         </Link>
         <Link
           href="#"
