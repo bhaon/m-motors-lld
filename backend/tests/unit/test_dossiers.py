@@ -113,7 +113,7 @@ def test_upload_piece_flow_persists_piece_after_checksum_validation(
 
     monkeypatch.setattr(dossier_endpoints, "get_s3_client", lambda: _FakeS3())
     monkeypatch.setattr(dossier_endpoints, "ensure_bucket_exists", lambda _: None)
-    monkeypatch.setattr(dossier_endpoints, "verify_object_checksum", lambda **_: True)
+    monkeypatch.setattr(dossier_endpoints, "verify_object_checksum", lambda *_, **__: True)
 
     init_response = client.post(
         f"/api/v1/dossiers/{dossier['id']}/pieces/upload-init",
@@ -153,7 +153,7 @@ def test_upload_complete_rejects_checksum_mismatch(client: TestClient, db: Sessi
     dossier = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
 
     monkeypatch.setattr(dossier_endpoints, "get_s3_client", lambda: object())
-    monkeypatch.setattr(dossier_endpoints, "verify_object_checksum", lambda **_: False)
+    monkeypatch.setattr(dossier_endpoints, "verify_object_checksum", lambda *_, **__: False)
 
     response = client.post(
         f"/api/v1/dossiers/{dossier['id']}/pieces/upload-complete",
