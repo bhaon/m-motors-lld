@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import boto3
+from botocore.config import Config
 from botocore.client import BaseClient
 from botocore.exceptions import ClientError
 
@@ -38,6 +40,10 @@ def get_s3_client() -> BaseClient:
         region_name=settings.S3_REGION,
         aws_access_key_id=settings.S3_ACCESS_KEY,
         aws_secret_access_key=settings.S3_SECRET_KEY,
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+        ),
     )
 
 
@@ -47,6 +53,36 @@ def ensure_bucket_exists(client: BaseClient) -> None:
         client.head_bucket(Bucket=settings.S3_BUCKET)
     except ClientError:
         client.create_bucket(Bucket=settings.S3_BUCKET)
+
+
+def ensure_bucket_cors(client: BaseClient) -> None:
+    """Applique une politique CORS compatible upload navigateur sur le bucket S3."""
+    desired_rules: list[dict[str, Any]] = [
+        {
+            "AllowedHeaders": [
+                "content-type",
+                "x-amz-checksum-sha256",
+                "x-amz-content-sha256",
+                "x-amz-date",
+                "x-amz-security-token",
+                "authorization",
+            ],
+            "AllowedMethods": ["PUT", "GET", "HEAD"],
+            "AllowedOrigins": settings.allowed_origins,
+            "ExposeHeaders": ["ETag", "x-amz-request-id", "x-amz-id-2"],
+            "MaxAgeSeconds": 3600,
+        }
+    ]
+    desired_cors = {"CORSRules": desired_rules}
+    try:
+        current = client.get_bucket_cors(Bucket=settings.S3_BUCKET)
+        current_rules = current.get("CORSRules", [])
+        if current_rules == desired_rules:
+            return
+    except ClientError:
+        # Absence de CORS ou accès initial: on applique la configuration cible.
+        pass
+    client.put_bucket_cors(Bucket=settings.S3_BUCKET, CORSConfiguration=desired_cors)
 
 
 def build_piece_object_key(*, dossier_id: int, piece_type: str, filename: str) -> str:

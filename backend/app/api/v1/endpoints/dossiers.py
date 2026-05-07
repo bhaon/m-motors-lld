@@ -20,6 +20,7 @@ from app.schemas.dossier import (
 from app.services.object_storage import (
     build_piece_object_key,
     ensure_bucket_exists,
+    ensure_bucket_cors,
     generate_upload_url,
     get_s3_client,
     verify_object_checksum,
@@ -134,6 +135,7 @@ def init_piece_upload(
 
     s3_client = get_s3_client()
     ensure_bucket_exists(s3_client)
+    ensure_bucket_cors(s3_client)
     object_key = build_piece_object_key(
         dossier_id=dossier_id,
         piece_type=payload.type_piece,
