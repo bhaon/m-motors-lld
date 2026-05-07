@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Navbar from "@/components/Navbar";
+import Link from "next/link";
 
 interface DossierItem {
   id: number;
@@ -73,50 +75,57 @@ export default function MesDossiersPage() {
   }, []);
 
   return (
-    <main style={{ maxWidth: 980, margin: "2rem auto", padding: "0 1rem" }}>
-      <h1 style={{ fontFamily: "Syne, sans-serif", marginBottom: ".4rem" }}>Mes dossiers</h1>
-      <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>
-        Retrouvez ici tous les dossiers créés depuis votre espace client.
-      </p>
+    <main>
+      <Navbar />
+      <section style={{ maxWidth: 980, margin: "2rem auto", padding: "1.5rem", background: "#fff", borderRadius: 12 }}>
+        <h1 style={{ fontFamily: "Syne, sans-serif", marginBottom: ".4rem" }}>Mes dossiers</h1>
+        <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>
+          Retrouvez ici tous les dossiers créés depuis votre espace client.
+        </p>
 
-      {loading ? <p>Chargement des dossiers...</p> : null}
-      {error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
+        {loading ? <p>Chargement des dossiers...</p> : null}
+        {error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
 
-      {!loading && !error ? (
-        items.length === 0 ? (
-          <p>Aucun dossier trouvé pour votre compte.</p>
-        ) : (
-          <div
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              overflow: "hidden",
-              background: "#fff",
-            }}
-          >
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "rgba(15,23,42,.04)" }}>
-                  <th style={{ textAlign: "left", padding: ".8rem" }}>Référence</th>
-                  <th style={{ textAlign: "left", padding: ".8rem" }}>Type</th>
-                  <th style={{ textAlign: "left", padding: ".8rem" }}>Statut</th>
-                  <th style={{ textAlign: "left", padding: ".8rem" }}>Créé le</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id} style={{ borderTop: "1px solid var(--border)" }}>
-                    <td style={{ padding: ".8rem", fontWeight: 700 }}>{item.reference}</td>
-                    <td style={{ padding: ".8rem", textTransform: "uppercase" }}>{item.type}</td>
-                    <td style={{ padding: ".8rem" }}>{item.status}</td>
-                    <td style={{ padding: ".8rem" }}>{formatFrenchDate(item.created_at)}</td>
+        {!loading && !error ? (
+          items.length === 0 ? (
+            <p>Aucun dossier trouvé pour votre compte.</p>
+          ) : (
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                overflow: "hidden",
+                background: "#fff",
+              }}
+            >
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: "rgba(15,23,42,.04)" }}>
+                    <th style={{ textAlign: "left", padding: ".8rem" }}>Référence</th>
+                    <th style={{ textAlign: "left", padding: ".8rem" }}>Type</th>
+                    <th style={{ textAlign: "left", padding: ".8rem" }}>Statut</th>
+                    <th style={{ textAlign: "left", padding: ".8rem" }}>Créé le</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      ) : null}
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.id} style={{ borderTop: "1px solid var(--border)" }}>
+                      <td style={{ padding: ".8rem", fontWeight: 700 }}>
+                        <Link href={`/mes-dossiers/${item.id}`} style={{ color: "var(--navy)", textDecoration: "underline" }}>
+                          {item.reference}
+                        </Link>
+                      </td>
+                      <td style={{ padding: ".8rem", textTransform: "uppercase" }}>{item.type}</td>
+                      <td style={{ padding: ".8rem" }}>{item.status}</td>
+                      <td style={{ padding: ".8rem" }}>{formatFrenchDate(item.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : null}
+      </section>
     </main>
   );
 }

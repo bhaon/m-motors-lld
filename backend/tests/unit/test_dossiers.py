@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints import dossiers as dossier_endpoints
-from app.models.dossier import Dossier, DossierTypeEnum, PieceJustificative
+from app.models.dossier import Dossier, DossierStatusEnum, DossierTypeEnum, PieceJustificative
 from tests.conftest import create_user, create_vehicle
 
 
@@ -208,3 +208,67 @@ def test_list_my_dossiers_requires_authentication(client: TestClient) -> None:
     """Refuse l'accès à la liste des dossiers sans cookie d'authentification."""
     response = client.get("/api/v1/dossiers/me")
     assert response.status_code == 401
+
+
+def test_get_dossier_detail_returns_checklist_and_missing_pieces(client: TestClient, db: Session) -> None:
+    """Retourne la checklist détaillée avec pièces manquantes pour un dossier client."""
+    user = create_user(db, email="client.detail@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier_payload = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+    dossier_id = dossier_payload["id"]
+    db.add(
+        PieceJustificative(
+            dossier_id=dossier_id,
+            type_piece="cni",
+            filename="cni.pdf",
+            s3_key="dossiers/x/cni.pdf",
+            checksum="a" * 64,
+        )
+    )
+    db.commit()
+
+    response = client.get(f"/api/v1/dossiers/{dossier_id}", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["can_submit"] is False
+    assert "permis" in body["missing_pieces"]
+    assert any(item["type_piece"] == "cni" and item["uploaded"] for item in body["checklist"])
+
+
+def test_submit_dossier_rejected_when_missing_pieces(client: TestClient, db: Session) -> None:
+    """Bloque la soumission tant qu'au moins une pièce obligatoire manque."""
+    user = create_user(db, email="client.submit.blocked@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier_payload = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+
+    response = client.post(f"/api/v1/dossiers/{dossier_payload['id']}/submit", headers=headers)
+    assert response.status_code == 400
+    assert "Pièces manquantes" in response.json()["detail"]
+
+
+def test_submit_dossier_sets_status_depose_when_complete(client: TestClient, db: Session) -> None:
+    """Soumet le dossier complet et passe son statut à `depose`."""
+    user = create_user(db, email="client.submit.ok@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier_payload = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+    dossier_id = dossier_payload["id"]
+
+    for piece_type in ("cni", "permis", "revenus", "domicile", "rib"):
+        db.add(
+            PieceJustificative(
+                dossier_id=dossier_id,
+                type_piece=piece_type,
+                filename=f"{piece_type}.pdf",
+                s3_key=f"dossiers/x/{piece_type}.pdf",
+                checksum="a" * 64,
+            )
+        )
+    db.commit()
+
+    response = client.post(f"/api/v1/dossiers/{dossier_id}/submit", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == DossierStatusEnum.depose.value
+    assert response.json()["can_submit"] is True

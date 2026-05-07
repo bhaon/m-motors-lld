@@ -7,12 +7,14 @@ from jose import JWTError
 
 from app.core.deps import DbSession
 from app.core.security import decode_token
-from app.models.dossier import Dossier, PieceJustificative
+from app.models.dossier import Dossier, DossierStatusEnum, PieceJustificative
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.schemas.dossier import (
     DossierCreateIn,
     DossierCreateOut,
+    DossierDetailOut,
+    DossierPieceChecklistItemOut,
     PieceUploadCompleteIn,
     PieceUploadInitIn,
     PieceUploadInitOut,
@@ -73,6 +75,20 @@ def _get_owned_dossier(db: DbSession, *, dossier_id: int, user_id: int) -> Dossi
     if not dossier:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
     return dossier
+
+
+def _build_piece_checklist(db: DbSession, *, dossier_id: int) -> tuple[list[DossierPieceChecklistItemOut], list[str], bool]:
+    """Construit la checklist des pièces, la liste des manquantes et le booléen de soumission."""
+    uploaded_types = {
+        item.type_piece
+        for item in db.query(PieceJustificative.type_piece).filter(PieceJustificative.dossier_id == dossier_id).all()
+    }
+    checklist = [
+        DossierPieceChecklistItemOut(type_piece=piece_type, uploaded=piece_type in uploaded_types)
+        for piece_type in REQUIRED_PIECE_TYPES
+    ]
+    missing_pieces = [piece_type for piece_type in REQUIRED_PIECE_TYPES if piece_type not in uploaded_types]
+    return checklist, missing_pieces, len(missing_pieces) == 0
 
 
 @router.post("", response_model=DossierCreateOut, status_code=status.HTTP_201_CREATED)
@@ -142,6 +158,66 @@ def list_my_dossiers(
         )
         for dossier in dossiers
     ]
+
+
+@router.get("/{dossier_id}", response_model=DossierDetailOut)
+def get_dossier_detail(
+    dossier_id: int,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> DossierDetailOut:
+    """Retourne le détail d'un dossier client, la checklist et les pièces manquantes."""
+    user = _resolve_user_from_cookie(access_token, db)
+    dossier = _get_owned_dossier(db, dossier_id=dossier_id, user_id=user.id)
+    checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
+    return DossierDetailOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        type=dossier.type,
+        status=dossier.status.value,
+        vehicle_id=dossier.vehicle_id,
+        client_id=dossier.client_id,
+        created_at=dossier.created_at,
+        submitted_at=dossier.submitted_at,
+        checklist=checklist,
+        missing_pieces=missing_pieces,
+        can_submit=can_submit,
+    )
+
+
+@router.post("/{dossier_id}/submit", response_model=DossierDetailOut)
+def submit_dossier(
+    dossier_id: int,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> DossierDetailOut:
+    """Soumet un dossier uniquement si toutes les pièces obligatoires sont présentes."""
+    user = _resolve_user_from_cookie(access_token, db)
+    dossier = _get_owned_dossier(db, dossier_id=dossier_id, user_id=user.id)
+    checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
+    if not can_submit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Pièces manquantes: {', '.join(missing_pieces)}",
+        )
+    dossier.status = DossierStatusEnum.depose
+    dossier.submitted_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(dossier)
+    checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
+    return DossierDetailOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        type=dossier.type,
+        status=dossier.status.value,
+        vehicle_id=dossier.vehicle_id,
+        client_id=dossier.client_id,
+        created_at=dossier.created_at,
+        submitted_at=dossier.submitted_at,
+        checklist=checklist,
+        missing_pieces=missing_pieces,
+        can_submit=can_submit,
+    )
 
 
 @router.post("/{dossier_id}/pieces/upload-init", response_model=PieceUploadInitOut)

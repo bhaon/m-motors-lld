@@ -32,6 +32,7 @@ describe("MesDossiersPage", () => {
     await waitFor(() => {
       expect(screen.getByText("DOS-2026-00042")).toBeInTheDocument();
       expect(screen.getByText("brouillon")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "DOS-2026-00042" })).toHaveAttribute("href", "/mes-dossiers/1");
     });
   });
 
