@@ -1,7 +1,8 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 
 type PieceType = "cni" | "permis" | "revenus" | "domicile" | "rib";
 
@@ -67,7 +68,8 @@ function formatDate(value?: string | null): string {
 /**
  * Fiche dossier client avec validation de complétude et soumission finale.
  */
-export default function DossierDetailPage({ params }: Readonly<{ params: { id: string } }>) {
+export default function DossierDetailPage() {
+  const params = useParams<{ id: string }>();
   const [detail, setDetail] = useState<DossierDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -83,11 +85,11 @@ export default function DossierDetailPage({ params }: Readonly<{ params: { id: s
   /**
    * Charge la fiche dossier, y compris checklist et pièces manquantes.
    */
-  async function loadDetail() {
+  const loadDetail = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(resolveDossierUrl(params.id), {
+      const response = await fetch(resolveDossierUrl(params.id || ""), {
         method: "GET",
         credentials: "include",
         cache: "no-store",
@@ -102,7 +104,7 @@ export default function DossierDetailPage({ params }: Readonly<{ params: { id: s
     } finally {
       setLoading(false);
     }
-  }
+  }, [params.id]);
 
   /**
    * Soumet le dossier après confirmation récapitulative.
@@ -132,7 +134,7 @@ export default function DossierDetailPage({ params }: Readonly<{ params: { id: s
 
   useEffect(() => {
     loadDetail();
-  }, [params.id]);
+  }, [loadDetail]);
 
   return (
     <main>

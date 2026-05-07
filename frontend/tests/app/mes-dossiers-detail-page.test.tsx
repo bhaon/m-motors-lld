@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import DossierDetailPage from "@/app/mes-dossiers/[id]/page";
 
+jest.mock("next/navigation", () => ({
+  useParams: () => ({ id: "13" }),
+}));
+
 describe("DossierDetailPage", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
@@ -26,7 +30,7 @@ describe("DossierDetailPage", () => {
       }),
     } as Response);
 
-    render(<DossierDetailPage params={{ id: "12" }} />);
+    render(<DossierDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByText(/soumission bloquée/i)).toBeInTheDocument();
@@ -75,7 +79,7 @@ describe("DossierDetailPage", () => {
         }),
       } as Response);
 
-    render(<DossierDetailPage params={{ id: "13" }} />);
+    render(<DossierDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /voir le récapitulatif/i })).toBeEnabled();
@@ -100,7 +104,7 @@ describe("DossierDetailPage", () => {
       json: async () => ({ detail: "Dossier introuvable" }),
     } as Response);
 
-    render(<DossierDetailPage params={{ id: "404" }} />);
+    render(<DossierDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Dossier introuvable")).toBeInTheDocument();
@@ -134,7 +138,7 @@ describe("DossierDetailPage", () => {
         json: async () => ({ detail: "Soumission impossible." }),
       } as Response);
 
-    render(<DossierDetailPage params={{ id: "14" }} />);
+    render(<DossierDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /voir le récapitulatif/i })).toBeEnabled();

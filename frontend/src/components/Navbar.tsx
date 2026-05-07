@@ -1,6 +1,6 @@
  "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 /**
@@ -70,21 +70,9 @@ export default function Navbar() {
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   /**
-   * Construit des initiales "PN" à partir du prénom/nom (fallback "U").
-   */
-  function buildInitials(firstName?: string, lastName?: string): string {
-    const first = (firstName || "").trim();
-    const last = (lastName || "").trim();
-    const a = first ? first[0] : "";
-    const b = last ? last[0] : "";
-    const out = `${a}${b}`.toUpperCase();
-    return out || "U";
-  }
-
-  /**
    * Vérifie si l'utilisateur est connecté afin d'afficher la pastille profil.
    */
-  async function checkAuthStatus() {
+  const checkAuthStatus = useCallback(async () => {
     try {
       if (process.env.NODE_ENV === "test") return;
       if (typeof fetch !== "function") return;
@@ -101,7 +89,9 @@ export default function Navbar() {
       setIsAuthenticated(true);
       try {
         const me = (await response.json()) as { first_name?: string; last_name?: string };
-        setInitials(buildInitials(me.first_name, me.last_name));
+        const a = (me.first_name || "").trim()[0] || "";
+        const b = (me.last_name || "").trim()[0] || "";
+        setInitials(`${a}${b}`.toUpperCase() || "U");
       } catch {
         // En tests / réponses non JSON, on conserve le fallback.
         setInitials("U");
@@ -110,11 +100,11 @@ export default function Navbar() {
       setIsAuthenticated(false);
       setInitials("U");
     }
-  }
+  }, []);
 
   useEffect(() => {
     checkAuthStatus();
-  }, []);
+  }, [checkAuthStatus]);
 
   useEffect(() => {
     /**
