@@ -5,6 +5,8 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.api.v1.endpoints import dossiers as dossier_endpoints
+from app.models.dossier import PieceJustificative
 from tests.conftest import create_user, create_vehicle
 
 
@@ -65,3 +67,103 @@ def test_create_dossier_requires_authentication(client: TestClient, db: Session)
     vehicle = create_vehicle(db, lld=True)
     response = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"})
     assert response.status_code == 401
+
+
+def test_upload_init_rejects_oversized_file(client: TestClient, db: Session) -> None:
+    """Refuse un fichier > 10 Mo dès la phase de pré-signature."""
+    user = create_user(db, email="client.pieces.maxsize@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+
+    response = client.post(
+        f"/api/v1/dossiers/{dossier['id']}/pieces/upload-init",
+        json={
+            "type_piece": "cni",
+            "filename": "cni.pdf",
+            "content_type": "application/pdf",
+            "size_bytes": 10 * 1024 * 1024 + 1,
+            "checksum_sha256": "a" * 64,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Fichier trop volumineux (10 Mo max)"
+
+
+def test_upload_piece_flow_persists_piece_after_checksum_validation(
+    client: TestClient,
+    db: Session,
+    monkeypatch,
+) -> None:
+    """Crée la pièce justificative après pré-signature + validation checksum."""
+    user = create_user(db, email="client.pieces.upload@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+
+    class _FakeS3:
+        """Client S3 simulé pour isoler la logique API en test unitaire."""
+
+        def head_bucket(self, **_: object) -> None:
+            return None
+
+        def generate_presigned_url(self, **_: object) -> str:
+            return "https://minio.local/presigned"
+
+    monkeypatch.setattr(dossier_endpoints, "get_s3_client", lambda: _FakeS3())
+    monkeypatch.setattr(dossier_endpoints, "ensure_bucket_exists", lambda _: None)
+    monkeypatch.setattr(dossier_endpoints, "verify_object_checksum", lambda **_: True)
+
+    init_response = client.post(
+        f"/api/v1/dossiers/{dossier['id']}/pieces/upload-init",
+        json={
+            "type_piece": "cni",
+            "filename": "cni.pdf",
+            "content_type": "application/pdf",
+            "size_bytes": 1200,
+            "checksum_sha256": "a" * 64,
+        },
+        headers=headers,
+    )
+    assert init_response.status_code == 200
+    assert init_response.json()["upload_url"] == "https://minio.local/presigned"
+
+    complete_response = client.post(
+        f"/api/v1/dossiers/{dossier['id']}/pieces/upload-complete",
+        json={
+            "type_piece": "cni",
+            "filename": "cni.pdf",
+            "s3_key": "dossiers/1/cni/cni.pdf",
+            "checksum_sha256": "a" * 64,
+        },
+        headers=headers,
+    )
+    assert complete_response.status_code == 201
+    saved_piece = db.query(PieceJustificative).filter(PieceJustificative.dossier_id == dossier["id"]).first()
+    assert saved_piece is not None
+    assert saved_piece.type_piece == "cni"
+
+
+def test_upload_complete_rejects_checksum_mismatch(client: TestClient, db: Session, monkeypatch) -> None:
+    """Rejette la finalisation si le checksum ne correspond pas."""
+    user = create_user(db, email="client.pieces.checksum@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+
+    monkeypatch.setattr(dossier_endpoints, "get_s3_client", lambda: object())
+    monkeypatch.setattr(dossier_endpoints, "verify_object_checksum", lambda **_: False)
+
+    response = client.post(
+        f"/api/v1/dossiers/{dossier['id']}/pieces/upload-complete",
+        json={
+            "type_piece": "cni",
+            "filename": "cni.pdf",
+            "s3_key": "dossiers/1/cni/cni.pdf",
+            "checksum_sha256": "a" * 64,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Checksum SHA-256 non conforme"

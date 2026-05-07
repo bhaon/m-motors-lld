@@ -104,6 +104,12 @@ spec:
               app: redis
       ports:
         - port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app: minio
+      ports:
+        - port: 9000
     - to:  # DNS
         - namespaceSelector: {}
       ports:
@@ -144,6 +150,38 @@ spec:
               app: backend
       ports:
         - port: 5432
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# ============================================================
+# NETWORK POLICY — MinIO
+# Ingress : depuis backend uniquement
+# Egress : DNS uniquement
+# ============================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minio-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: minio
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - port: 9000
   egress:
     - to:
         - namespaceSelector: {}

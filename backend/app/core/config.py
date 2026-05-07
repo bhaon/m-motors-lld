@@ -105,6 +105,15 @@ class Settings(BaseSettings):
         default="M-Motors <no-reply@mmotors.dev>",
         description="Adresse expéditeur utilisée pour les emails de vérification.",
     )
+    S3_ENDPOINT_URL: str = Field(
+        default="http://minio:9000",
+        description="Endpoint S3 compatible (MinIO en cluster).",
+    )
+    S3_REGION: str = Field(default="us-east-1", description="Région S3 logique.")
+    S3_BUCKET: str = Field(default="mmotors-documents", description="Bucket de stockage des pièces justificatives.")
+    S3_ACCESS_KEY: str = Field(default="minioadmin", description="Access key S3.")
+    S3_SECRET_KEY: str = Field(default="minioadmin", description="Secret key S3.")
+    S3_PRESIGN_EXPIRES_SECONDS: int = Field(default=600, description="Durée de validité de l'URL pré-signée.")
 
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24

@@ -12,6 +12,8 @@ data:
   # SSR (pod frontend → Service backend, même namespace)
   API_INTERNAL_URL: "http://backend"
   API_URL: "https://app-dev.netdevops.fr/api"
+  S3_ENDPOINT_URL: "http://minio:9000"
+  S3_BUCKET: "mmotors-documents-dev"
   ALLOWED_HOSTS: "app-dev.netdevops.fr,localhost"
   LOG_LEVEL: "debug"
   DEBUG: "true"

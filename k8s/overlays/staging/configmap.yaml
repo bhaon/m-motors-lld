@@ -11,6 +11,8 @@ data:
   FRONTEND_BASE_URL: "https://staging.netdevops.fr"
   API_INTERNAL_URL: "http://backend"
   API_URL: "https://staging.netdevops.fr/api"
+  S3_ENDPOINT_URL: "http://minio:9000"
+  S3_BUCKET: "mmotors-documents-staging"
   ALLOWED_HOSTS: "staging.netdevops.fr"
   LOG_LEVEL: "info"
   DEBUG: "false"

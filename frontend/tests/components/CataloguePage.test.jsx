@@ -2,10 +2,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import CataloguePage from "@/components/CataloguePage";
 import { SAMPLE_VEHICLES } from "../fixtures/vehicles";
 
-const pushMock = jest.fn();
-
-jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
+jest.mock("@/lib/checksum", () => ({
+  computeFileSha256Hex: jest.fn(async () => "a".repeat(64)),
+  sha256HexToBase64: jest.fn(() => "checksum-base64"),
 }));
 
 describe("CataloguePage", () => {
@@ -30,7 +29,7 @@ describe("CataloguePage", () => {
     expect(screen.getByRole("button", { name: "Fermer" })).toBeInTheDocument();
   });
 
-  it("crée un dossier LLD puis redirige vers le formulaire", async () => {
+  it("ouvre une confirmation puis crée le dossier LLD après validation", async () => {
     const v = SAMPLE_VEHICLES[0];
     fetchMock.mockResolvedValue({
       ok: true,
@@ -41,6 +40,9 @@ describe("CataloguePage", () => {
     fireEvent.click(document.querySelector(".vehicle-card"));
     fireEvent.click(screen.getByText("Déposer un dossier LLD"));
 
+    expect(screen.getByText("Confirmer le dépôt du dossier")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/v1\/dossiers$/),
       expect.objectContaining({
@@ -49,10 +51,13 @@ describe("CataloguePage", () => {
       }),
     );
     await waitFor(() =>
-      expect(pushMock).toHaveBeenCalledWith(
-        "/espace-client/dossiers/42/depot?type=lld&ref=DOS-2026-00042",
-      ),
+      expect(
+        screen.getByText("Dossier LLD créé (DOS-2026-00042)"),
+      ).toBeInTheDocument(),
     );
+    expect(
+      screen.getByText("Dépôt des pièces justificatives"),
+    ).toBeInTheDocument();
   });
 
   it("met à jour les filtres via la barre de recherche", () => {
@@ -84,12 +89,28 @@ describe("CataloguePage", () => {
 
     fireEvent.click(document.querySelector(".vehicle-card"));
     fireEvent.click(screen.getByText("Déposer un dossier LLD"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
 
     expect(await screen.findByText("Authentification requise.")).toBeInTheDocument();
-    expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it("redirige aussi pour un dossier achat (véhicule sans LLD)", async () => {
+  it("annule le dépôt au clic sur le fond sans créer de dossier", () => {
+    const v = SAMPLE_VEHICLES[0];
+    render(<CataloguePage vehicles={[v]} />);
+
+    fireEvent.click(document.querySelector(".vehicle-card"));
+    fireEvent.click(screen.getByText("Déposer un dossier LLD"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Annuler le dépôt (fond de modale)" }),
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Confirmer le dépôt du dossier"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("crée aussi un dossier achat après confirmation", async () => {
     const v = SAMPLE_VEHICLES.find((x) => !x.lld);
     expect(v).toBeDefined();
     fetchMock.mockResolvedValue({
@@ -100,11 +121,54 @@ describe("CataloguePage", () => {
 
     fireEvent.click(document.querySelector(".vehicle-card"));
     fireEvent.click(screen.getByText("Déposer un dossier Achat"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
 
     await waitFor(() =>
-      expect(pushMock).toHaveBeenCalledWith(
-        "/espace-client/dossiers/77/depot?type=achat&ref=DOS-2026-00077",
-      ),
+      expect(
+        screen.getByText("Dossier ACHAT créé (DOS-2026-00077)"),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("uploade une pièce et affiche le checkmark vert", async () => {
+    const v = SAMPLE_VEHICLES[0];
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 55, reference: "DOS-2026-00055" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          upload_url: "https://minio.local/upload",
+          s3_key: "dossiers/55/cni/file.pdf",
+          headers: {
+            "Content-Type": "application/pdf",
+            "x-amz-checksum-sha256": "checksum-base64",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ message: "Pièce uploadée et validée" }),
+      });
+
+    render(<CataloguePage vehicles={[v]} />);
+    fireEvent.click(document.querySelector(".vehicle-card"));
+    fireEvent.click(screen.getByText("Déposer un dossier LLD"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
+
+    await screen.findByText("Dépôt des pièces justificatives");
+    const fileInput = screen.getByLabelText("CNI");
+    const file = new File(["dummy-pdf"], "cni.pdf", { type: "application/pdf" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(screen.getByText("✓ Uploadé")).toBeInTheDocument(),
     );
   });
 

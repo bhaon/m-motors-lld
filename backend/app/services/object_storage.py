@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+import hashlib
+from datetime import datetime, timezone
+
+import boto3
+from botocore.client import BaseClient
+from botocore.exceptions import ClientError
+
+from app.core.config import settings
+
+
+def get_s3_client() -> BaseClient:
+    """Construit un client S3 compatible MinIO à partir de la configuration applicative."""
+    return boto3.client(
+        "s3",
+        endpoint_url=settings.S3_ENDPOINT_URL,
+        region_name=settings.S3_REGION,
+        aws_access_key_id=settings.S3_ACCESS_KEY,
+        aws_secret_access_key=settings.S3_SECRET_KEY,
+    )
+
+
+def ensure_bucket_exists(client: BaseClient) -> None:
+    """Crée le bucket cible s'il n'existe pas déjà."""
+    try:
+        client.head_bucket(Bucket=settings.S3_BUCKET)
+    except ClientError:
+        client.create_bucket(Bucket=settings.S3_BUCKET)
+
+
+def build_piece_object_key(*, dossier_id: int, piece_type: str, filename: str) -> str:
+    """Construit une clé objet stable pour ranger une pièce dans MinIO."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    safe_filename = filename.replace("/", "_").replace("\\", "_")
+    return f"dossiers/{dossier_id}/{piece_type}/{timestamp}-{safe_filename}"
+
+
+def generate_upload_url(
+    client: BaseClient,
+    *,
+    object_key: str,
+    content_type: str,
+    checksum_sha256: str,
+) -> str:
+    """Génère une URL pré-signée PUT qui embarque le checksum SHA-256 attendu."""
+    return client.generate_presigned_url(
+        ClientMethod="put_object",
+        Params={
+            "Bucket": settings.S3_BUCKET,
+            "Key": object_key,
+            "ContentType": content_type,
+            "ChecksumSHA256": checksum_sha256,
+        },
+        ExpiresIn=settings.S3_PRESIGN_EXPIRES_SECONDS,
+    )
+
+
+def verify_object_checksum(client: BaseClient, *, object_key: str, expected_checksum_hex: str) -> bool:
+    """Télécharge l'objet et compare son SHA-256 (hex) au checksum attendu."""
+    response = client.get_object(Bucket=settings.S3_BUCKET, Key=object_key)
+    sha256 = hashlib.sha256()
+    stream = response["Body"]
+    while True:
+        chunk = stream.read(1024 * 1024)
+        if not chunk:
+            break
+        sha256.update(chunk)
+    stream.close()
+    return sha256.hexdigest() == expected_checksum_hex.lower()
