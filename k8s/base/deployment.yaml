@@ -255,11 +255,21 @@ spec:
                 configMapKeyRef:
                   name: app-config
                   key: ALLOWED_HOSTS
+            - name: ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: ALLOWED_ORIGINS
             - name: S3_ENDPOINT_URL
               valueFrom:
                 configMapKeyRef:
                   name: app-config
                   key: S3_ENDPOINT_URL
+            - name: S3_PUBLIC_ENDPOINT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: S3_PUBLIC_ENDPOINT_URL
             - name: S3_BUCKET
               valueFrom:
                 configMapKeyRef:

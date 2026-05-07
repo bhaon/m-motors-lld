@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import urlparse
 from urllib.parse import quote_plus
 from typing import Annotated, Any, List
 
@@ -109,6 +110,10 @@ class Settings(BaseSettings):
         default="http://minio:9000",
         description="Endpoint S3 compatible (MinIO en cluster).",
     )
+    S3_PUBLIC_ENDPOINT_URL: str | None = Field(
+        default=None,
+        description="Endpoint S3 public utilisé pour les URLs pré-signées exposées au navigateur.",
+    )
     S3_REGION: str = Field(default="us-east-1", description="Région S3 logique.")
     S3_BUCKET: str = Field(default="mmotors-documents", description="Bucket de stockage des pièces justificatives.")
     S3_ACCESS_KEY: str = Field(default="minioadmin", description="Access key S3.")
@@ -158,6 +163,20 @@ class Settings(BaseSettings):
         if url is None:
             raise RuntimeError("DATABASE_URL absente après validation — incohérence interne.")
         return url
+
+    @property
+    def s3_public_endpoint_url(self) -> str | None:
+        """Retourne un endpoint S3 public valide (http/https) ou ``None``."""
+        value = self.S3_PUBLIC_ENDPOINT_URL
+        if not value:
+            return None
+        cleaned = value.strip().rstrip("/")
+        if not cleaned:
+            return None
+        parsed = urlparse(cleaned)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return None
+        return cleaned
 
 
 # Les champs requis sont fournis par l’environnement ; mypy ne le déduit pas.

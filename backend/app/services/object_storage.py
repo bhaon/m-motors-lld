@@ -2,12 +2,32 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timezone
+from urllib.parse import urlparse, urlunparse
 
 import boto3
 from botocore.client import BaseClient
 from botocore.exceptions import ClientError
 
 from app.core.config import settings
+
+
+def _expose_presigned_url_for_browser(url: str) -> str:
+    """Remplace l'hôte interne S3 par l'endpoint public si configuré."""
+    public_endpoint = settings.s3_public_endpoint_url
+    if not public_endpoint:
+        return url
+    parsed_url = urlparse(url)
+    parsed_public = urlparse(public_endpoint)
+    return urlunparse(
+        (
+            parsed_public.scheme,
+            parsed_public.netloc,
+            parsed_url.path,
+            parsed_url.params,
+            parsed_url.query,
+            parsed_url.fragment,
+        )
+    )
 
 
 def get_s3_client() -> BaseClient:
@@ -44,7 +64,7 @@ def generate_upload_url(
     checksum_sha256: str,
 ) -> str:
     """Génère une URL pré-signée PUT qui embarque le checksum SHA-256 attendu."""
-    return client.generate_presigned_url(
+    presigned_url = client.generate_presigned_url(
         ClientMethod="put_object",
         Params={
             "Bucket": settings.S3_BUCKET,
@@ -54,6 +74,7 @@ def generate_upload_url(
         },
         ExpiresIn=settings.S3_PRESIGN_EXPIRES_SECONDS,
     )
+    return _expose_presigned_url_for_browser(presigned_url)
 
 
 def verify_object_checksum(client: BaseClient, *, object_key: str, expected_checksum_hex: str) -> bool:
