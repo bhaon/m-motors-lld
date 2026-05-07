@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 from fastapi import APIRouter, Cookie, HTTPException, status
 from jose import JWTError
@@ -15,6 +16,7 @@ from app.schemas.dossier import (
     DossierCreateOut,
     DossierDetailOut,
     DossierPieceChecklistItemOut,
+    PieceType,
     PieceUploadCompleteIn,
     PieceUploadInitIn,
     PieceUploadInitOut,
@@ -30,7 +32,7 @@ from app.services.object_storage import (
 
 router = APIRouter(prefix="/dossiers", tags=["Dossiers"])
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
-REQUIRED_PIECE_TYPES = ("cni", "permis", "revenus", "domicile", "rib")
+REQUIRED_PIECE_TYPES: tuple[PieceType, ...] = ("cni", "permis", "revenus", "domicile", "rib")
 
 
 def _resolve_user_from_cookie(access_token: str | None, db: DbSession) -> User:
@@ -77,12 +79,14 @@ def _get_owned_dossier(db: DbSession, *, dossier_id: int, user_id: int) -> Dossi
     return dossier
 
 
-def _build_piece_checklist(db: DbSession, *, dossier_id: int) -> tuple[list[DossierPieceChecklistItemOut], list[str], bool]:
+def _build_piece_checklist(
+    db: DbSession, *, dossier_id: int
+) -> tuple[list[DossierPieceChecklistItemOut], list[PieceType], bool]:
     """Construit la checklist des pièces, la liste des manquantes et le booléen de soumission."""
-    uploaded_types = {
-        item.type_piece
-        for item in db.query(PieceJustificative.type_piece).filter(PieceJustificative.dossier_id == dossier_id).all()
-    }
+    uploaded_types: set[PieceType] = set()
+    for item in db.query(PieceJustificative.type_piece).filter(PieceJustificative.dossier_id == dossier_id).all():
+        if item.type_piece in REQUIRED_PIECE_TYPES:
+            uploaded_types.add(cast(PieceType, item.type_piece))
     checklist = [
         DossierPieceChecklistItemOut(type_piece=piece_type, uploaded=piece_type in uploaded_types)
         for piece_type in REQUIRED_PIECE_TYPES
