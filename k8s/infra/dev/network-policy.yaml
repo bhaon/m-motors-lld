@@ -161,7 +161,7 @@ spec:
 ---
 # ============================================================
 # NETWORK POLICY — MinIO
-# Ingress : depuis backend uniquement
+# Ingress : depuis backend + Traefik (kube-system) pour l'upload navigateur via s3-dev
 # Egress : DNS uniquement
 # ============================================================
 apiVersion: networking.k8s.io/v1
@@ -180,6 +180,18 @@ spec:
         - podSelector:
             matchLabels:
               app: backend
+      ports:
+        - port: 9000
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dev
+      ports:
+        - port: 9000
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
       ports:
         - port: 9000
   egress:

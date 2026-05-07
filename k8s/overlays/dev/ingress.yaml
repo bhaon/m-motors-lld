@@ -50,6 +50,7 @@ metadata:
     kubernetes.io/ingress.class: traefik
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/service.passhostheader: "true"
     traefik.ingress.kubernetes.io/router.middlewares: dev-s3-cors@kubernetescrd
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
@@ -57,7 +58,7 @@ spec:
   tls:
     - hosts:
         - s3-dev.netdevops.fr
-      secretName: dev-tls-secret
+      secretName: s3-dev-tls-secret
   rules:
     - host: s3-dev.netdevops.fr
       http:
@@ -97,3 +98,20 @@ spec:
       - "x-amz-checksum-sha256"
     accessControlMaxAge: 3600
     addVaryHeader: true
+---
+# ============================================================
+# CERTIFICATE — TLS dédié pour s3-dev
+# Évite le fallback Traefik default cert sur la route objet.
+# ============================================================
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: s3-dev-tls
+  namespace: dev
+spec:
+  secretName: s3-dev-tls-secret
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - s3-dev.netdevops.fr
