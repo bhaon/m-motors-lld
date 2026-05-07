@@ -25,7 +25,7 @@ IP Publique | 1 IP Statique | 1 IP Statique
 
 ## Installation K3S
 
-### Préparation du système
+### Préparation du système  
 ```bash
 # Mise à jour système
 sudo apt update && sudo apt upgrade -y
