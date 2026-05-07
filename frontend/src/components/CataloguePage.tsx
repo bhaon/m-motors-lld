@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Vehicle } from "@/types";
 import { useFilters } from "@/hooks/useFilters";
 import { useToast } from "@/hooks/useToast";
@@ -61,16 +62,41 @@ function EmptyCatalogNotice() {
 export default function CataloguePage({
   vehicles,
 }: Readonly<CataloguePageProps>) {
+  const router = useRouter();
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const { filters, filtered, marques, modeles, setType, setField, reset } =
     useFilters(vehicles);
   const { toast, showToast } = useToast();
 
-  function handleDossier(v: Vehicle, type: "lld" | "achat") {
-    setSelectedVehicle(null);
-    showToast(
-      `Dossier ${type.toUpperCase()} initié pour ${v.make} ${v.model} — Redirection vers EP-03`,
-    );
+  /**
+   * Résout l'URL backend de création de dossier depuis le catalogue.
+   */
+  function resolveDossiersUrl(): string {
+    const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
+    const base = pub ? pub.replace(/\/$/, "") : "";
+    return base ? `${base}/api/v1/dossiers` : "/api/v1/dossiers";
+  }
+
+  /**
+   * Crée un dossier (Achat/LLD) puis redirige vers le formulaire de dépôt.
+   */
+  async function handleDossier(v: Vehicle, type: "lld" | "achat") {
+    try {
+      const response = await fetch(resolveDossiersUrl(), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehicle_id: v.id, type }),
+      });
+      const payload = (await response.json()) as { id: number; reference: string; detail?: string };
+      if (!response.ok) {
+        throw new Error(payload.detail || "Impossible de créer le dossier.");
+      }
+      setSelectedVehicle(null);
+      router.push(`/espace-client/dossiers/${payload.id}/depot?type=${type}&ref=${encodeURIComponent(payload.reference)}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Erreur technique lors du dépôt.");
+    }
   }
 
   if (vehicles.length === 0) {
