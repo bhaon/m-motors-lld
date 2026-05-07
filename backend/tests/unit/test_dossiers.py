@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints import dossiers as dossier_endpoints
-from app.models.dossier import PieceJustificative
+from app.models.dossier import Dossier, DossierTypeEnum, PieceJustificative
 from tests.conftest import create_user, create_vehicle
 
 
@@ -167,3 +167,44 @@ def test_upload_complete_rejects_checksum_mismatch(client: TestClient, db: Sessi
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "Checksum SHA-256 non conforme"
+
+
+def test_list_my_dossiers_returns_only_owner_sorted_desc(client: TestClient, db: Session) -> None:
+    """Liste uniquement les dossiers du client connecté du plus récent au plus ancien."""
+    owner = create_user(db, email="client.dossiers.owner@example.com")
+    other = create_user(db, email="client.dossiers.other@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=owner.email, password="SecretMotDePasse1!")
+
+    older = Dossier(
+        reference="DOS-2026-00010",
+        type=DossierTypeEnum.achat,
+        client_id=owner.id,
+        vehicle_id=vehicle.id,
+    )
+    newer = Dossier(
+        reference="DOS-2026-00011",
+        type=DossierTypeEnum.lld,
+        client_id=owner.id,
+        vehicle_id=vehicle.id,
+    )
+    foreign = Dossier(
+        reference="DOS-2026-00012",
+        type=DossierTypeEnum.lld,
+        client_id=other.id,
+        vehicle_id=vehicle.id,
+    )
+    db.add_all([older, newer, foreign])
+    db.commit()
+
+    response = client.get("/api/v1/dossiers/me", headers=headers)
+    assert response.status_code == 200
+    items = response.json()
+    assert [item["reference"] for item in items] == ["DOS-2026-00011", "DOS-2026-00010"]
+    assert all(item["client_id"] == owner.id for item in items)
+
+
+def test_list_my_dossiers_requires_authentication(client: TestClient) -> None:
+    """Refuse l'accès à la liste des dossiers sans cookie d'authentification."""
+    response = client.get("/api/v1/dossiers/me")
+    assert response.status_code == 401

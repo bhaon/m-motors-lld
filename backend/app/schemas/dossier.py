@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Literal
+from datetime import datetime
 
 from app.models.dossier import DossierTypeEnum
 
@@ -20,6 +21,7 @@ class DossierCreateOut(BaseModel):
     status: str
     vehicle_id: int
     client_id: int
+    created_at: datetime | None = None
 
 
 class PieceUploadInitIn(BaseModel):

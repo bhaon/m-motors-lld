@@ -49,6 +49,20 @@ function LogoutIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+/**
+ * Icône dossier (SVG) pour les éléments de menu.
+ */
+function FolderIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M10 4l2 2h8a2 2 0 0 1 2 2v9a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zm0 2H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8H11.17z"
+      />
+    </svg>
+  );
+}
+
 export default function Navbar() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [initials, setInitials] = useState<string>("U");
@@ -286,6 +300,26 @@ export default function Navbar() {
                 >
                   <UserIcon />
                   Profile
+                </Link>
+
+                <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+
+                <Link
+                  href="/mes-dossiers"
+                  role="menuitem"
+                  onClick={() => setIsMenuOpen(false)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "12px 14px",
+                    textDecoration: "none",
+                    color: "#0f172a",
+                    fontWeight: 600,
+                  }}
+                >
+                  <FolderIcon />
+                  Mes dossiers
                 </Link>
 
                 <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />

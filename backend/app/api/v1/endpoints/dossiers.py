@@ -113,7 +113,35 @@ def create_dossier(
         status=dossier.status.value,
         vehicle_id=dossier.vehicle_id,
         client_id=dossier.client_id,
+        created_at=dossier.created_at,
     )
+
+
+@router.get("/me", response_model=list[DossierCreateOut])
+def list_my_dossiers(
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> list[DossierCreateOut]:
+    """Retourne les dossiers du client connecté du plus récent au plus ancien."""
+    user = _resolve_user_from_cookie(access_token, db)
+    dossiers = (
+        db.query(Dossier)
+        .filter(Dossier.client_id == user.id)
+        .order_by(Dossier.created_at.desc(), Dossier.id.desc())
+        .all()
+    )
+    return [
+        DossierCreateOut(
+            id=dossier.id,
+            reference=dossier.reference,
+            type=dossier.type,
+            status=dossier.status.value,
+            vehicle_id=dossier.vehicle_id,
+            client_id=dossier.client_id,
+            created_at=dossier.created_at,
+        )
+        for dossier in dossiers
+    ]
 
 
 @router.post("/{dossier_id}/pieces/upload-init", response_model=PieceUploadInitOut)
