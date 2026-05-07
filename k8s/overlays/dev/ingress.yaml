@@ -11,6 +11,7 @@ metadata:
     kubernetes.io/ingress.class: traefik
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: dev-s3-cors@kubernetescrd
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: traefik
@@ -47,3 +48,31 @@ spec:
                 name: minio
                 port:
                   name: s3
+---
+# ============================================================
+# MIDDLEWARE — CORS upload objet (dev)
+# Force les en-têtes CORS sur la route S3 via Traefik.
+# ============================================================
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: s3-cors
+  namespace: dev
+spec:
+  headers:
+    accessControlAllowOriginList:
+      - "https://app-dev.netdevops.fr"
+    accessControlAllowMethods:
+      - "GET"
+      - "HEAD"
+      - "PUT"
+      - "OPTIONS"
+    accessControlAllowHeaders:
+      - "*"
+    accessControlExposeHeaders:
+      - "ETag"
+      - "x-amz-request-id"
+      - "x-amz-id-2"
+      - "x-amz-checksum-sha256"
+    accessControlMaxAge: 3600
+    addVaryHeader: true
