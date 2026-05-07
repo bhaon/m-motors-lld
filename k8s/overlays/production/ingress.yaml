@@ -17,6 +17,7 @@ spec:
     - hosts:
         - netdevops.fr
         - www.netdevops.fr
+        - s3.netdevops.fr
       secretName: production-tls-secret
   rules:
     - host: netdevops.fr
@@ -53,3 +54,13 @@ spec:
                 name: frontend
                 port:
                   name: http
+    - host: s3.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  name: s3

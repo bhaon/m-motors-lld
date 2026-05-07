@@ -17,6 +17,7 @@ spec:
   tls:
     - hosts:
         - staging.netdevops.fr
+        - s3-staging.netdevops.fr
       secretName: staging-tls-secret
   rules:
     - host: staging.netdevops.fr
@@ -36,3 +37,13 @@ spec:
                 name: frontend
                 port:
                   name: http
+    - host: s3-staging.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  name: s3
