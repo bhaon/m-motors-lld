@@ -272,3 +272,45 @@ def test_submit_dossier_sets_status_depose_when_complete(client: TestClient, db:
     assert response.status_code == 200
     assert response.json()["status"] == DossierStatusEnum.depose.value
     assert response.json()["can_submit"] is True
+
+
+def test_delete_dossier_removes_owned_brouillon(client: TestClient, db: Session) -> None:
+    """Supprime le dossier du client lorsque son statut est brouillon."""
+    user = create_user(db, email="client.delete.ok@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    created = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+    dossier_id = created["id"]
+
+    response = client.delete(f"/api/v1/dossiers/{dossier_id}", headers=headers)
+    assert response.status_code == 204
+    assert db.query(Dossier).filter(Dossier.id == dossier_id).first() is None
+
+
+def test_delete_dossier_rejects_non_brouillon_status(client: TestClient, db: Session) -> None:
+    """Refuse la suppression dès que le dossier n'est plus en brouillon."""
+    user = create_user(db, email="client.delete.blocked@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier_payload = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+    dossier = db.query(Dossier).filter(Dossier.id == dossier_payload["id"]).first()
+    assert dossier is not None
+    dossier.status = DossierStatusEnum.depose
+    db.commit()
+
+    response = client.delete(f"/api/v1/dossiers/{dossier_payload['id']}", headers=headers)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Seuls les dossiers en brouillon peuvent être supprimés."
+
+
+def test_delete_dossier_rejects_non_owner(client: TestClient, db: Session) -> None:
+    """Refuse la suppression d'un dossier qui n'appartient pas au client connecté."""
+    owner = create_user(db, email="client.delete.owner@example.com")
+    other = create_user(db, email="client.delete.other@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    owner_headers = _auth_cookie_header(client, email=owner.email, password="SecretMotDePasse1!")
+    other_headers = _auth_cookie_header(client, email=other.email, password="SecretMotDePasse1!")
+    dossier_payload = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=owner_headers).json()
+
+    response = client.delete(f"/api/v1/dossiers/{dossier_payload['id']}", headers=other_headers)
+    assert response.status_code == 404

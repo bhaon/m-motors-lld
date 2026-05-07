@@ -22,6 +22,16 @@ function resolveDossiersMeUrl(): string {
 }
 
 /**
+ * Résout l'URL backend de suppression d'un dossier.
+ */
+function resolveDossierDeleteUrl(id: number): string {
+  const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
+  const base = pub ? pub.replace(/\/$/, "") : "";
+  const path = `/api/v1/dossiers/${id}`;
+  return base ? `${base}${path}` : path;
+}
+
+/**
  * Formate une date ISO en français (fallback tiret en cas de valeur absente).
  */
 function formatFrenchDate(value?: string | null): string {
@@ -44,6 +54,7 @@ export default function MesDossiersPage() {
   const [items, setItems] = useState<DossierItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   /**
    * Charge la liste des dossiers client via l'API sécurisée par cookie.
@@ -73,6 +84,29 @@ export default function MesDossiersPage() {
   useEffect(() => {
     loadMyDossiers();
   }, []);
+
+  /**
+   * Supprime un dossier en brouillon puis recharge la liste.
+   */
+  async function deleteDossier(dossierId: number) {
+    setError("");
+    setDeletingId(dossierId);
+    try {
+      const response = await fetch(resolveDossierDeleteUrl(dossierId), {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(payload.detail || "Suppression impossible.");
+      }
+      setItems((previous) => previous.filter((item) => item.id !== dossierId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur technique.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <main>
@@ -105,6 +139,7 @@ export default function MesDossiersPage() {
                     <th style={{ textAlign: "left", padding: ".8rem" }}>Type</th>
                     <th style={{ textAlign: "left", padding: ".8rem" }}>Statut</th>
                     <th style={{ textAlign: "left", padding: ".8rem" }}>Créé le</th>
+                    <th style={{ textAlign: "left", padding: ".8rem" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -118,6 +153,27 @@ export default function MesDossiersPage() {
                       <td style={{ padding: ".8rem", textTransform: "uppercase" }}>{item.type}</td>
                       <td style={{ padding: ".8rem" }}>{item.status}</td>
                       <td style={{ padding: ".8rem" }}>{formatFrenchDate(item.created_at)}</td>
+                      <td style={{ padding: ".8rem" }}>
+                        {item.status === "brouillon" ? (
+                          <button
+                            type="button"
+                            onClick={() => deleteDossier(item.id)}
+                            disabled={deletingId === item.id}
+                            style={{
+                              background: deletingId === item.id ? "#9ca3af" : "#b91c1c",
+                              color: "#fff",
+                              border: 0,
+                              borderRadius: 8,
+                              padding: ".45rem .7rem",
+                              cursor: deletingId === item.id ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            {deletingId === item.id ? "Suppression..." : "Supprimer"}
+                          </button>
+                        ) : (
+                          <span style={{ color: "var(--muted)" }}>-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -185,6 +185,24 @@ def get_dossier_detail(
     )
 
 
+@router.delete("/{dossier_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_dossier(
+    dossier_id: int,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> None:
+    """Supprime un dossier client uniquement lorsqu'il est encore en brouillon."""
+    user = _resolve_user_from_cookie(access_token, db)
+    dossier = _get_owned_dossier(db, dossier_id=dossier_id, user_id=user.id)
+    if dossier.status != DossierStatusEnum.brouillon:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Seuls les dossiers en brouillon peuvent être supprimés.",
+        )
+    db.delete(dossier)
+    db.commit()
+
+
 @router.post("/{dossier_id}/submit", response_model=DossierDetailOut)
 def submit_dossier(
     dossier_id: int,

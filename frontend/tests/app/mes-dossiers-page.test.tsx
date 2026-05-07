@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import MesDossiersPage from "@/app/mes-dossiers/page";
 
 describe("MesDossiersPage", () => {
@@ -33,6 +33,29 @@ describe("MesDossiersPage", () => {
       expect(screen.getByText("DOS-2026-00042")).toBeInTheDocument();
       expect(screen.getByText("brouillon")).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "DOS-2026-00042" })).toHaveAttribute("href", "/mes-dossiers/1");
+      expect(screen.getByRole("button", { name: "Supprimer" })).toBeInTheDocument();
+    });
+  });
+
+  it("n'affiche pas le bouton supprimer pour un dossier non brouillon", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          id: 1,
+          reference: "DOS-2026-00042",
+          type: "lld",
+          status: "depose",
+          created_at: "2026-05-07T10:15:00Z",
+        },
+      ],
+    } as Response);
+
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("depose")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
     });
   });
 
@@ -85,6 +108,74 @@ describe("MesDossiersPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Erreur technique.")).toBeInTheDocument();
+    });
+  });
+
+  it("supprime un dossier brouillon et le retire de la liste", async () => {
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          {
+            id: 1,
+            reference: "DOS-2026-00042",
+            type: "lld",
+            status: "brouillon",
+            created_at: "2026-05-07T10:15:00Z",
+          },
+        ],
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({}),
+      } as Response);
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("DOS-2026-00042")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        2,
+        "/api/v1/dossiers/1",
+        expect.objectContaining({ method: "DELETE", credentials: "include" }),
+      );
+      expect(screen.queryByText("DOS-2026-00042")).not.toBeInTheDocument();
+    });
+  });
+
+  it("affiche l'erreur backend si la suppression échoue", async () => {
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          {
+            id: 1,
+            reference: "DOS-2026-00042",
+            type: "lld",
+            status: "brouillon",
+            created_at: "2026-05-07T10:15:00Z",
+          },
+        ],
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ detail: "Seuls les dossiers en brouillon peuvent être supprimés." }),
+      } as Response);
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("DOS-2026-00042")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Seuls les dossiers en brouillon peuvent être supprimés.")).toBeInTheDocument();
+      expect(screen.queryByText("DOS-2026-00042")).not.toBeInTheDocument();
     });
   });
 });
