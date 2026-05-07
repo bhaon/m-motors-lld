@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlparse, urlunparse
 
 import boto3
 from botocore.config import Config
@@ -13,30 +12,27 @@ from botocore.exceptions import ClientError
 from app.core.config import settings
 
 
-def _expose_presigned_url_for_browser(url: str) -> str:
-    """Remplace l'hôte interne S3 par l'endpoint public si configuré."""
-    public_endpoint = settings.s3_public_endpoint_url
-    if not public_endpoint:
-        return url
-    parsed_url = urlparse(url)
-    parsed_public = urlparse(public_endpoint)
-    return urlunparse(
-        (
-            parsed_public.scheme,
-            parsed_public.netloc,
-            parsed_url.path,
-            parsed_url.params,
-            parsed_url.query,
-            parsed_url.fragment,
-        )
-    )
-
-
 def get_s3_client() -> BaseClient:
     """Construit un client S3 compatible MinIO à partir de la configuration applicative."""
     return boto3.client(
         "s3",
         endpoint_url=settings.S3_ENDPOINT_URL,
+        region_name=settings.S3_REGION,
+        aws_access_key_id=settings.S3_ACCESS_KEY,
+        aws_secret_access_key=settings.S3_SECRET_KEY,
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+        ),
+    )
+
+
+def get_s3_presign_client() -> BaseClient:
+    """Construit un client S3 dédié à la pré-signature (endpoint public si défini)."""
+    endpoint = settings.s3_public_endpoint_url or settings.S3_ENDPOINT_URL
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint,
         region_name=settings.S3_REGION,
         aws_access_key_id=settings.S3_ACCESS_KEY,
         aws_secret_access_key=settings.S3_SECRET_KEY,
@@ -101,14 +97,15 @@ def build_piece_object_key(*, dossier_id: int, piece_type: str, filename: str) -
 
 
 def generate_upload_url(
-    client: BaseClient,
+    _: BaseClient,
     *,
     object_key: str,
     content_type: str,
     checksum_sha256: str,
 ) -> str:
     """Génère une URL pré-signée PUT qui embarque le checksum SHA-256 attendu."""
-    presigned_url = client.generate_presigned_url(
+    presign_client = get_s3_presign_client()
+    return presign_client.generate_presigned_url(
         ClientMethod="put_object",
         Params={
             "Bucket": settings.S3_BUCKET,
@@ -118,7 +115,6 @@ def generate_upload_url(
         },
         ExpiresIn=settings.S3_PRESIGN_EXPIRES_SECONDS,
     )
-    return _expose_presigned_url_for_browser(presigned_url)
 
 
 def verify_object_checksum(client: BaseClient, *, object_key: str, expected_checksum_hex: str) -> bool:

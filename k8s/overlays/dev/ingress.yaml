@@ -11,14 +11,12 @@ metadata:
     kubernetes.io/ingress.class: traefik
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.middlewares: dev-s3-cors@kubernetescrd
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: traefik
   tls:
     - hosts:
         - app-dev.netdevops.fr
-        - s3-dev.netdevops.fr
       secretName: dev-tls-secret
   rules:
     - host: app-dev.netdevops.fr
@@ -38,6 +36,29 @@ spec:
                 name: frontend
                 port:
                   name: http
+---
+# ============================================================
+# INGRESS — dev (route S3 dédiée)
+# Sépare la route objet de l'app pour isoler middleware/diagnostic.
+# ============================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: s3-ingress
+  namespace: dev
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: dev-s3-cors@kubernetescrd
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - s3-dev.netdevops.fr
+      secretName: dev-tls-secret
+  rules:
     - host: s3-dev.netdevops.fr
       http:
         paths:
@@ -47,7 +68,7 @@ spec:
               service:
                 name: minio
                 port:
-                  name: s3
+                  number: 9000
 ---
 # ============================================================
 # MIDDLEWARE — CORS upload objet (dev)
