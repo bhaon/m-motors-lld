@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timedelta, timezone
 
+from app.core.security import verify_password
 from app.models.user import User
 from app.api.v1.endpoints import auth as auth_endpoint
 from tests.conftest import create_user
@@ -351,4 +352,81 @@ def test_change_password_success(client, db) -> None:
         json={"email": "pwd.ok@example.com", "password": "NewStrongPassword123!"},
     )
     assert relogin_response.status_code == 200
+
+
+def test_forgot_password_issues_reset_token_and_sends_email(client, db, monkeypatch) -> None:
+    """Déclenche un token de reset (1h) et envoie le lien de réinitialisation."""
+    sent_payload: dict[str, str] = {}
+
+    def _fake_send_password_reset_email(*, to_email: str, reset_link: str) -> None:
+        sent_payload["to_email"] = to_email
+        sent_payload["reset_link"] = reset_link
+
+    monkeypatch.setattr(auth_endpoint, "send_password_reset_email", _fake_send_password_reset_email)
+    create_user(db, email="forgot@example.com", password="UltraSecure123!")
+
+    response = client.post("/api/v1/auth/forgot-password", json={"email": "forgot@example.com"})
+    assert response.status_code == 200
+    assert "reinitialisation" in response.json()["message"].lower()
+    assert sent_payload["to_email"] == "forgot@example.com"
+    assert "/reset-password?token=" in sent_payload["reset_link"]
+
+    user = db.query(User).filter(User.email == "forgot@example.com").first()
+    assert user is not None
+    assert user.password_reset_token is not None
+    assert user.password_reset_expires_at is not None
+
+
+def test_forgot_password_for_unknown_email_stays_generic(client, monkeypatch) -> None:
+    """Ne révèle pas si l'email existe et n'envoie pas d'email."""
+    called = {"value": False}
+
+    def _fake_send_password_reset_email(*, to_email: str, reset_link: str) -> None:
+        called["value"] = True
+
+    monkeypatch.setattr(auth_endpoint, "send_password_reset_email", _fake_send_password_reset_email)
+
+    response = client.post("/api/v1/auth/forgot-password", json={"email": "missing@example.com"})
+    assert response.status_code == 200
+    assert "si un compte existe" in response.json()["message"].lower()
+    assert called["value"] is False
+
+
+def test_reset_password_success_invalidates_old_password(client, db) -> None:
+    """Réinitialise le mot de passe avec token valide et invalide l'ancien immédiatement."""
+    user = create_user(db, email="reset.ok@example.com", password="OldStrong123!")
+    raw_token = "valid-reset-token"
+    user.password_reset_token = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    user.password_reset_sent_at = datetime.now(timezone.utc)
+    user.password_reset_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    db.commit()
+
+    response = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": raw_token, "new_password": "NewStrong123!@"},
+    )
+    assert response.status_code == 200
+    assert "reinitialise" in response.json()["message"].lower()
+
+    db.refresh(user)
+    assert user.password_reset_token is None
+    assert verify_password("OldStrong123!", user.hashed_password) is False
+    assert verify_password("NewStrong123!@", user.hashed_password) is True
+
+
+def test_reset_password_rejects_expired_token(client, db) -> None:
+    """Refuse la réinitialisation si le token a expiré."""
+    user = create_user(db, email="reset.expired@example.com", password="OldStrong123!")
+    raw_token = "expired-reset-token"
+    user.password_reset_token = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    user.password_reset_sent_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    user.password_reset_expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    db.commit()
+
+    response = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": raw_token, "new_password": "NewStrong123!@"},
+    )
+    assert response.status_code == 400
+    assert "expire" in response.json()["detail"].lower()
 

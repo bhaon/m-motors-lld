@@ -87,7 +87,7 @@ describe("Navbar", () => {
     });
   });
 
-  it("déconnecte l'utilisateur et redirige vers /connexion", async () => {
+  it("déconnecte l'utilisateur et redirige vers l'accueil", async () => {
     process.env.NODE_ENV = "production";
     const fetchSpy = jest
       .spyOn(global, "fetch")
@@ -111,7 +111,7 @@ describe("Navbar", () => {
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledTimes(2);
-      expect(assignSpy).toHaveBeenCalledWith("/connexion");
+      expect(assignSpy).toHaveBeenCalledWith("/");
     });
   });
 

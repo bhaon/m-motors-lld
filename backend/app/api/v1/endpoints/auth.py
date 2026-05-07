@@ -18,22 +18,29 @@ from app.schemas.auth import (
     ChangePasswordResponse,
     CurrentUserResponse,
     EmailVerificationResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LoginRequest,
     LoginResponse,
     LogoutResponse,
     RegisterRequest,
     RegisterResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     ResendVerificationEmailRequest,
     ResendVerificationEmailResponse,
     UpdateProfileRequest,
     UpdateProfileResponse,
 )
-from app.services.emailing import send_verification_email
+from app.services.emailing import send_password_reset_email, send_verification_email
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 GENERIC_LOGIN_ERROR = "Email ou mot de passe invalide."
 EMAIL_NOT_VERIFIED_ERROR = (
     "Votre email n'est pas confirme. Veuillez valider votre email via le lien recu par mail."
+)
+FORGOT_PASSWORD_MESSAGE = (
+    "Si un compte existe avec cet email, un lien de reinitialisation a ete envoye."
 )
 
 
@@ -64,6 +71,11 @@ def _issue_email_verification(user: User, *, now: datetime) -> None:
 def _build_confirmation_link(token: str) -> str:
     """Construit l'URL de confirmation utilisée dans l'email de validation."""
     return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/confirm-email?token={token}"
+
+
+def _build_password_reset_link(token: str) -> str:
+    """Construit l'URL frontend de réinitialisation de mot de passe."""
+    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/reset-password?token={token}"
 
 
 def _is_token_expired(expires_at: datetime | None, now: datetime) -> bool:
@@ -103,6 +115,19 @@ def _issue_email_revalidation(user: User) -> None:
     """Déclenche une nouvelle validation email après changement d'adresse."""
     now = datetime.now(timezone.utc)
     _issue_email_verification(user, now=now)
+
+
+def _issue_password_reset(user: User, *, now: datetime) -> None:
+    """
+    Génère un token de réinitialisation (hashé en base) et envoie l'email associé.
+
+    Durée de validité : 1 heure.
+    """
+    raw_token = _generate_email_verification_token()
+    user.password_reset_token = _hash_email_verification_token(raw_token)
+    user.password_reset_sent_at = now
+    user.password_reset_expires_at = now + timedelta(hours=1)
+    send_password_reset_email(to_email=user.email, reset_link=_build_password_reset_link(raw_token))
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
@@ -185,6 +210,43 @@ def resend_confirmation_email(payload: ResendVerificationEmailRequest, db: DbSes
     _issue_email_verification(user, now=now)
     db.commit()
     return ResendVerificationEmailResponse(message="Un nouvel email de confirmation vous a ete envoye.")
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(payload: ForgotPasswordRequest, db: DbSession) -> ForgotPasswordResponse:
+    """Déclenche l'envoi d'un email de réinitialisation sans révéler l'existence du compte."""
+    user = db.query(User).filter(User.email == payload.email, User.deleted_at.is_(None)).first()
+    if not user or not user.is_active:
+        return ForgotPasswordResponse(message=FORGOT_PASSWORD_MESSAGE)
+
+    now = datetime.now(timezone.utc)
+    _issue_password_reset(user, now=now)
+    db.commit()
+    return ForgotPasswordResponse(message=FORGOT_PASSWORD_MESSAGE)
+
+
+@router.post("/reset-password", response_model=ResetPasswordResponse)
+def reset_password(payload: ResetPasswordRequest, db: DbSession) -> ResetPasswordResponse:
+    """Réinitialise le mot de passe via un token à usage unique expirant au bout d'une heure."""
+    token_hash = _hash_email_verification_token(payload.token)
+    user = (
+        db.query(User)
+        .filter(User.password_reset_token == token_hash, User.deleted_at.is_(None))
+        .first()
+    )
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lien de reinitialisation invalide.")
+
+    now = datetime.now(timezone.utc)
+    if _is_token_expired(user.password_reset_expires_at, now):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lien de reinitialisation expire.")
+
+    user.hashed_password = hash_password(payload.new_password)
+    user.password_reset_token = None
+    user.password_reset_sent_at = None
+    user.password_reset_expires_at = None
+    db.commit()
+    return ResetPasswordResponse(message="Mot de passe reinitialise avec succes.")
 
 
 @router.get("/me", response_model=CurrentUserResponse)

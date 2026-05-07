@@ -143,7 +143,7 @@ export default function Navbar() {
       setIsAuthenticated(false);
       setInitials("U");
       if (typeof window !== "undefined") {
-        window.location.assign("/connexion");
+        window.location.assign("/");
       }
     }
   }

@@ -30,6 +30,11 @@ describe("ConnexionPage", () => {
     });
   });
 
+  it("affiche le lien Mot de passe oublié", () => {
+    render(<ConnexionPage />);
+    expect(screen.getByRole("link", { name: /mot de passe oublié/i })).toHaveAttribute("href", "/mot-de-passe-oublie");
+  });
+
   it("affiche un message d'erreur générique en cas d'échec", async () => {
     jest.spyOn(global, "fetch").mockResolvedValue({
       ok: false,

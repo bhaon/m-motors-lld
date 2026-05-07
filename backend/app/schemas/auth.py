@@ -98,6 +98,45 @@ class ResendVerificationEmailResponse(BaseModel):
     message: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Corps de requête pour demander un lien de réinitialisation."""
+
+    email: str = Field(min_length=5, max_length=255)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        """Normalise l'email pour fiabiliser la recherche en base."""
+        return value.strip().lower()
+
+
+class ForgotPasswordResponse(BaseModel):
+    """Réponse standard après demande de réinitialisation."""
+
+    message: str
+
+
+class ResetPasswordRequest(BaseModel):
+    """Corps de requête pour finaliser la réinitialisation via token."""
+
+    token: str = Field(min_length=10, max_length=255)
+    new_password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        """Applique la politique de mot de passe sur le nouveau mot de passe."""
+        if not PASSWORD_REGEX.match(value):
+            raise ValueError("Le mot de passe ne respecte pas la politique de sécurité.")
+        return value
+
+
+class ResetPasswordResponse(BaseModel):
+    """Réponse standard après réinitialisation réussie."""
+
+    message: str
+
+
 class CurrentUserResponse(BaseModel):
     """Représentation du profil utilisateur connecté."""
 

@@ -118,6 +118,9 @@ export default function ConnexionPage() {
         <form onSubmit={onSubmit} style={{ display: "grid", gap: "0.9rem" }}>
           <input placeholder="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           <input placeholder="Mot de passe" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+          <a href="/mot-de-passe-oublie" style={{ fontSize: ".9rem", color: "#0f172a", textDecoration: "underline" }}>
+            Mot de passe oublié ?
+          </a>
           <button
             type="submit"
             disabled={loading || !email || !password}
