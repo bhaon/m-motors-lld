@@ -32,6 +32,19 @@ def test_update_profile_and_change_password_end_to_end() -> None:
         )
         assert register_response.status_code == 201
 
+        # L'email doit être confirmé avant la connexion.
+        from app.db.session import SessionLocal  # noqa: WPS433
+        from app.models.user import User  # noqa: WPS433
+
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.email == email).first()
+            assert user is not None
+            user.email_verified = True
+            db.commit()
+        finally:
+            db.close()
+
         login_response = client.post("/api/v1/auth/login", json={"email": email, "password": "VeryStrongPass123!"})
         access_token = login_response.headers.get("set-cookie", "").split("access_token=")[1].split(";")[0]
 
@@ -76,6 +89,20 @@ def test_profile_email_change_requires_new_validation() -> None:
                 "accepted_privacy_policy": True,
             },
         )
+
+        # L'email doit être confirmé avant la connexion.
+        from app.db.session import SessionLocal  # noqa: WPS433
+        from app.models.user import User  # noqa: WPS433
+
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.email == old_email).first()
+            assert user is not None
+            user.email_verified = True
+            db.commit()
+        finally:
+            db.close()
+
         login_response = client.post("/api/v1/auth/login", json={"email": old_email, "password": "VeryStrongPass123!"})
         access_token = login_response.headers.get("set-cookie", "").split("access_token=")[1].split(";")[0]
 

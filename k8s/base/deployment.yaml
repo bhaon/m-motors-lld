@@ -133,6 +133,11 @@ spec:
           image: ghcr.io/bhaon/m-motors-lld-backend:latest
           command: ["python", "manage.py", "migrate", "--noinput"]
           env:
+            - name: FRONTEND_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: FRONTEND_BASE_URL
             - name: POSTGRES_DB
               valueFrom:
                 secretKeyRef:
@@ -192,6 +197,11 @@ spec:
               containerPort: 8000
               protocol: TCP
           env:
+            - name: FRONTEND_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: FRONTEND_BASE_URL
             - name: ENVIRONMENT
               valueFrom:
                 configMapKeyRef:

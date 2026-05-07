@@ -191,6 +191,24 @@ def test_login_client_success_sets_http_only_cookie(client, db) -> None:
     assert "HttpOnly" in cookie_header
 
 
+def test_logout_client_deletes_access_token_cookie(client, db) -> None:
+    """Supprime le cookie access_token pour déconnecter le client."""
+    create_user(db, email="logout.ok@example.com", password="UltraSecure123!")
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "logout.ok@example.com", "password": "UltraSecure123!"},
+    )
+    assert login_response.status_code == 200
+
+    response = client.post("/api/v1/auth/logout")
+    assert response.status_code == 200
+    assert "deconnexion" in response.json()["message"].lower()
+
+    cookie_header = response.headers.get("set-cookie", "")
+    assert "access_token=" in cookie_header
+    assert "Max-Age=0" in cookie_header
+
+
 def test_login_client_rejects_invalid_email_with_generic_message(client) -> None:
     """Retourne 401 avec un message générique si l'email n'existe pas."""
     response = client.post(

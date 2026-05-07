@@ -73,6 +73,31 @@ class LoginResponse(BaseModel):
     message: str
 
 
+class LogoutResponse(BaseModel):
+    """Réponse standard après déconnexion."""
+
+    message: str
+
+
+class ResendVerificationEmailRequest(BaseModel):
+    """Corps de requête pour réémettre un email de confirmation."""
+
+    email: str = Field(min_length=5, max_length=255)
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        """Normalise l'email pour fiabiliser la recherche en base."""
+        return value.strip().lower()
+
+
+class ResendVerificationEmailResponse(BaseModel):
+    """Réponse standard après réémission de l'email de confirmation."""
+
+    message: str
+
+
 class CurrentUserResponse(BaseModel):
     """Représentation du profil utilisateur connecté."""
 

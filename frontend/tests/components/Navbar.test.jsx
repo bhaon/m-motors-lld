@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Navbar from "@/components/Navbar";
 
 describe("Navbar", () => {
@@ -25,11 +25,20 @@ describe("Navbar", () => {
 
   it("affiche la pastille utilisateur quand l'utilisateur est connecté", async () => {
     process.env.NODE_ENV = "production";
-    jest.spyOn(global, "fetch").mockResolvedValue({ ok: true });
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ first_name: "Jean", last_name: "Durand" }),
+    });
     render(<Navbar />);
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /accéder à mon espace client/i })).toHaveAttribute("href", "/espace-client");
+      expect(screen.getByRole("button", { name: /ouvrir le menu utilisateur/i })).toBeInTheDocument();
     });
+
+    fireEvent.click(screen.getByRole("button", { name: /ouvrir le menu utilisateur/i }));
+    expect(screen.getByRole("menu", { name: /menu utilisateur/i })).toBeInTheDocument();
+    const profileItem = screen.getByRole("menuitem", { name: "Profile" });
+    expect(profileItem).toHaveAttribute("href", "/espace-client");
+    expect(screen.getByRole("menuitem", { name: "Déconnexion" })).toBeInTheDocument();
   });
 });

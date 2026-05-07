@@ -20,8 +20,11 @@ from app.schemas.auth import (
     EmailVerificationResponse,
     LoginRequest,
     LoginResponse,
+    LogoutResponse,
     RegisterRequest,
     RegisterResponse,
+    ResendVerificationEmailRequest,
+    ResendVerificationEmailResponse,
     UpdateProfileRequest,
     UpdateProfileResponse,
 )
@@ -29,6 +32,9 @@ from app.services.emailing import send_verification_email
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 GENERIC_LOGIN_ERROR = "Email ou mot de passe invalide."
+EMAIL_NOT_VERIFIED_ERROR = (
+    "Votre email n'est pas confirme. Veuillez valider votre email via le lien recu par mail."
+)
 
 
 def _generate_email_verification_token() -> str:
@@ -39,6 +45,20 @@ def _generate_email_verification_token() -> str:
 def _hash_email_verification_token(token: str) -> str:
     """Calcule un hash SHA-256 du token pour stockage sécurisé."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _issue_email_verification(user: User, *, now: datetime) -> None:
+    """
+    (Re)génère un token de confirmation, le stocke en base et envoie l'email.
+
+    Contrainte: le token brut n'est jamais stocké (hash SHA-256 uniquement).
+    """
+    raw_token = _generate_email_verification_token()
+    user.email_verified = False
+    user.email_verification_token = _hash_email_verification_token(raw_token)
+    user.email_verification_sent_at = now
+    user.email_verification_expires_at = now + timedelta(hours=24)
+    send_verification_email(to_email=user.email, confirmation_link=_build_confirmation_link(raw_token))
 
 
 def _build_confirmation_link(token: str) -> str:
@@ -82,12 +102,7 @@ def _resolve_user_from_token(token: str | None, db: DbSession) -> User:
 def _issue_email_revalidation(user: User) -> None:
     """Déclenche une nouvelle validation email après changement d'adresse."""
     now = datetime.now(timezone.utc)
-    raw_token = _generate_email_verification_token()
-    user.email_verified = False
-    user.email_verification_token = _hash_email_verification_token(raw_token)
-    user.email_verification_sent_at = now
-    user.email_verification_expires_at = now + timedelta(hours=24)
-    send_verification_email(to_email=user.email, confirmation_link=_build_confirmation_link(raw_token))
+    _issue_email_verification(user, now=now)
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
@@ -134,6 +149,8 @@ def login_client(payload: LoginRequest, response: Response, db: DbSession) -> Lo
     user = db.query(User).filter(User.email == payload.email, User.deleted_at.is_(None)).first()
     if not user or not user.is_active or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_LOGIN_ERROR)
+    if not user.email_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=EMAIL_NOT_VERIFIED_ERROR)
 
     token = create_access_token(subject=str(user.id), role=user.role.value)
     response.set_cookie(
@@ -146,6 +163,28 @@ def login_client(payload: LoginRequest, response: Response, db: DbSession) -> Lo
         path="/",
     )
     return LoginResponse(message="Connexion reussie.")
+
+
+@router.post("/logout", response_model=LogoutResponse)
+def logout_client(response: Response) -> LogoutResponse:
+    """Supprime le cookie d'authentification pour déconnecter l'utilisateur."""
+    response.delete_cookie(key="access_token", path="/")
+    return LogoutResponse(message="Deconnexion reussie.")
+
+
+@router.post("/resend-confirmation", response_model=ResendVerificationEmailResponse)
+def resend_confirmation_email(payload: ResendVerificationEmailRequest, db: DbSession) -> ResendVerificationEmailResponse:
+    """Réémet l'email de confirmation quand l'utilisateur n'a pas encore validé son email."""
+    user = db.query(User).filter(User.email == payload.email, User.deleted_at.is_(None)).first()
+    if not user or not user.is_active or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_LOGIN_ERROR)
+    if user.email_verified:
+        return ResendVerificationEmailResponse(message="Votre email est deja confirme.")
+
+    now = datetime.now(timezone.utc)
+    _issue_email_verification(user, now=now)
+    db.commit()
+    return ResendVerificationEmailResponse(message="Un nouvel email de confirmation vous a ete envoye.")
 
 
 @router.get("/me", response_model=CurrentUserResponse)
