@@ -3,6 +3,10 @@ import { SAMPLE_VEHICLES } from "../fixtures/vehicles";
 import { fetchVehicles } from "@/app/fetchVehicles";
 import Home from "@/app/page";
 
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 jest.mock("@/app/fetchVehicles", () => ({
   fetchVehicles: jest.fn(),
 }));
