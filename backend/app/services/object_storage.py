@@ -82,6 +82,12 @@ def ensure_bucket_cors(client: BaseClient) -> None:
         return
     try:
         client.put_bucket_cors(Bucket=settings.S3_BUCKET, CORSConfiguration=desired_cors)
+    except ClientError as exc:
+        error_code = (exc.response.get("Error") or {}).get("Code", "")
+        if error_code == "NotImplemented":
+            # Certains endpoints S3 compatibles n'exposent pas PutBucketCors.
+            return
+        raise
     except AttributeError:
         # Certains clients de test/fakes ne supportent pas ces APIs.
         return
