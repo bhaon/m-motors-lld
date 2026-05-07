@@ -25,8 +25,11 @@ images:
   - name: ghcr.io/bhaon/m-motors-lld-backend
     newTag: v0.0.0
 
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: false
+    includeTemplates: true
 
 commonAnnotations:
   managed-by: kustomize

@@ -23,4 +23,5 @@ images:
 labels:
   - pairs:
       environment: dev
-    includeSelectors: true
+    includeSelectors: false
+    includeTemplates: true
