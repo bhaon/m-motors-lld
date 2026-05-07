@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { computeFileSha256Hex, sha256HexToBase64 } from "@/lib/checksum";
 
 type PieceType = "cni" | "permis" | "revenus" | "domicile" | "rib";
 
@@ -21,6 +20,31 @@ const REQUIRED_PIECES: { type: PieceType; label: string }[] = [
 
 const ACCEPTED_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+/**
+ * Calcule le SHA-256 d'un fichier navigateur et renvoie un hexadécimal.
+ */
+async function computeFileSha256Hex(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", buffer);
+  const bytes = new Uint8Array(digest);
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Convertit un checksum hexadécimal SHA-256 en base64 pour l'API S3.
+ */
+function sha256HexToBase64(hex: string): string {
+  const pairs = hex.match(/.{1,2}/g) || [];
+  const bytes = new Uint8Array(pairs.map((pair) => parseInt(pair, 16)));
+  let binary = "";
+  bytes.forEach((value) => {
+    binary += String.fromCharCode(value);
+  });
+  return btoa(binary);
+}
 
 /**
  * Résout l'URL backend de gestion des pièces justificatives.

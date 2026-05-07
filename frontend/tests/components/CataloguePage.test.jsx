@@ -2,11 +2,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import CataloguePage from "@/components/CataloguePage";
 import { SAMPLE_VEHICLES } from "../fixtures/vehicles";
 
-jest.mock("@/lib/checksum", () => ({
-  computeFileSha256Hex: jest.fn(async () => "a".repeat(64)),
-  sha256HexToBase64: jest.fn(() => "checksum-base64"),
-}));
-
 describe("CataloguePage", () => {
   const fetchMock = jest.fn();
 
@@ -144,7 +139,7 @@ describe("CataloguePage", () => {
           s3_key: "dossiers/55/cni/file.pdf",
           headers: {
             "Content-Type": "application/pdf",
-            "x-amz-checksum-sha256": "checksum-base64",
+            "x-amz-checksum-sha256": "expected-checksum-base64",
           },
         }),
       })
