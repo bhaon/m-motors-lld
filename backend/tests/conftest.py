@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import date, datetime, timezone
 from collections.abc import Generator
 
 import pytest
@@ -65,9 +66,12 @@ def create_user(
         hashed_password=hash_password(password),
         first_name="Test",
         last_name="User",
+        birth_date=date(1990, 1, 1),
         role=role,
         email_verified=True,
         is_active=is_active,
+        cgu_accepted_at=datetime.now(timezone.utc),
+        privacy_accepted_at=datetime.now(timezone.utc),
     )
     db.add(u)
     db.commit()

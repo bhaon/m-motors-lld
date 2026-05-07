@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -65,24 +66,32 @@ def json_row_to_vehicle_kwargs(row: dict) -> dict:
 
 USERS_DATA = [
     dict(
-        email="admin@mmotors.fr", password="Admin1234!", first_name="Admin", last_name="M-Motors", role=RoleEnum.admin
+        email="admin@mmotors.fr",
+        password="Admin1234!Secure",
+        first_name="Admin",
+        last_name="M-Motors",
+        role=RoleEnum.admin,
     ),
     dict(
         email="gestionnaire@mmotors.fr",
-        password="Gest1234!",
+        password="Gest1234!Secure",
         first_name="Sophie",
         last_name="Martin",
         role=RoleEnum.gestionnaire,
     ),
     dict(
         email="superviseur@mmotors.fr",
-        password="Sup1234!",
+        password="Sup1234!Secure",
         first_name="Marc",
         last_name="Dupont",
         role=RoleEnum.superviseur,
     ),
     dict(
-        email="client@mmotors.fr", password="Client1234!", first_name="Jean", last_name="Durand", role=RoleEnum.client
+        email="client@mmotors.fr",
+        password="Client1234!Secure",
+        first_name="Jean",
+        last_name="Durand",
+        role=RoleEnum.client,
     ),
 ]
 
@@ -127,7 +136,15 @@ def seed():
         if db.query(User).count() == 0:
             for data in USERS_DATA:
                 pwd = data.pop("password")
-                u = User(hashed_password=hash_password(pwd), is_active=True, email_verified=True, **data)
+                u = User(
+                    hashed_password=hash_password(pwd),
+                    is_active=True,
+                    email_verified=True,
+                    birth_date=date(1990, 1, 1),
+                    cgu_accepted_at=datetime.now(timezone.utc),
+                    privacy_accepted_at=datetime.now(timezone.utc),
+                    **data,
+                )
                 db.add(u)
             print(f"✓ {len(USERS_DATA)} utilisateurs créés")
         else:

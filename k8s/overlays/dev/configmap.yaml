@@ -7,6 +7,8 @@ metadata:
 data:
   NODE_ENV: "development"
   ENVIRONMENT: "dev"
+  # Base URL publique du frontend (utilisée par le backend pour générer les liens d'email).
+  FRONTEND_BASE_URL: "https://app-dev.netdevops.fr"
   # SSR (pod frontend → Service backend, même namespace)
   API_INTERNAL_URL: "http://backend"
   API_URL: "https://app-dev.netdevops.fr/api"

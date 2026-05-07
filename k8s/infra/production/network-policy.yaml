@@ -184,3 +184,24 @@ spec:
           protocol: UDP
         - port: 53
           protocol: TCP
+---
+# ============================================================
+# NETWORK POLICY — ACME HTTP-01 solver (cert-manager)
+# Autorise Traefik (kube-system) a joindre les pods solver
+# pour valider /.well-known/acme-challenge/*
+# ============================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cert-manager-http01-solver
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system

@@ -7,6 +7,8 @@ metadata:
 data:
   NODE_ENV: "production"
   ENVIRONMENT: "staging"
+  # Base URL publique du frontend (utilisée par le backend pour générer les liens d'email).
+  FRONTEND_BASE_URL: "https://staging.netdevops.fr"
   API_INTERNAL_URL: "http://backend"
   API_URL: "https://staging.netdevops.fr/api"
   ALLOWED_HOSTS: "staging.netdevops.fr"
