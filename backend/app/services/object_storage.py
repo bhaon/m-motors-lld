@@ -97,14 +97,16 @@ def build_piece_object_key(*, dossier_id: int, piece_type: str, filename: str) -
 
 
 def generate_upload_url(
-    _: BaseClient,
+    client: BaseClient,
     *,
     object_key: str,
     content_type: str,
     checksum_sha256: str,
 ) -> str:
     """Génère une URL pré-signée PUT qui embarque le checksum SHA-256 attendu."""
-    presign_client = get_s3_presign_client()
+    presign_client = (
+        get_s3_presign_client() if settings.s3_public_endpoint_url else client
+    )
     return presign_client.generate_presigned_url(
         ClientMethod="put_object",
         Params={
