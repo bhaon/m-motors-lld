@@ -41,7 +41,7 @@ export default async function DepotDossierPage({ params, searchParams }: Readonl
         <form style={{ display: "grid", gap: ".9rem" }}>
           <label style={{ display: "grid", gap: ".35rem" }}>
             Type de dossier
-            <select value={dossierType} readOnly aria-label="Type de dossier">
+            <select value={dossierType} disabled aria-label="Type de dossier">
               <option value="achat">Achat</option>
               <option value="lld">LLD</option>
             </select>
