@@ -8,7 +8,7 @@ from urllib.parse import quote_plus
 from typing import Annotated, Any, List
 
 from pydantic import BeforeValidator, Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 def _default_allowed_origins() -> List[str]:
@@ -123,7 +123,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
-    ALLOWED_ORIGINS: Annotated[List[str], BeforeValidator(_parse_allowed_origins)] = Field(
+    ALLOWED_ORIGINS: Annotated[List[str], NoDecode, BeforeValidator(_parse_allowed_origins)] = Field(
         default_factory=lambda: [
             "https://localhost:8443",
             "https://127.0.0.1:8443",
