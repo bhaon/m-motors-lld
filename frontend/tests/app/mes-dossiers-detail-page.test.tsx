@@ -93,4 +93,60 @@ describe("DossierDetailPage", () => {
       expect(screen.getByText(/dossier soumis avec succès/i)).toBeInTheDocument();
     });
   });
+
+  it("affiche une erreur quand le chargement du dossier échoue", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      json: async () => ({ detail: "Dossier introuvable" }),
+    } as Response);
+
+    render(<DossierDetailPage params={{ id: "404" }} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Dossier introuvable")).toBeInTheDocument();
+    });
+  });
+
+  it("garde le récapitulatif ouvert et affiche l'erreur si la soumission échoue", async () => {
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 14,
+          reference: "DOS-2026-00014",
+          type: "lld",
+          status: "brouillon",
+          checklist: [
+            { type_piece: "cni", uploaded: true },
+            { type_piece: "permis", uploaded: true },
+            { type_piece: "revenus", uploaded: true },
+            { type_piece: "domicile", uploaded: true },
+            { type_piece: "rib", uploaded: true },
+          ],
+          missing_pieces: [],
+          can_submit: true,
+          created_at: "invalid-date",
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ detail: "Soumission impossible." }),
+      } as Response);
+
+    render(<DossierDetailPage params={{ id: "14" }} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /voir le récapitulatif/i })).toBeEnabled();
+      expect(screen.getByText("-")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /voir le récapitulatif/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirmer la soumission/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Soumission impossible.")).toBeInTheDocument();
+      expect(screen.queryByText(/récapitulatif avant confirmation/i)).not.toBeInTheDocument();
+    });
+  });
 });

@@ -78,4 +78,13 @@ describe("MesDossiersPage", () => {
       );
     });
   });
+
+  it("affiche une erreur technique quand l'appel échoue sans objet Error", async () => {
+    jest.spyOn(global, "fetch").mockRejectedValue("network-down");
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Erreur technique.")).toBeInTheDocument();
+    });
+  });
 });
