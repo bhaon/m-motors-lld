@@ -8,7 +8,7 @@ from urllib.parse import quote_plus
 from typing import Annotated, Any, List
 
 from pydantic import BeforeValidator, Field, model_validator
-from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _default_allowed_origins() -> List[str]:
@@ -123,11 +123,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
-    ALLOWED_ORIGINS: Annotated[List[str], NoDecode, BeforeValidator(_parse_allowed_origins)] = Field(
-        default_factory=lambda: [
-            "https://localhost:8443",
-            "https://127.0.0.1:8443",
-        ],
+    ALLOWED_ORIGINS: str = Field(
+        default="https://localhost:8443,https://127.0.0.1:8443",
+        description="Origines CORS autorisées (CSV ou JSON array).",
     )
 
     @model_validator(mode="after")
@@ -177,6 +175,11 @@ class Settings(BaseSettings):
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             return None
         return cleaned
+
+    @property
+    def allowed_origins(self) -> List[str]:
+        """Retourne la liste CORS normalisée à partir de ``ALLOWED_ORIGINS``."""
+        return _parse_allowed_origins(self.ALLOWED_ORIGINS)
 
 
 # Les champs requis sont fournis par l’environnement ; mypy ne le déduit pas.
