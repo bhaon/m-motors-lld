@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from urllib.parse import urlparse
 from urllib.parse import quote_plus
-from typing import Annotated, Any, List
+from typing import Any, List
 
-from pydantic import BeforeValidator, Field, model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
