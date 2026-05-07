@@ -43,4 +43,23 @@ describe("ConfirmEmailPage", () => {
       expect(screen.getByText(/expire/i)).toBeInTheDocument();
     });
   });
+
+  it("lit un message texte quand l'API ne renvoie pas de JSON", async () => {
+    window.history.pushState({}, "", "/confirm-email?token=bad-token");
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      json: async () => {
+        throw new Error("not json");
+      },
+      clone: () => ({
+        text: async () => "Erreur texte brute",
+      }),
+    } as unknown as Response);
+
+    render(<ConfirmEmailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/erreur texte brute/i)).toBeInTheDocument();
+    });
+  });
 });

@@ -46,4 +46,57 @@ describe("ConnexionPage", () => {
       expect(screen.getByText(/email ou mot de passe invalide/i)).toBeInTheDocument();
     });
   });
+
+  it("affiche le bouton de renvoi quand l'email n'est pas confirmé", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      json: async () => ({
+        detail: "Votre email n'est pas confirme. Veuillez valider votre email via le lien recu par mail.",
+      }),
+    } as Response);
+
+    render(<ConnexionPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), { target: { value: "client@example.com" } });
+    fireEvent.change(screen.getByPlaceholderText("Mot de passe"), { target: { value: "UltraSecure123!" } });
+    fireEvent.click(screen.getByRole("button", { name: /se connecter/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /renvoyer l'email de confirmation/i })).toBeInTheDocument();
+    });
+  });
+
+  it("renvoie un email de confirmation quand l'utilisateur clique sur le bouton", async () => {
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      // login => email non confirmé
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({
+          detail: "Votre email n'est pas confirme. Veuillez valider votre email via le lien recu par mail.",
+        }),
+      } as Response)
+      // resend => ok
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ message: "Un nouvel email de confirmation vous a ete envoye." }),
+      } as Response);
+
+    render(<ConnexionPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), { target: { value: "client@example.com" } });
+    fireEvent.change(screen.getByPlaceholderText("Mot de passe"), { target: { value: "UltraSecure123!" } });
+    fireEvent.click(screen.getByRole("button", { name: /se connecter/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /renvoyer l'email de confirmation/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /renvoyer l'email de confirmation/i }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(/nouvel email de confirmation/i)).toBeInTheDocument();
+    });
+  });
 });
