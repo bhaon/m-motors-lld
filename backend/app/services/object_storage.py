@@ -62,17 +62,10 @@ def ensure_bucket_cors(client: BaseClient) -> None:
 
     desired_rules: list[dict[str, Any]] = [
         {
-            "AllowedHeaders": [
-                "content-type",
-                "x-amz-checksum-sha256",
-                "x-amz-content-sha256",
-                "x-amz-date",
-                "x-amz-security-token",
-                "authorization",
-            ],
+            "AllowedHeaders": ["*"],
             "AllowedMethods": ["PUT", "GET", "HEAD"],
             "AllowedOrigins": settings.allowed_origins,
-            "ExposeHeaders": ["ETag", "x-amz-request-id", "x-amz-id-2"],
+            "ExposeHeaders": ["ETag", "x-amz-request-id", "x-amz-id-2", "x-amz-checksum-sha256"],
             "MaxAgeSeconds": 3600,
         }
     ]
@@ -82,12 +75,14 @@ def ensure_bucket_cors(client: BaseClient) -> None:
         current_rules = current.get("CORSRules", [])
         if current_rules == desired_rules:
             return
-    except (ClientError, AttributeError):
+    except ClientError:
         # Absence de CORS ou accès initial: on applique la configuration cible.
         pass
+    except AttributeError:
+        return
     try:
         client.put_bucket_cors(Bucket=settings.S3_BUCKET, CORSConfiguration=desired_cors)
-    except (ClientError, AttributeError):
+    except AttributeError:
         # Certains clients de test/fakes ne supportent pas ces APIs.
         return
 
