@@ -4,10 +4,16 @@ import { SAMPLE_VEHICLES } from "../fixtures/vehicles";
 
 describe("CataloguePage", () => {
   const fetchMock = jest.fn();
+  const originalEnv = { ...process.env };
 
   beforeEach(() => {
     jest.resetAllMocks();
     global.fetch = fetchMock;
+    process.env = { ...originalEnv };
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
   });
 
   it("affiche le message catalogue vide (installation sans seed)", () => {
@@ -181,5 +187,41 @@ describe("CataloguePage", () => {
   it("exécute le callback Rechercher de la barre de recherche", () => {
     render(<CataloguePage vehicles={SAMPLE_VEHICLES} />);
     fireEvent.click(screen.getByRole("button", { name: /Rechercher/i }));
+  });
+
+  it("utilise NEXT_PUBLIC_API_URL et les valeurs fallback de dossier", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "https://api.example.com/";
+    const v = SAMPLE_VEHICLES[0];
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+    render(<CataloguePage vehicles={[v]} />);
+
+    fireEvent.click(document.querySelector(".vehicle-card"));
+    fireEvent.click(screen.getByText("Déposer un dossier LLD"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://api.example.com/api/v1/dossiers",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(screen.getByText("Dossier LLD créé (DOS-EN-ATTENTE)")).toBeInTheDocument();
+    });
+  });
+
+  it("affiche l'erreur technique si fetch échoue sans objet Error", async () => {
+    const v = SAMPLE_VEHICLES[0];
+    fetchMock.mockRejectedValue("network-down");
+    render(<CataloguePage vehicles={[v]} />);
+
+    fireEvent.click(document.querySelector(".vehicle-card"));
+    fireEvent.click(screen.getByText("Déposer un dossier LLD"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Erreur technique lors du dépôt.")).toBeInTheDocument();
+    });
   });
 });

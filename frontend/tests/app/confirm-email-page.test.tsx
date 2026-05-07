@@ -62,4 +62,21 @@ describe("ConfirmEmailPage", () => {
       expect(screen.getByText(/erreur texte brute/i)).toBeInTheDocument();
     });
   });
+
+  it("affiche le fallback par défaut quand la réponse ne fournit aucun détail", async () => {
+    window.history.pushState({}, "", "/confirm-email?token=bad-token-2");
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      json: async () => {
+        throw new Error("not json");
+      },
+      clone: () => ({}),
+    } as unknown as Response);
+
+    render(<ConfirmEmailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Confirmation impossible.")).toBeInTheDocument();
+    });
+  });
 });

@@ -154,4 +154,24 @@ describe("Navbar", () => {
       expect(screen.queryByRole("menu", { name: /menu utilisateur/i })).not.toBeInTheDocument();
     });
   });
+
+  it("ferme le menu après clic sur Mes dossiers", async () => {
+    process.env.NODE_ENV = "production";
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ first_name: "Jean", last_name: "Durand" }),
+    });
+    render(<Navbar />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /ouvrir le menu utilisateur/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /ouvrir le menu utilisateur/i }));
+    expect(screen.getByRole("menuitem", { name: "Mes dossiers" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mes dossiers" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: /menu utilisateur/i })).not.toBeInTheDocument();
+    });
+  });
 });
