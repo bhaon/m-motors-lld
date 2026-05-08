@@ -10,6 +10,8 @@ metadata:
   labels:
     app: myapp
 automountServiceAccountToken: false  # Désactivé : les pods n'ont pas besoin de l'API K8s
+imagePullSecrets:
+  - name: ghcr-secret  # Injecté automatiquement dans tous les pods utilisant ce SA
 ---
 # ============================================================
 # SERVICE ACCOUNT — CI/CD GitHub Actions (par namespace)
