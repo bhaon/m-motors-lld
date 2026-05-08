@@ -113,7 +113,8 @@ def test_bo_vehicule_crud(client: TestClient, db: Session) -> None:
 
     r3 = client.post(f"/api/v1/vehicules/{vid}/toggle-lld", headers=h)
     assert r3.status_code == 200
-    assert r3.json()["lld"] is True
+    assert r3.json()["vehicle"]["lld"] is True
+    assert r3.json()["toggled"] is True
 
     r4 = client.delete(f"/api/v1/vehicules/{vid}", headers=h)
     assert r4.status_code == 204
@@ -203,6 +204,7 @@ def test_creer_vehicule_lld_avec_mensualite(client: TestClient, db: Session) -> 
     v = db.query(Vehicle).filter(Vehicle.id == vid).first()
     assert v is not None
     assert v.lld is True
+    assert v.mensualite is not None
     assert float(v.mensualite) == 299.0
 
 

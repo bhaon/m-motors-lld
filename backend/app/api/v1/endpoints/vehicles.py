@@ -6,7 +6,7 @@ from app.api.v1.openapi_responses import openapi_http_error
 from app.core.deps import DbSession, GestionnaireMultiAuth, GestionnaireUser, enforce_role, get_user_from_cookie
 from app.models.user import RoleEnum
 from app.models.vehicle import MoteurEnum, Vehicle, VehiclePhoto
-from app.schemas.vehicle import VehicleBoOut, VehicleCreate, VehicleCreateOut, VehicleListOut, VehicleOut, VehicleUpdate
+from app.schemas.vehicle import ToggleLldOut, VehicleBoOut, VehicleCreate, VehicleCreateOut, VehicleListOut, VehicleOut, VehicleUpdate
 from app.services import audit as audit_service
 
 router = APIRouter(prefix="/vehicules", tags=["Véhicules"])
@@ -256,7 +256,7 @@ def update_vehicle(
 
 @router.post(
     "/{vehicle_id}/toggle-lld",
-    response_model=VehicleOut,
+    response_model=ToggleLldOut,
     summary="US-05-03 — Basculer Achat ↔ LLD",
     responses={
         **_R403_BO,
@@ -266,20 +266,66 @@ def update_vehicle(
 def toggle_lld(
     vehicle_id: int,
     db: DbSession,
-    _: GestionnaireUser,
-):
+    request: Request,
+    current_user: GestionnaireMultiAuth,
+    confirm: bool = Query(default=False, description="Forcer la bascule même si des dossiers actifs existent."),
+) -> ToggleLldOut:
+    """Bascule le mode Achat ↔ LLD.
+
+    Si le véhicule a des dossiers en cours (déposé/en instruction) et que
+    `confirm=false`, retourne un avertissement sans effectuer la bascule.
+    Passez `?confirm=true` pour forcer.
+    """
+    from app.models.dossier import Dossier, DossierStatusEnum
+
     v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
     if not v:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=VEHICULE_INTROUVABLE_DETAIL,
         )
+
+    active_statuses = [DossierStatusEnum.depose, DossierStatusEnum.en_instruction]
+    active_count: int = (
+        db.query(Dossier)
+        .filter(Dossier.vehicle_id == vehicle_id, Dossier.status.in_(active_statuses))
+        .count()
+    )
+
+    if active_count > 0 and not confirm:
+        noun = "dossier actif" if active_count == 1 else "dossiers actifs"
+        return ToggleLldOut(
+            vehicle=VehicleOut.from_orm_vehicle(v),
+            toggled=False,
+            warning=(
+                f"Ce véhicule a {active_count} {noun} (déposé/en instruction). "
+                "Ajoutez ?confirm=true pour forcer la bascule."
+            ),
+            active_dossiers_count=active_count,
+        )
+
+    old_lld = v.lld
     v.lld = not v.lld
     if not v.lld:
         v.mensualite = None
+
+    audit_service.record(
+        db,
+        action=audit_service.VEHICLE_LLD_TOGGLED,
+        entity_type="vehicle",
+        entity_id=v.id,
+        operator=current_user,
+        ip_address=request.client.host if request.client else None,
+        before_state={"lld": old_lld, "mensualite": v.mensualite if v.mensualite is None else float(v.mensualite)},
+        after_state={"lld": v.lld, "mensualite": None if not v.lld else (float(v.mensualite) if v.mensualite else None)},
+    )
     db.commit()
     db.refresh(v)
-    return VehicleOut.from_orm_vehicle(v)
+    return ToggleLldOut(
+        vehicle=VehicleOut.from_orm_vehicle(v),
+        toggled=True,
+        active_dossiers_count=active_count,
+    )
 
 
 @router.delete(

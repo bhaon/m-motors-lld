@@ -350,4 +350,110 @@ describe("GestionVehiculesPage", () => {
       expect(screen.queryByText("Renault Clio")).not.toBeInTheDocument();
     });
   });
+
+  // ── Bascule LLD ──────────────────────────────────────────────────────────────
+
+  it("affiche un bouton de bascule pour chaque véhicule", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, json: async () => VEHICLE_LIST } as Response);
+    render(<GestionVehiculesPage />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /basculer peugeot 308 en vente/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /basculer renault clio en lld/i })).toBeInTheDocument();
+    });
+  });
+
+  it("bascule immédiatement le mode si aucun dossier actif et affiche un toast", async () => {
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          vehicle: { ...VEHICLE_ACHAT, lld: true, mensualite: null },
+          toggled: true,
+          warning: null,
+          active_dossiers_count: 0,
+        }),
+      } as Response);
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /basculer renault clio en lld/i }));
+    fireEvent.click(screen.getByRole("button", { name: /basculer renault clio en lld/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toBeInTheDocument();
+    });
+  });
+
+  it("affiche un avertissement si des dossiers actifs existent", async () => {
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          vehicle: VEHICLE_ACHAT,
+          toggled: false,
+          warning: "Ce véhicule a 2 dossiers actifs.",
+          active_dossiers_count: 2,
+        }),
+      } as Response);
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /basculer renault clio en lld/i }));
+    fireEvent.click(screen.getByRole("button", { name: /basculer renault clio en lld/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /confirmer la bascule de renault clio/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /annuler la bascule de renault clio/i })).toBeInTheDocument();
+    });
+  });
+
+  it("appelle toggle avec ?confirm=true après confirmation de l'avertissement", async () => {
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ vehicle: VEHICLE_ACHAT, toggled: false, warning: "1 dossier actif.", active_dossiers_count: 1 }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ vehicle: { ...VEHICLE_ACHAT, lld: true }, toggled: true, active_dossiers_count: 1 }),
+      } as Response);
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /basculer renault clio en lld/i }));
+    fireEvent.click(screen.getByRole("button", { name: /basculer renault clio en lld/i }));
+    await waitFor(() => screen.getByRole("button", { name: /confirmer la bascule de renault clio/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirmer la bascule de renault clio/i }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining("confirm=true"),
+        expect.objectContaining({ method: "POST", credentials: "include" }),
+      );
+    });
+  });
+
+  it("annule l'avertissement de bascule avec le bouton Annuler", async () => {
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ vehicle: VEHICLE_ACHAT, toggled: false, warning: "1 dossier actif.", active_dossiers_count: 1 }),
+      } as Response);
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /basculer renault clio en lld/i }));
+    fireEvent.click(screen.getByRole("button", { name: /basculer renault clio en lld/i }));
+    await waitFor(() => screen.getByRole("button", { name: /annuler la bascule de renault clio/i }));
+    fireEvent.click(screen.getByRole("button", { name: /annuler la bascule de renault clio/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /confirmer la bascule/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /basculer renault clio en lld/i })).toBeInTheDocument();
+    });
+  });
 });

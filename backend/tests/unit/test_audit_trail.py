@@ -97,6 +97,8 @@ def test_delete_user_generates_audit_entry(client: TestClient, db: Session) -> N
     assert entry is not None
     assert entry.entity_id == target.id
     assert entry.entity_type == "user"
+    assert entry.before_state is not None
+    assert entry.after_state is not None
     assert entry.before_state["email"] == "todelete@example.com"
     assert "deleted_at" in entry.after_state
     assert entry.operator_role == "admin"
@@ -207,6 +209,8 @@ def test_archive_vehicle_generates_audit_entry(client: TestClient, db: Session) 
     entry = _latest_entry(db, "VEHICLE_ARCHIVED")
     assert entry is not None
     assert entry.entity_id == v.id
+    assert entry.before_state is not None
+    assert entry.after_state is not None
     assert entry.before_state["archived"] is False
     assert entry.after_state["archived"] is True
     assert entry.after_state["visible_catalogue"] is False
@@ -238,6 +242,8 @@ def test_submit_dossier_generates_audit_entry(client: TestClient, db: Session) -
         entry = _latest_entry(db, "DOSSIER_SUBMITTED")
         assert entry is not None
         assert entry.entity_id == dossier_id
+        assert entry.before_state is not None
+        assert entry.after_state is not None
         assert entry.before_state["status"] == "brouillon"
         assert entry.after_state["status"] == "depose"
     else:

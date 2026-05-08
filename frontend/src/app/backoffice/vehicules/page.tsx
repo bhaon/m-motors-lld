@@ -6,6 +6,13 @@ import Navbar from "@/components/Navbar";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+interface ToggleResponse {
+  vehicle: { id: number; lld: boolean; mensualite: number | null };
+  toggled: boolean;
+  warning?: string;
+  active_dossiers_count: number;
+}
+
 interface VehicleSpecs {
   carburant: string;
   boite: string;
@@ -85,6 +92,10 @@ function urlCreer(): string {
 
 function urlVehicule(id: number): string {
   return `${apiBase()}/api/v1/vehicules/${id}`;
+}
+
+function urlToggleLld(id: number, confirm = false): string {
+  return `${apiBase()}/api/v1/vehicules/${id}/toggle-lld${confirm ? "?confirm=true" : ""}`;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -543,6 +554,13 @@ export default function GestionVehiculesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
+  // Toggle LLD warning: véhicule en attente de confirmation
+  const [toggleWarning, setToggleWarning] = useState<{
+    vehicleId: number;
+    warning: string;
+    activeDossiers: number;
+  } | null>(null);
+
   // Toast de feedback après action
   const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -612,6 +630,36 @@ export default function GestionVehiculesPage() {
       setToast({ type: "success", text: "Véhicule archivé." });
     } catch (err: unknown) {
       setDeleteError(err instanceof Error ? err.message : "Erreur inattendue.");
+    }
+  }
+
+  async function handleToggle(vehicle: VehicleBoItem, forceConfirm = false) {
+    try {
+      const res = await fetch(urlToggleLld(vehicle.id, forceConfirm), {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(payload.detail || "Erreur lors de la bascule.");
+      }
+      const data = (await res.json()) as ToggleResponse;
+      if (!data.toggled && data.warning) {
+        setToggleWarning({ vehicleId: vehicle.id, warning: data.warning, activeDossiers: data.active_dossiers_count });
+        return;
+      }
+      setVehicles((prev) =>
+        prev.map((item) =>
+          item.id === vehicle.id
+            ? { ...item, lld: data.vehicle.lld, mensualite: data.vehicle.mensualite }
+            : item,
+        ),
+      );
+      setToggleWarning(null);
+      const newMode = data.vehicle.lld ? "LLD" : "Vente";
+      setToast({ type: "success", text: `${vehicle.make} ${vehicle.model} basculé en ${newMode}.` });
+    } catch (err: unknown) {
+      setToast({ type: "error", text: err instanceof Error ? err.message : "Erreur inattendue." });
     }
   }
 
@@ -849,6 +897,7 @@ export default function GestionVehiculesPage() {
                       )}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right", whiteSpace: "nowrap" }}>
+                      {/* Confirmation de suppression */}
                       {deleteConfirmId === v.id ? (
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: ".82rem", color: "#374151", fontWeight: 600 }}>Confirmer ?</span>
@@ -869,8 +918,39 @@ export default function GestionVehiculesPage() {
                             Non
                           </button>
                         </span>
+                      ) : toggleWarning?.vehicleId === v.id ? (
+                        /* Avertissement dossiers actifs avant bascule */
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: ".82rem", color: "#b45309", fontWeight: 600 }}>
+                            ⚠ {toggleWarning.activeDossiers} dossier(s) actif(s)
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Confirmer la bascule de ${v.make} ${v.model}`}
+                            onClick={() => handleToggle(v, true)}
+                            style={{ padding: "5px 12px", background: "#b45309", color: "#fff", border: 0, borderRadius: 6, fontWeight: 700, fontSize: ".82rem", cursor: "pointer" }}
+                          >
+                            Basculer quand même
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Annuler la bascule de ${v.make} ${v.model}`}
+                            onClick={() => setToggleWarning(null)}
+                            style={{ padding: "5px 12px", background: "#f3f4f6", color: "#374151", border: 0, borderRadius: 6, fontWeight: 600, fontSize: ".82rem", cursor: "pointer" }}
+                          >
+                            Annuler
+                          </button>
+                        </span>
                       ) : (
                         <span style={{ display: "inline-flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            aria-label={`Basculer ${v.make} ${v.model} en ${v.lld ? "Vente" : "LLD"}`}
+                            onClick={() => handleToggle(v)}
+                            style={{ padding: "5px 14px", background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 6, fontWeight: 600, fontSize: ".82rem", cursor: "pointer" }}
+                          >
+                            → {v.lld ? "Vente" : "LLD"}
+                          </button>
                           <button
                             type="button"
                             aria-label={`Modifier ${v.make} ${v.model}`}

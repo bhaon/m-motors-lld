@@ -146,6 +146,19 @@ class VehicleCreateOut(BaseModel):
     message: str
 
 
+class ToggleLldOut(BaseModel):
+    """Réponse du toggle Achat ↔ LLD.
+
+    - toggled=True  : la bascule a été effectuée.
+    - toggled=False : des dossiers actifs existent, confirmation requise via ?confirm=true.
+    """
+
+    vehicle: VehicleOut
+    toggled: bool
+    warning: Optional[str] = None
+    active_dossiers_count: int = 0
+
+
 class VehicleUpdate(BaseModel):
     make: Optional[str] = None
     model: Optional[str] = None
