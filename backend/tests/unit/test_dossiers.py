@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -729,3 +729,210 @@ def test_submit_dossier_email_failure_does_not_block_submission(
     db.expunge_all()
     dossier_db = db.query(Dossier).filter(Dossier.id == dossier_id).one()
     assert dossier_db.status == DossierStatusEnum.depose
+
+
+# ── US-04-04 : Historique des contrats LLD ────────────────────────────────────
+
+def _create_validated_lld_dossier(
+    db: Session,
+    *,
+    client_id: int,
+    vehicle_id: int,
+    reference: str = "DOS-2026-00099",
+    duree_mois: int | None = None,
+    date_debut_contrat: date | None = None,
+) -> Dossier:
+    """Crée un dossier LLD validé directement en base pour les tests contrats."""
+    d = Dossier(
+        reference=reference,
+        type=DossierTypeEnum.lld,
+        status=DossierStatusEnum.valide,
+        client_id=client_id,
+        vehicle_id=vehicle_id,
+        duree_mois=duree_mois,
+        date_debut_contrat=date_debut_contrat,
+    )
+    db.add(d)
+    db.commit()
+    db.refresh(d)
+    return d
+
+
+def test_list_contrats_returns_only_lld_valide_dossiers(client: TestClient, db: Session) -> None:
+    """GET /contrats retourne uniquement les dossiers LLD avec statut valide."""
+    user = create_user(db, email="client.contrats.filter@example.com")
+    vehicle = create_vehicle(db, lld=True, mensualite=299.0)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    _create_validated_lld_dossier(db, client_id=user.id, vehicle_id=vehicle.id, reference="DOS-2026-LLD-VALIDE")
+    non_valide = Dossier(
+        reference="DOS-2026-LLD-DEPOSE",
+        type=DossierTypeEnum.lld,
+        status=DossierStatusEnum.depose,
+        client_id=user.id,
+        vehicle_id=vehicle.id,
+    )
+    achat_valide = Dossier(
+        reference="DOS-2026-ACHAT-VALIDE",
+        type=DossierTypeEnum.achat,
+        status=DossierStatusEnum.valide,
+        client_id=user.id,
+        vehicle_id=vehicle.id,
+    )
+    db.add_all([non_valide, achat_valide])
+    db.commit()
+
+    response = client.get("/api/v1/dossiers/contrats", headers=headers)
+
+    assert response.status_code == 200
+    items = response.json()
+    assert len(items) == 1
+    assert items[0]["reference"] == "DOS-2026-LLD-VALIDE"
+
+
+def test_list_contrats_returns_only_own_contracts(client: TestClient, db: Session) -> None:
+    """GET /contrats ne retourne que les contrats du client connecté."""
+    owner = create_user(db, email="client.contrats.owner@example.com")
+    other = create_user(db, email="client.contrats.other@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=owner.email, password="SecretMotDePasse1!")
+
+    _create_validated_lld_dossier(db, client_id=owner.id, vehicle_id=vehicle.id, reference="DOS-2026-OWNER")
+    _create_validated_lld_dossier(db, client_id=other.id, vehicle_id=vehicle.id, reference="DOS-2026-OTHER")
+
+    response = client.get("/api/v1/dossiers/contrats", headers=headers)
+
+    assert response.status_code == 200
+    items = response.json()
+    assert len(items) == 1
+    assert items[0]["reference"] == "DOS-2026-OWNER"
+
+
+def test_list_contrats_requires_authentication(client: TestClient) -> None:
+    """GET /contrats retourne 401 sans cookie d'authentification."""
+    response = client.get("/api/v1/dossiers/contrats")
+    assert response.status_code == 401
+
+
+def test_list_contrats_empty_for_client_without_validated_lld(client: TestClient, db: Session) -> None:
+    """GET /contrats retourne une liste vide pour un client sans contrat LLD validé."""
+    user = create_user(db, email="client.contrats.empty@example.com")
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    response = client.get("/api/v1/dossiers/contrats", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_contrats_includes_vehicle_info_and_mensualite(client: TestClient, db: Session) -> None:
+    """GET /contrats retourne les infos véhicule (make, model, year, mensualite)."""
+    user = create_user(db, email="client.contrats.vehicle@example.com")
+    vehicle = create_vehicle(db, make="Tesla", model="Model 3", year=2025, lld=True, mensualite=549.0)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    _create_validated_lld_dossier(db, client_id=user.id, vehicle_id=vehicle.id)
+
+    response = client.get("/api/v1/dossiers/contrats", headers=headers)
+
+    assert response.status_code == 200
+    item = response.json()[0]
+    assert item["vehicle"]["make"] == "Tesla"
+    assert item["vehicle"]["model"] == "Model 3"
+    assert item["vehicle"]["year"] == 2025
+    assert item["vehicle"]["mensualite"] == 549.0
+
+
+def test_list_contrats_computes_date_fin_from_duree_mois(client: TestClient, db: Session) -> None:
+    """GET /contrats calcule date_fin = date_debut + duree_mois mois."""
+    user = create_user(db, email="client.contrats.datefin@example.com")
+    vehicle = create_vehicle(db, lld=True, mensualite=299.0)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    _create_validated_lld_dossier(
+        db,
+        client_id=user.id,
+        vehicle_id=vehicle.id,
+        duree_mois=12,
+        date_debut_contrat=date(2025, 1, 15),
+    )
+
+    response = client.get("/api/v1/dossiers/contrats", headers=headers)
+
+    assert response.status_code == 200
+    item = response.json()[0]
+    assert item["duree_mois"] == 12
+    assert item["date_debut"] == "2025-01-15"
+    assert item["date_fin"] == "2026-01-15"
+
+
+def test_list_contrats_is_active_true_when_date_fin_in_future(client: TestClient, db: Session) -> None:
+    """Un contrat dont la date de fin est dans le futur est marqué is_active=True."""
+    user = create_user(db, email="client.contrats.active@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    _create_validated_lld_dossier(
+        db,
+        client_id=user.id,
+        vehicle_id=vehicle.id,
+        duree_mois=36,
+        date_debut_contrat=date(2026, 1, 1),
+    )
+
+    response = client.get("/api/v1/dossiers/contrats", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()[0]["is_active"] is True
+
+
+def test_list_contrats_is_active_false_when_date_fin_in_past(client: TestClient, db: Session) -> None:
+    """Un contrat dont la date de fin est passée est marqué is_active=False."""
+    user = create_user(db, email="client.contrats.terminated@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    _create_validated_lld_dossier(
+        db,
+        client_id=user.id,
+        vehicle_id=vehicle.id,
+        duree_mois=12,
+        date_debut_contrat=date(2020, 1, 1),
+    )
+
+    response = client.get("/api/v1/dossiers/contrats", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()[0]["is_active"] is False
+
+
+def test_list_contrats_active_sorted_before_terminated(client: TestClient, db: Session) -> None:
+    """Les contrats actifs apparaissent avant les contrats terminés dans la réponse."""
+    user = create_user(db, email="client.contrats.sort@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    _create_validated_lld_dossier(
+        db,
+        client_id=user.id,
+        vehicle_id=vehicle.id,
+        reference="DOS-TERMINE",
+        duree_mois=12,
+        date_debut_contrat=date(2020, 1, 1),
+    )
+    _create_validated_lld_dossier(
+        db,
+        client_id=user.id,
+        vehicle_id=vehicle.id,
+        reference="DOS-ACTIF",
+        duree_mois=36,
+        date_debut_contrat=date(2026, 1, 1),
+    )
+
+    response = client.get("/api/v1/dossiers/contrats", headers=headers)
+
+    assert response.status_code == 200
+    items = response.json()
+    assert len(items) == 2
+    assert items[0]["reference"] == "DOS-ACTIF"
+    assert items[1]["reference"] == "DOS-TERMINE"

@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 import enum
@@ -41,6 +41,10 @@ class Dossier(Base):
     # Instruction
     motif_rejet: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     notes_internes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Timestamps et données contrat LLD (US-04-04)
+    duree_mois: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    date_debut_contrat: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # Timestamps métier
     draft_reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(
