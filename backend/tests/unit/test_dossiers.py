@@ -413,3 +413,78 @@ def test_delete_dossier_rejects_non_owner(client: TestClient, db: Session) -> No
 
     response = client.delete(f"/api/v1/dossiers/{dossier_payload['id']}", headers=other_headers)
     assert response.status_code == 404
+
+
+# ── US-04-01 : Tableau de bord client ────────────────────────────────────────
+
+def test_list_my_dossiers_returns_vehicle_info(client: TestClient, db: Session) -> None:
+    """GET /me retourne les infos véhicule (make, model, year) avec chaque dossier."""
+    user = create_user(db, email="client.dashboard@example.com")
+    vehicle = create_vehicle(db, make="Renault", model="Clio", year=2024, lld=False)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers)
+
+    response = client.get("/api/v1/dossiers/me", headers=headers)
+
+    assert response.status_code == 200
+    items = response.json()
+    assert len(items) == 1
+    item = items[0]
+    assert item["reference"].startswith("DOS-")
+    assert item["vehicle"]["make"] == "Renault"
+    assert item["vehicle"]["model"] == "Clio"
+    assert item["vehicle"]["year"] == 2024
+
+
+def test_list_my_dossiers_returns_only_own_dossiers(client: TestClient, db: Session) -> None:
+    """GET /me ne retourne que les dossiers du client connecté, pas ceux des autres."""
+    user_a = create_user(db, email="client.dashboard.a@example.com")
+    user_b = create_user(db, email="client.dashboard.b@example.com")
+    vehicle = create_vehicle(db, lld=False)
+    headers_a = _auth_cookie_header(client, email=user_a.email, password="SecretMotDePasse1!")
+    headers_b = _auth_cookie_header(client, email=user_b.email, password="SecretMotDePasse1!")
+
+    client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers_a)
+    client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers_b)
+
+    response = client.get("/api/v1/dossiers/me", headers=headers_a)
+
+    assert response.status_code == 200
+    items = response.json()
+    assert len(items) == 1
+    assert all(item["client_id"] == user_a.id for item in items)
+
+
+def test_list_my_dossiers_empty_for_new_client(client: TestClient, db: Session) -> None:
+    """GET /me retourne une liste vide pour un client sans dossier."""
+    user = create_user(db, email="client.nodossier@example.com")
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    response = client.get("/api/v1/dossiers/me", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_my_dossiers_ordered_most_recent_first(client: TestClient, db: Session) -> None:
+    """GET /me retourne les dossiers du plus récent au plus ancien."""
+    user = create_user(db, email="client.dashboard.order@example.com")
+    vehicle = create_vehicle(db, lld=False)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    first = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers).json()
+    second = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers).json()
+
+    response = client.get("/api/v1/dossiers/me", headers=headers)
+
+    assert response.status_code == 200
+    items = response.json()
+    assert items[0]["id"] == second["id"]
+    assert items[1]["id"] == first["id"]
+
+
+def test_list_my_dossiers_requires_authentication_dashboard(client: TestClient) -> None:
+    """GET /me retourne 401 sans cookie d'authentification."""
+    response = client.get("/api/v1/dossiers/me")
+    assert response.status_code == 401

@@ -12,15 +12,19 @@ from app.core.security import decode_token
 from app.models.dossier import Dossier, DossierStatusEnum, PieceJustificative
 from app.models.user import User
 from app.models.vehicle import Vehicle
+from sqlalchemy.orm import joinedload
+
 from app.schemas.dossier import (
     DossierCreateIn,
     DossierCreateOut,
     DossierDetailOut,
+    DossierListItemOut,
     DossierPieceChecklistItemOut,
     PieceType,
     PieceUploadCompleteIn,
     PieceUploadInitIn,
     PieceUploadInitOut,
+    VehicleSummaryOut,
 )
 from app.services.object_storage import (
     build_piece_object_key,
@@ -145,30 +149,36 @@ def create_dossier(
     )
 
 
-@router.get("/me", response_model=list[DossierCreateOut])
+@router.get("/me", response_model=list[DossierListItemOut])
 def list_my_dossiers(
     db: DbSession,
     access_token: str | None = Cookie(default=None),
-) -> list[DossierCreateOut]:
-    """Retourne les dossiers du client connecté du plus récent au plus ancien."""
+) -> list[DossierListItemOut]:
+    """Retourne les dossiers du client connecté avec info véhicule, du plus récent au plus ancien."""
     user = _resolve_user_from_cookie(access_token, db)
     dossiers = (
         db.query(Dossier)
+        .options(joinedload(Dossier.vehicle))
         .filter(Dossier.client_id == user.id)
         .order_by(Dossier.created_at.desc(), Dossier.id.desc())
         .all()
     )
     return [
-        DossierCreateOut(
-            id=dossier.id,
-            reference=dossier.reference,
-            type=dossier.type,
-            status=dossier.status.value,
-            vehicle_id=dossier.vehicle_id,
-            client_id=dossier.client_id,
-            created_at=dossier.created_at,
+        DossierListItemOut(
+            id=d.id,
+            reference=d.reference,
+            type=d.type,
+            status=d.status.value,
+            vehicle_id=d.vehicle_id,
+            client_id=d.client_id,
+            created_at=d.created_at,
+            vehicle=VehicleSummaryOut(
+                make=d.vehicle.make if d.vehicle else "—",
+                model=d.vehicle.model if d.vehicle else "",
+                year=d.vehicle.year if d.vehicle else 0,
+            ),
         )
-        for dossier in dossiers
+        for d in dossiers
     ]
 
 

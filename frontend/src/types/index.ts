@@ -28,6 +28,33 @@ export interface Vehicle {
 
 export type ContratType = "all" | "achat" | "lld";
 
+export type DossierStatus =
+  | "brouillon"
+  | "depose"
+  | "en_instruction"
+  | "valide"
+  | "rejete"
+  | "annule";
+
+export type DossierType = "achat" | "lld";
+
+export interface DossierVehicle {
+  make: string;
+  model: string;
+  year: number;
+}
+
+export interface DossierListItem {
+  id: number;
+  reference: string;
+  type: DossierType;
+  status: DossierStatus;
+  vehicle_id: number;
+  client_id: number;
+  created_at: string | null;
+  vehicle: DossierVehicle;
+}
+
 export interface Filters {
   marque: string;
   modele: string;

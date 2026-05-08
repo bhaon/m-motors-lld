@@ -24,6 +24,29 @@ class DossierCreateOut(BaseModel):
     created_at: datetime | None = None
 
 
+class VehicleSummaryOut(BaseModel):
+    """Résumé véhicule inclus dans le listing du tableau de bord client."""
+
+    make: str
+    model: str
+    year: int
+
+
+class DossierListItemOut(BaseModel):
+    """Dossier enrichi avec les informations véhicule pour le tableau de bord."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    reference: str
+    type: DossierTypeEnum
+    status: str
+    vehicle_id: int
+    client_id: int
+    created_at: datetime | None = None
+    vehicle: VehicleSummaryOut
+
+
 class PieceUploadInitIn(BaseModel):
     type_piece: PieceType
     filename: str
