@@ -1,11 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, status
+from fastapi import APIRouter, Body, Cookie, HTTPException, Query, Request, status
 
 from app.api.v1.openapi_responses import openapi_http_error
-from app.core.deps import DbSession, GestionnaireUser
-from app.models.vehicle import MoteurEnum, Vehicle
-from app.schemas.vehicle import VehicleCreate, VehicleListOut, VehicleOut, VehicleUpdate
+from app.core.deps import DbSession, GestionnaireMultiAuth, GestionnaireUser, enforce_role, get_user_from_cookie
+from app.models.user import RoleEnum
+from app.models.vehicle import MoteurEnum, Vehicle, VehiclePhoto
+from app.schemas.vehicle import VehicleBoOut, VehicleCreate, VehicleCreateOut, VehicleListOut, VehicleOut, VehicleUpdate
+from app.services import audit as audit_service
 
 router = APIRouter(prefix="/vehicules", tags=["Véhicules"])
 
@@ -83,6 +85,32 @@ def list_marques(db: DbSession):
 
 
 @router.get(
+    "/backoffice",
+    response_model=list[VehicleBoOut],
+    summary="US-05-xx — Liste back-office (gestionnaire+, cookie)",
+    responses={**_R403_BO},
+)
+def list_vehicles_backoffice(
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=200),
+) -> list[VehicleBoOut]:
+    """Liste tous les véhicules non archivés pour le back-office (visible_catalogue inclus)."""
+    user = get_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+    vehicles = (
+        db.query(Vehicle)
+        .filter(Vehicle.archived == False)
+        .order_by(Vehicle.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return [VehicleBoOut.from_bo_vehicle(v) for v in vehicles]
+
+
+@router.get(
     "/{vehicle_id}",
     response_model=VehicleOut,
     summary="US-01-04 — Fiche détaillée",
@@ -114,19 +142,75 @@ def get_vehicle(vehicle_id: int, db: DbSession):
     "",
     response_model=VehicleOut,
     status_code=201,
-    summary="US-05-01 — Créer un véhicule",
+    summary="US-05-01 — Créer un véhicule (Bearer)",
     responses={**_R403_BO},
 )
 def create_vehicle(
     payload: Annotated[VehicleCreate, Body()],
     db: DbSession,
-    _: GestionnaireUser,
+    request: Request,
+    current_user: GestionnaireUser,
 ):
-    v = Vehicle(**payload.model_dump())
+    """Crée un véhicule via authentification Bearer (API / tests)."""
+    v = Vehicle(**payload.model_dump(exclude={"photos_urls"}))
     db.add(v)
+    db.flush()
+    for url in (payload.photos_urls or []):
+        db.add(VehiclePhoto(vehicle_id=v.id, url=url, is_main=False, order=1))
+    audit_service.record(
+        db,
+        action=audit_service.VEHICLE_CREATED,
+        entity_type="vehicle",
+        entity_id=v.id,
+        operator=current_user,
+        ip_address=request.client.host if request.client else None,
+        before_state=None,
+        after_state={"id": v.id, "make": v.make, "model": v.model, "lld": v.lld, "prix": float(v.prix), "visible_catalogue": v.visible_catalogue},
+    )
     db.commit()
     db.refresh(v)
     return VehicleOut.from_orm_vehicle(v)
+
+
+@router.post(
+    "/creer",
+    response_model=VehicleCreateOut,
+    status_code=201,
+    summary="US-05-01 — Créer un véhicule (Cookie — formulaire gestionnaire)",
+    responses={**_R403_BO},
+)
+def create_vehicle_form(
+    payload: Annotated[VehicleCreate, Body()],
+    db: DbSession,
+    request: Request,
+    access_token: str | None = Cookie(default=None),
+):
+    """Crée un véhicule via authentification cookie (formulaire front gestionnaire)."""
+    user = get_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    v = Vehicle(**payload.model_dump(exclude={"photos_urls"}))
+    db.add(v)
+    db.flush()
+    for url in (payload.photos_urls or []):
+        db.add(VehiclePhoto(vehicle_id=v.id, url=url, is_main=False, order=1))
+    audit_service.record(
+        db,
+        action=audit_service.VEHICLE_CREATED,
+        entity_type="vehicle",
+        entity_id=v.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state=None,
+        after_state={"id": v.id, "make": v.make, "model": v.model, "lld": v.lld, "prix": float(v.prix), "visible_catalogue": v.visible_catalogue},
+    )
+    db.commit()
+    db.refresh(v)
+    return VehicleCreateOut(
+        id=v.id,
+        reference=f"VEH-{v.id:05d}",
+        message="Véhicule ajouté au catalogue avec succès.",
+    )
 
 
 @router.patch(
@@ -142,7 +226,8 @@ def update_vehicle(
     vehicle_id: int,
     payload: Annotated[VehicleUpdate, Body()],
     db: DbSession,
-    _: GestionnaireUser,
+    request: Request,
+    current_user: GestionnaireMultiAuth,
 ):
     v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
     if not v:
@@ -150,8 +235,20 @@ def update_vehicle(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=VEHICULE_INTROUVABLE_DETAIL,
         )
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changed_fields = payload.model_dump(exclude_unset=True)
+    before_state = {field: getattr(v, field) for field in changed_fields}
+    for field, value in changed_fields.items():
         setattr(v, field, value)
+    audit_service.record(
+        db,
+        action=audit_service.VEHICLE_UPDATED,
+        entity_type="vehicle",
+        entity_id=v.id,
+        operator=current_user,
+        ip_address=request.client.host if request.client else None,
+        before_state=before_state,
+        after_state=changed_fields,
+    )
     db.commit()
     db.refresh(v)
     return VehicleOut.from_orm_vehicle(v)
@@ -197,7 +294,8 @@ def toggle_lld(
 def archive_vehicle(
     vehicle_id: int,
     db: DbSession,
-    _: GestionnaireUser,
+    request: Request,
+    current_user: GestionnaireMultiAuth,
 ):
     from datetime import datetime, timezone
 
@@ -207,7 +305,18 @@ def archive_vehicle(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=VEHICULE_INTROUVABLE_DETAIL,
         )
+    before_state = {"id": v.id, "make": v.make, "model": v.model, "archived": False, "visible_catalogue": v.visible_catalogue}
     v.archived = True
     v.archived_at = datetime.now(timezone.utc)
     v.visible_catalogue = False
+    audit_service.record(
+        db,
+        action=audit_service.VEHICLE_ARCHIVED,
+        entity_type="vehicle",
+        entity_id=v.id,
+        operator=current_user,
+        ip_address=request.client.host if request.client else None,
+        before_state=before_state,
+        after_state={"archived": True, "archived_at": v.archived_at.isoformat(), "visible_catalogue": False},
+    )
     db.commit()

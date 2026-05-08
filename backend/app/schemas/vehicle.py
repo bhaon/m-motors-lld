@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from app.models.vehicle import MoteurEnum
 
 
@@ -74,6 +74,36 @@ class VehicleListOut(BaseModel):
     items: List[VehicleOut]
 
 
+class VehicleBoOut(VehicleOut):
+    """Schéma de sortie back-office : inclut visible_catalogue."""
+
+    visible_catalogue: bool
+
+    @classmethod
+    def from_bo_vehicle(cls, v) -> "VehicleBoOut":
+        return cls(
+            id=v.id,
+            make=v.make,
+            model=v.model,
+            year=v.year,
+            km=v.km,
+            moteur=v.moteur,
+            prix=float(v.prix),
+            lld=v.lld,
+            mensualite=float(v.mensualite) if v.mensualite else None,
+            img=v.img,
+            specs=VehicleSpecsOut(
+                carburant=v.spec_carburant,
+                boite=v.spec_boite,
+                couleur=v.spec_couleur,
+                places=v.spec_places,
+                puissance=v.spec_puissance,
+            ),
+            options=[VehicleOptionOut.model_validate(o) for o in v.options],
+            visible_catalogue=v.visible_catalogue,
+        )
+
+
 class VehicleCreate(BaseModel):
     make: str
     model: str
@@ -90,6 +120,15 @@ class VehicleCreate(BaseModel):
     spec_places: int = 5
     spec_puissance: str
     visible_catalogue: bool = True
+    photos_urls: Optional[List[str]] = None
+
+    @field_validator("img")
+    @classmethod
+    def img_non_vide(cls, v: str) -> str:
+        """US-05-01 — au moins une photo principale est obligatoire."""
+        if not v or not v.strip():
+            raise ValueError("L'URL de la photo principale est obligatoire.")
+        return v.strip()
 
     @model_validator(mode="after")
     def mensualite_si_lld(self) -> "VehicleCreate":
@@ -97,6 +136,14 @@ class VehicleCreate(BaseModel):
         if self.lld and self.mensualite is None:
             raise ValueError("mensualite est requise lorsque lld est activé")
         return self
+
+
+class VehicleCreateOut(BaseModel):
+    """Confirmation de création d'un véhicule (endpoint formulaire gestionnaire)."""
+
+    id: int
+    reference: str
+    message: str
 
 
 class VehicleUpdate(BaseModel):

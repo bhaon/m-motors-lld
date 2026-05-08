@@ -122,7 +122,7 @@ jobs:
           grep -E "^\[FAIL\]|^\[WARN\]|^== Summary" kube-bench-results.txt >> $GITHUB_STEP_SUMMARY || true
 
       - name: Upload résultats
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: kube-bench-${{ github.run_id }}
           path: kube-bench-results.txt

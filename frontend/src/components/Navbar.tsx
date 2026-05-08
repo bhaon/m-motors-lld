@@ -64,6 +64,34 @@ function FolderIcon({ size = 16 }: { size?: number }) {
 }
 
 /**
+ * Icône liste (SVG) pour le lien "Gestion véhicules" (gestionnaire+).
+ */
+function ListIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Icône bouclier (SVG) pour le lien "Administration" (admin uniquement).
+ */
+function ShieldIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12c5.16-1.26 9-6.45 9-12V5zm0 4l5 2.18V11c0 3.34-2.27 6.48-5 7.93C9.27 17.48 7 14.34 7 11V7.18z"
+      />
+    </svg>
+  );
+}
+
+/**
  * Icône contrat (SVG) pour les éléments de menu.
  */
 function ContractIcon({ size = 16 }: { size?: number }) {
@@ -77,11 +105,17 @@ function ContractIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+const GESTIONNAIRE_ROLES = new Set(["gestionnaire", "superviseur", "admin"]);
+
 export default function Navbar() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [initials, setInitials] = useState<string>("U");
+  const [role, setRole] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const isGestionnaire = role !== null && GESTIONNAIRE_ROLES.has(role);
+  const isAdmin = role === "admin";
 
   /**
    * Vérifie si l'utilisateur est connecté afin d'afficher la pastille profil.
@@ -98,21 +132,29 @@ export default function Navbar() {
       if (!response.ok) {
         setIsAuthenticated(false);
         setInitials("U");
+        setRole(null);
         return;
       }
       setIsAuthenticated(true);
       try {
-        const me = (await response.json()) as { first_name?: string; last_name?: string };
+        const me = (await response.json()) as {
+          first_name?: string;
+          last_name?: string;
+          role?: string;
+        };
         const a = (me.first_name || "").trim()[0] || "";
         const b = (me.last_name || "").trim()[0] || "";
         setInitials(`${a}${b}`.toUpperCase() || "U");
+        setRole(me.role ?? null);
       } catch {
         // En tests / réponses non JSON, on conserve le fallback.
         setInitials("U");
+        setRole(null);
       }
     } catch {
       setIsAuthenticated(false);
       setInitials("U");
+      setRole(null);
     }
   }, []);
 
@@ -345,6 +387,52 @@ export default function Navbar() {
                   <ContractIcon />
                   Mes contrats
                 </Link>
+
+                {isGestionnaire && (
+                  <>
+                    <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+                    <Link
+                      href="/backoffice/vehicules"
+                      role="menuitem"
+                      onClick={() => setIsMenuOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "12px 14px",
+                        textDecoration: "none",
+                        color: "#0e7490",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <ListIcon />
+                      Gestion véhicules
+                    </Link>
+                  </>
+                )}
+
+                {isAdmin && (
+                  <>
+                    <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+                    <Link
+                      href="/admin/utilisateurs"
+                      role="menuitem"
+                      onClick={() => setIsMenuOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "12px 14px",
+                        textDecoration: "none",
+                        color: "#b91c1c",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <ShieldIcon />
+                      Administration
+                    </Link>
+                  </>
+                )}
 
                 <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
 

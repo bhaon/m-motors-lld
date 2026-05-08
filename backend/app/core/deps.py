@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError
 from sqlalchemy.orm import Session
@@ -14,6 +14,8 @@ bearer = HTTPBearer()
 DbSession = Annotated[Session, Depends(get_db)]
 BearerCredentials = Annotated[HTTPAuthorizationCredentials, Depends(bearer)]
 
+
+# ── Auth Bearer (back-office vehicules.py) ────────────────────────────────────
 
 def get_current_user(
     credentials: BearerCredentials,
@@ -55,3 +57,91 @@ require_superviseur = require_role(RoleEnum.superviseur, RoleEnum.admin)
 require_admin = require_role(RoleEnum.admin)
 
 GestionnaireUser = Annotated[User, Depends(require_gestionnaire)]
+SuperviseurUser = Annotated[User, Depends(require_superviseur)]
+AdminUser = Annotated[User, Depends(require_admin)]
+
+
+# ── Auth Cookie — utilitaires partagés (US-11-03) ─────────────────────────────
+
+def get_user_from_cookie(access_token: str | None, db: Session) -> User:
+    """Résout l'utilisateur depuis un cookie JWT et vérifie la cohérence du claim rôle.
+
+    Défense en profondeur : si le rôle dans le JWT diffère du rôle en base
+    (ex. token antérieur à une révocation de privilège), la requête est rejetée.
+    """
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentification requise.",
+        )
+    try:
+        payload = decode_token(access_token)
+        user_id = int(str(payload.get("sub")))
+        role_claim: str | None = payload.get("role")
+    except (JWTError, TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token invalide.",
+        )
+
+    user = db.query(User).filter(User.id == user_id, User.deleted_at.is_(None)).first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentification requise.",
+        )
+
+    if role_claim is not None and role_claim != user.role.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Rôle JWT incohérent avec le rôle en base.",
+        )
+
+    return user
+
+
+def enforce_role(user: User, *allowed_roles: RoleEnum) -> None:
+    """Lève 403 si le rôle de l'utilisateur n'est pas parmi les rôles autorisés."""
+    if user.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Accès réservé aux rôles : {[r.value for r in allowed_roles]}",
+        )
+
+
+# ── Auth mixte Bearer + Cookie (back-office dashboard) ───────────────────────
+
+_optional_bearer = HTTPBearer(auto_error=False)
+_OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Depends(_optional_bearer)]
+
+
+def _get_gestionnaire_multi_auth(
+    credentials: _OptionalBearer,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> User:
+    """Auth mixte : Bearer (tests/API) OU Cookie (front gestionnaire).
+
+    Tente d'abord le Bearer token ; si absent, se rabat sur le cookie JWT.
+    Le rôle doit être gestionnaire, superviseur ou admin dans les deux cas.
+    """
+    if credentials is not None:
+        token = credentials.credentials
+        try:
+            payload = decode_token(token)
+            sub = payload.get("sub")
+            if sub is None:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
+            user_id = int(str(sub))
+        except (JWTError, TypeError, ValueError):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide ou expiré")
+        user = db.query(User).filter(User.id == user_id, User.deleted_at.is_(None)).first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur inactif ou supprimé")
+    else:
+        user = get_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+    return user
+
+
+GestionnaireMultiAuth = Annotated[User, Depends(_get_gestionnaire_multi_auth)]

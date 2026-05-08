@@ -5,13 +5,11 @@ from datetime import date, datetime, timezone
 import logging
 from typing import cast
 
-from fastapi import APIRouter, Cookie, HTTPException, status
-from jose import JWTError
+from fastapi import APIRouter, Cookie, HTTPException, Request, status
 
-from app.core.deps import DbSession
-from app.core.security import decode_token
+from app.core.deps import DbSession, enforce_role, get_user_from_cookie
 from app.models.dossier import Dossier, DossierStatusEnum, DossierTypeEnum, PieceJustificative
-from app.models.user import User
+from app.models.user import RoleEnum, User
 from app.models.vehicle import Vehicle
 from sqlalchemy.orm import joinedload
 
@@ -42,6 +40,7 @@ from app.services.object_storage import (
 )
 from app.core.config import settings
 from app.services.emailing import send_status_change_email
+from app.services import audit as audit_service
 
 router = APIRouter(prefix="/dossiers", tags=["Dossiers"])
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
@@ -50,19 +49,11 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_user_from_cookie(access_token: str | None, db: DbSession) -> User:
-    """Résout l'utilisateur client à partir du cookie d'authentification."""
-    if not access_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentification requise.")
-    try:
-        payload = decode_token(access_token)
-        user_id = int(str(payload.get("sub")))
-    except (JWTError, TypeError, ValueError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide.")
+    """Résout l'utilisateur depuis le cookie JWT (délègue à get_user_from_cookie).
 
-    user = db.query(User).filter(User.id == user_id, User.deleted_at.is_(None)).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentification requise.")
-    return user
+    Inclut la vérification du claim rôle JWT contre le rôle en base (US-11-03).
+    """
+    return get_user_from_cookie(access_token, db)
 
 
 def _build_dossier_reference(db: DbSession, *, now: datetime) -> str:
@@ -187,6 +178,39 @@ def list_my_dossiers(
         db.query(Dossier)
         .options(joinedload(Dossier.vehicle))
         .filter(Dossier.client_id == user.id)
+        .order_by(Dossier.created_at.desc(), Dossier.id.desc())
+        .all()
+    )
+    return [
+        DossierListItemOut(
+            id=d.id,
+            reference=d.reference,
+            type=d.type,
+            status=d.status.value,
+            vehicle_id=d.vehicle_id,
+            client_id=d.client_id,
+            created_at=d.created_at,
+            vehicle=VehicleSummaryOut(
+                make=d.vehicle.make if d.vehicle else "—",
+                model=d.vehicle.model if d.vehicle else "",
+                year=d.vehicle.year if d.vehicle else 0,
+            ),
+        )
+        for d in dossiers
+    ]
+
+
+@router.get("/backoffice", response_model=list[DossierListItemOut])
+def list_all_dossiers_backoffice(
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> list[DossierListItemOut]:
+    """Liste tous les dossiers (tous clients) — réservé gestionnaire, superviseur, admin."""
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+    dossiers = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.vehicle))
         .order_by(Dossier.created_at.desc(), Dossier.id.desc())
         .all()
     )
@@ -355,6 +379,7 @@ def delete_dossier(
 def submit_dossier(
     dossier_id: int,
     db: DbSession,
+    request: Request,
     access_token: str | None = Cookie(default=None),
 ) -> DossierDetailOut:
     """Soumet un dossier uniquement si toutes les pièces obligatoires sont présentes."""
@@ -366,8 +391,19 @@ def submit_dossier(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Pièces manquantes: {', '.join(missing_pieces)}",
         )
+    old_status = dossier.status.value
     dossier.status = DossierStatusEnum.depose
     dossier.submitted_at = datetime.now(timezone.utc)
+    audit_service.record(
+        db,
+        action=audit_service.DOSSIER_SUBMITTED,
+        entity_type="dossier",
+        entity_id=dossier.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state={"status": old_status, "reference": dossier.reference},
+        after_state={"status": DossierStatusEnum.depose.value, "submitted_at": dossier.submitted_at.isoformat()},
+    )
     db.commit()
     db.refresh(dossier)
     try:

@@ -69,7 +69,7 @@ jobs:
           CI: true
 
       - name: Upload frontend coverage
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: frontend-coverage-${{ inputs.image_tag }}
@@ -142,7 +142,7 @@ jobs:
           ENVIRONMENT: "test"
 
       - name: Upload backend coverage
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: backend-coverage-${{ inputs.image_tag }}
@@ -336,7 +336,7 @@ jobs:
           cache-dir: /tmp/.trivy-cache
 
       - name: Upload SBOM artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         if: ${{ inputs.environment == 'production' }}
         with:
           name: sbom-${{ inputs.image_tag }}
