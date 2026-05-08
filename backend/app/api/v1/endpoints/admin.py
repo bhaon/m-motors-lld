@@ -42,7 +42,7 @@ def list_users(
         .limit(limit)
         .all()
     )
-    return users
+    return [UserAdminOut.model_validate(user) for user in users]
 
 
 @router.post("/users", response_model=UserCreateOut, status_code=status.HTTP_201_CREATED)
@@ -215,4 +215,5 @@ def list_audit_trail(
         q = q.filter(AuditTrail.action == action)
     if entity_type:
         q = q.filter(AuditTrail.entity_type == entity_type)
-    return q.offset(skip).limit(limit).all()
+    entries = q.offset(skip).limit(limit).all()
+    return [AuditTrailOut.model_validate(entry) for entry in entries]
