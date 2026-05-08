@@ -75,6 +75,20 @@ function PlusIcon({ size = 16 }: { size?: number }) {
 }
 
 /**
+ * Icône bouclier (SVG) pour le lien "Administration" (admin uniquement).
+ */
+function ShieldIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12c5.16-1.26 9-6.45 9-12V5zm0 4l5 2.18V11c0 3.34-2.27 6.48-5 7.93C9.27 17.48 7 14.34 7 11V7.18z"
+      />
+    </svg>
+  );
+}
+
+/**
  * Icône contrat (SVG) pour les éléments de menu.
  */
 function ContractIcon({ size = 16 }: { size?: number }) {
@@ -98,6 +112,7 @@ export default function Navbar() {
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const isGestionnaire = role !== null && GESTIONNAIRE_ROLES.has(role);
+  const isAdmin = role === "admin";
 
   /**
    * Vérifie si l'utilisateur est connecté afin d'afficher la pastille profil.
@@ -389,6 +404,29 @@ export default function Navbar() {
                     >
                       <PlusIcon />
                       Ajouter un véhicule
+                    </Link>
+                  </>
+                )}
+
+                {isAdmin && (
+                  <>
+                    <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+                    <Link
+                      href="/admin/utilisateurs"
+                      role="menuitem"
+                      onClick={() => setIsMenuOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "12px 14px",
+                        textDecoration: "none",
+                        color: "#b91c1c",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <ShieldIcon />
+                      Administration
                     </Link>
                   </>
                 )}
