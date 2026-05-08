@@ -74,6 +74,36 @@ class VehicleListOut(BaseModel):
     items: List[VehicleOut]
 
 
+class VehicleBoOut(VehicleOut):
+    """Schéma de sortie back-office : inclut visible_catalogue."""
+
+    visible_catalogue: bool
+
+    @classmethod
+    def from_bo_vehicle(cls, v) -> "VehicleBoOut":
+        return cls(
+            id=v.id,
+            make=v.make,
+            model=v.model,
+            year=v.year,
+            km=v.km,
+            moteur=v.moteur,
+            prix=float(v.prix),
+            lld=v.lld,
+            mensualite=float(v.mensualite) if v.mensualite else None,
+            img=v.img,
+            specs=VehicleSpecsOut(
+                carburant=v.spec_carburant,
+                boite=v.spec_boite,
+                couleur=v.spec_couleur,
+                places=v.spec_places,
+                puissance=v.spec_puissance,
+            ),
+            options=[VehicleOptionOut.model_validate(o) for o in v.options],
+            visible_catalogue=v.visible_catalogue,
+        )
+
+
 class VehicleCreate(BaseModel):
     make: str
     model: str

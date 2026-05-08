@@ -3,10 +3,10 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Cookie, HTTPException, Query, status
 
 from app.api.v1.openapi_responses import openapi_http_error
-from app.core.deps import DbSession, GestionnaireUser, enforce_role, get_user_from_cookie
+from app.core.deps import DbSession, GestionnaireMultiAuth, GestionnaireUser, enforce_role, get_user_from_cookie
 from app.models.user import RoleEnum
 from app.models.vehicle import MoteurEnum, Vehicle, VehiclePhoto
-from app.schemas.vehicle import VehicleCreate, VehicleCreateOut, VehicleListOut, VehicleOut, VehicleUpdate
+from app.schemas.vehicle import VehicleBoOut, VehicleCreate, VehicleCreateOut, VehicleListOut, VehicleOut, VehicleUpdate
 
 router = APIRouter(prefix="/vehicules", tags=["Véhicules"])
 
@@ -81,6 +81,32 @@ def list_marques(db: DbSession):
         .all()
     )
     return [r.make for r in rows]
+
+
+@router.get(
+    "/backoffice",
+    response_model=list[VehicleBoOut],
+    summary="US-05-xx — Liste back-office (gestionnaire+, cookie)",
+    responses={**_R403_BO},
+)
+def list_vehicles_backoffice(
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=200),
+) -> list[VehicleBoOut]:
+    """Liste tous les véhicules non archivés pour le back-office (visible_catalogue inclus)."""
+    user = get_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+    vehicles = (
+        db.query(Vehicle)
+        .filter(Vehicle.archived == False)
+        .order_by(Vehicle.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return [VehicleBoOut.from_bo_vehicle(v) for v in vehicles]
 
 
 @router.get(
@@ -177,7 +203,7 @@ def update_vehicle(
     vehicle_id: int,
     payload: Annotated[VehicleUpdate, Body()],
     db: DbSession,
-    _: GestionnaireUser,
+    _: GestionnaireMultiAuth,
 ):
     v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
     if not v:
@@ -232,7 +258,7 @@ def toggle_lld(
 def archive_vehicle(
     vehicle_id: int,
     db: DbSession,
-    _: GestionnaireUser,
+    _: GestionnaireMultiAuth,
 ):
     from datetime import datetime, timezone
 

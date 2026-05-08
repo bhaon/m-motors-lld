@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError
 from sqlalchemy.orm import Session
@@ -107,3 +107,41 @@ def enforce_role(user: User, *allowed_roles: RoleEnum) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Accès réservé aux rôles : {[r.value for r in allowed_roles]}",
         )
+
+
+# ── Auth mixte Bearer + Cookie (back-office dashboard) ───────────────────────
+
+_optional_bearer = HTTPBearer(auto_error=False)
+_OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Depends(_optional_bearer)]
+
+
+def _get_gestionnaire_multi_auth(
+    credentials: _OptionalBearer,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> User:
+    """Auth mixte : Bearer (tests/API) OU Cookie (front gestionnaire).
+
+    Tente d'abord le Bearer token ; si absent, se rabat sur le cookie JWT.
+    Le rôle doit être gestionnaire, superviseur ou admin dans les deux cas.
+    """
+    if credentials is not None:
+        token = credentials.credentials
+        try:
+            payload = decode_token(token)
+            sub = payload.get("sub")
+            if sub is None:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
+            user_id = int(str(sub))
+        except (JWTError, TypeError, ValueError):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide ou expiré")
+        user = db.query(User).filter(User.id == user_id, User.deleted_at.is_(None)).first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur inactif ou supprimé")
+    else:
+        user = get_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+    return user
+
+
+GestionnaireMultiAuth = Annotated[User, Depends(_get_gestionnaire_multi_auth)]

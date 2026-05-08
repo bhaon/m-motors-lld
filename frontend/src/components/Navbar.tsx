@@ -64,12 +64,15 @@ function FolderIcon({ size = 16 }: { size?: number }) {
 }
 
 /**
- * Icône + (SVG) pour le lien "Ajouter un véhicule" (gestionnaire+).
+ * Icône liste (SVG) pour le lien "Gestion véhicules" (gestionnaire+).
  */
-function PlusIcon({ size = 16 }: { size?: number }) {
+function ListIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />
+      <path
+        fill="currentColor"
+        d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"
+      />
     </svg>
   );
 }
@@ -389,7 +392,7 @@ export default function Navbar() {
                   <>
                     <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
                     <Link
-                      href="/backoffice/vehicules/nouveau"
+                      href="/backoffice/vehicules"
                       role="menuitem"
                       onClick={() => setIsMenuOpen(false)}
                       style={{
@@ -402,8 +405,8 @@ export default function Navbar() {
                         fontWeight: 600,
                       }}
                     >
-                      <PlusIcon />
-                      Ajouter un véhicule
+                      <ListIcon />
+                      Gestion véhicules
                     </Link>
                   </>
                 )}
