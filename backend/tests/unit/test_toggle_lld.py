@@ -108,6 +108,7 @@ def test_toggle_returns_warning_when_active_dossiers_without_confirm(
     db.expire_all()
     from app.models.vehicle import Vehicle
     unchanged = db.query(Vehicle).filter(Vehicle.id == v.id).first()
+    assert unchanged is not None
     assert unchanged.lld is False
 
 
@@ -178,6 +179,8 @@ def test_toggle_generates_audit_entry(client: TestClient, db: Session) -> None:
     assert entry.entity_id == v.id
     assert entry.entity_type == "vehicle"
     assert entry.operator_id == gest_id
+    assert entry.before_state is not None
+    assert entry.after_state is not None
     assert entry.before_state["lld"] is False
     assert entry.after_state["lld"] is True
     assert entry.created_at.tzinfo is not None
