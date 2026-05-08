@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 import logging
 from typing import cast
 
-from fastapi import APIRouter, Cookie, HTTPException, status
+from fastapi import APIRouter, Cookie, HTTPException, Request, status
 
 from app.core.deps import DbSession, enforce_role, get_user_from_cookie
 from app.models.dossier import Dossier, DossierStatusEnum, DossierTypeEnum, PieceJustificative
@@ -40,6 +40,7 @@ from app.services.object_storage import (
 )
 from app.core.config import settings
 from app.services.emailing import send_status_change_email
+from app.services import audit as audit_service
 
 router = APIRouter(prefix="/dossiers", tags=["Dossiers"])
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
@@ -378,6 +379,7 @@ def delete_dossier(
 def submit_dossier(
     dossier_id: int,
     db: DbSession,
+    request: Request,
     access_token: str | None = Cookie(default=None),
 ) -> DossierDetailOut:
     """Soumet un dossier uniquement si toutes les pièces obligatoires sont présentes."""
@@ -389,8 +391,19 @@ def submit_dossier(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Pièces manquantes: {', '.join(missing_pieces)}",
         )
+    old_status = dossier.status.value
     dossier.status = DossierStatusEnum.depose
     dossier.submitted_at = datetime.now(timezone.utc)
+    audit_service.record(
+        db,
+        action=audit_service.DOSSIER_SUBMITTED,
+        entity_type="dossier",
+        entity_id=dossier.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state={"status": old_status, "reference": dossier.reference},
+        after_state={"status": DossierStatusEnum.depose.value, "submitted_at": dossier.submitted_at.isoformat()},
+    )
     db.commit()
     db.refresh(dossier)
     try:

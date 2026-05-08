@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Cookie, HTTPException, Query, status
+from fastapi import APIRouter, Cookie, HTTPException, Query, Request, status
 
 from app.core.deps import DbSession, enforce_role, get_user_from_cookie
 from app.core.security import hash_password
+from app.models.audit import AuditTrail
 from app.models.user import RoleEnum, User
 from app.schemas.admin import (
     RoleChangeIn,
@@ -16,6 +17,8 @@ from app.schemas.admin import (
     UserCreateIn,
     UserCreateOut,
 )
+from app.schemas.audit import AuditTrailOut
+from app.services import audit as audit_service
 
 router = APIRouter(prefix="/admin", tags=["Administration"])
 
@@ -46,6 +49,7 @@ def list_users(
 def create_user_admin(
     payload: UserCreateIn,
     db: DbSession,
+    request: Request,
     access_token: str | None = Cookie(default=None),
 ) -> UserCreateOut:
     """Crée un compte utilisateur avec le rôle choisi — admin uniquement."""
@@ -73,6 +77,24 @@ def create_user_admin(
         privacy_accepted_at=now,
     )
     db.add(user)
+    db.flush()
+    audit_service.record(
+        db,
+        action=audit_service.USER_CREATED,
+        entity_type="user",
+        entity_id=user.id,
+        operator=current_admin,
+        ip_address=request.client.host if request.client else None,
+        before_state=None,
+        after_state={
+            "id": user.id,
+            "email": user.email,
+            "role": user.role.value,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email_verified": user.email_verified,
+        },
+    )
     db.commit()
     db.refresh(user)
     return UserCreateOut(
@@ -87,6 +109,7 @@ def create_user_admin(
 def delete_user_admin(
     user_id: int,
     db: DbSession,
+    request: Request,
     access_token: str | None = Cookie(default=None),
 ) -> None:
     """Supprime (soft-delete) un utilisateur — admin uniquement."""
@@ -105,7 +128,25 @@ def delete_user_admin(
             detail="Impossible de supprimer son propre compte.",
         )
 
+    before_state = {
+        "id": target.id,
+        "email": target.email,
+        "role": target.role.value,
+        "first_name": target.first_name,
+        "last_name": target.last_name,
+        "is_active": target.is_active,
+    }
     target.deleted_at = datetime.now(timezone.utc)
+    audit_service.record(
+        db,
+        action=audit_service.USER_DELETED,
+        entity_type="user",
+        entity_id=target.id,
+        operator=current_admin,
+        ip_address=request.client.host if request.client else None,
+        before_state=before_state,
+        after_state={"deleted_at": target.deleted_at.isoformat()},
+    )
     db.commit()
 
 
@@ -114,6 +155,7 @@ def change_user_role(
     user_id: int,
     payload: RoleChangeIn,
     db: DbSession,
+    request: Request,
     access_token: str | None = Cookie(default=None),
 ) -> RoleChangeOut:
     """Modifie le rôle d'un utilisateur — admin uniquement.
@@ -135,10 +177,42 @@ def change_user_role(
             detail="Impossible de modifier son propre rôle.",
         )
 
+    old_role = target.role.value
     target.role = payload.role
+    audit_service.record(
+        db,
+        action=audit_service.USER_ROLE_CHANGED,
+        entity_type="user",
+        entity_id=target.id,
+        operator=current_admin,
+        ip_address=request.client.host if request.client else None,
+        before_state={"role": old_role},
+        after_state={"role": target.role.value},
+    )
     db.commit()
     return RoleChangeOut(
         message="Rôle mis à jour avec succès.",
         user_id=target.id,
         new_role=target.role.value,
     )
+
+
+@router.get("/audit-trail", response_model=list[AuditTrailOut])
+def list_audit_trail(
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    action: str | None = Query(default=None),
+    entity_type: str | None = Query(default=None),
+) -> list[AuditTrailOut]:
+    """Consulte l'audit trail — admin uniquement, lecture seule, append-only."""
+    user = get_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.admin)
+
+    q = db.query(AuditTrail).order_by(AuditTrail.created_at.desc())
+    if action:
+        q = q.filter(AuditTrail.action == action)
+    if entity_type:
+        q = q.filter(AuditTrail.entity_type == entity_type)
+    return q.offset(skip).limit(limit).all()

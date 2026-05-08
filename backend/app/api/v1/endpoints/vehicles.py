@@ -1,12 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Cookie, HTTPException, Query, status
+from fastapi import APIRouter, Body, Cookie, HTTPException, Query, Request, status
 
 from app.api.v1.openapi_responses import openapi_http_error
 from app.core.deps import DbSession, GestionnaireMultiAuth, GestionnaireUser, enforce_role, get_user_from_cookie
 from app.models.user import RoleEnum
 from app.models.vehicle import MoteurEnum, Vehicle, VehiclePhoto
 from app.schemas.vehicle import VehicleBoOut, VehicleCreate, VehicleCreateOut, VehicleListOut, VehicleOut, VehicleUpdate
+from app.services import audit as audit_service
 
 router = APIRouter(prefix="/vehicules", tags=["Véhicules"])
 
@@ -147,7 +148,8 @@ def get_vehicle(vehicle_id: int, db: DbSession):
 def create_vehicle(
     payload: Annotated[VehicleCreate, Body()],
     db: DbSession,
-    _: GestionnaireUser,
+    request: Request,
+    current_user: GestionnaireUser,
 ):
     """Crée un véhicule via authentification Bearer (API / tests)."""
     v = Vehicle(**payload.model_dump(exclude={"photos_urls"}))
@@ -155,6 +157,16 @@ def create_vehicle(
     db.flush()
     for url in (payload.photos_urls or []):
         db.add(VehiclePhoto(vehicle_id=v.id, url=url, is_main=False, order=1))
+    audit_service.record(
+        db,
+        action=audit_service.VEHICLE_CREATED,
+        entity_type="vehicle",
+        entity_id=v.id,
+        operator=current_user,
+        ip_address=request.client.host if request.client else None,
+        before_state=None,
+        after_state={"id": v.id, "make": v.make, "model": v.model, "lld": v.lld, "prix": float(v.prix), "visible_catalogue": v.visible_catalogue},
+    )
     db.commit()
     db.refresh(v)
     return VehicleOut.from_orm_vehicle(v)
@@ -170,6 +182,7 @@ def create_vehicle(
 def create_vehicle_form(
     payload: Annotated[VehicleCreate, Body()],
     db: DbSession,
+    request: Request,
     access_token: str | None = Cookie(default=None),
 ):
     """Crée un véhicule via authentification cookie (formulaire front gestionnaire)."""
@@ -181,6 +194,16 @@ def create_vehicle_form(
     db.flush()
     for url in (payload.photos_urls or []):
         db.add(VehiclePhoto(vehicle_id=v.id, url=url, is_main=False, order=1))
+    audit_service.record(
+        db,
+        action=audit_service.VEHICLE_CREATED,
+        entity_type="vehicle",
+        entity_id=v.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state=None,
+        after_state={"id": v.id, "make": v.make, "model": v.model, "lld": v.lld, "prix": float(v.prix), "visible_catalogue": v.visible_catalogue},
+    )
     db.commit()
     db.refresh(v)
     return VehicleCreateOut(
@@ -203,7 +226,8 @@ def update_vehicle(
     vehicle_id: int,
     payload: Annotated[VehicleUpdate, Body()],
     db: DbSession,
-    _: GestionnaireMultiAuth,
+    request: Request,
+    current_user: GestionnaireMultiAuth,
 ):
     v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
     if not v:
@@ -211,8 +235,20 @@ def update_vehicle(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=VEHICULE_INTROUVABLE_DETAIL,
         )
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changed_fields = payload.model_dump(exclude_unset=True)
+    before_state = {field: getattr(v, field) for field in changed_fields}
+    for field, value in changed_fields.items():
         setattr(v, field, value)
+    audit_service.record(
+        db,
+        action=audit_service.VEHICLE_UPDATED,
+        entity_type="vehicle",
+        entity_id=v.id,
+        operator=current_user,
+        ip_address=request.client.host if request.client else None,
+        before_state=before_state,
+        after_state=changed_fields,
+    )
     db.commit()
     db.refresh(v)
     return VehicleOut.from_orm_vehicle(v)
@@ -258,7 +294,8 @@ def toggle_lld(
 def archive_vehicle(
     vehicle_id: int,
     db: DbSession,
-    _: GestionnaireMultiAuth,
+    request: Request,
+    current_user: GestionnaireMultiAuth,
 ):
     from datetime import datetime, timezone
 
@@ -268,7 +305,18 @@ def archive_vehicle(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=VEHICULE_INTROUVABLE_DETAIL,
         )
+    before_state = {"id": v.id, "make": v.make, "model": v.model, "archived": False, "visible_catalogue": v.visible_catalogue}
     v.archived = True
     v.archived_at = datetime.now(timezone.utc)
     v.visible_catalogue = False
+    audit_service.record(
+        db,
+        action=audit_service.VEHICLE_ARCHIVED,
+        entity_type="vehicle",
+        entity_id=v.id,
+        operator=current_user,
+        ip_address=request.client.host if request.client else None,
+        before_state=before_state,
+        after_state={"archived": True, "archived_at": v.archived_at.isoformat(), "visible_catalogue": False},
+    )
     db.commit()
