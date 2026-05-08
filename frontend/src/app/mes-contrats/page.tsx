@@ -116,7 +116,7 @@ export default function MesContratsPage() {
             }}
           >
             <p style={{ fontSize: "1rem", marginBottom: "1rem" }}>
-              Vous n'avez pas encore de contrat LLD actif.
+              Vous n&apos;avez pas encore de contrat LLD actif.
             </p>
             <Link
               href="/"
