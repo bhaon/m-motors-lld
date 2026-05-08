@@ -142,3 +142,61 @@ def send_password_reset_email(*, to_email: str, reset_link: str) -> None:
             "html": _build_password_reset_email_html(reset_link),
         }
     )
+
+
+def _build_dossier_submission_email_html(*, dossier_reference: str, submitted_at_utc_iso: str) -> str:
+    """Construit le HTML de confirmation de dépôt de dossier côté client."""
+    return f"""
+    <div style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+        <tr>
+          <td style="background:#0f172a;padding:20px 24px;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:.04em;">
+            M-<span style="color:#06b6d4;">MOTORS</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 24px 18px;">
+            <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">Votre dossier a bien ete depose</h1>
+            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+              Nous confirmons la reception de votre dossier <strong>{dossier_reference}</strong>.
+            </p>
+            <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#4b5563;">
+              Date de soumission (UTC): <strong>{submitted_at_utc_iso}</strong>
+            </p>
+            <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#4b5563;">
+              Votre demande est transmise a l'equipe de traitement.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.6;">
+            Cet email a ete envoye automatiquement, merci de ne pas y repondre.<br />
+            © M-Motors
+          </td>
+        </tr>
+      </table>
+    </div>
+    """.strip()
+
+
+def send_dossier_submission_email(*, to_email: str, dossier_reference: str, submitted_at_utc_iso: str) -> None:
+    """Envoie l'email de confirmation de dépôt dossier via Resend quand la clé API est configurée."""
+    if resend is None:
+        logger.warning("Package resend absent : email de depot dossier non envoye pour %s", to_email)
+        return
+    if not settings.RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY absente : email de depot dossier non envoye pour %s", to_email)
+        return
+
+    resend.api_key = settings.RESEND_API_KEY
+    resend.Emails.send(
+        {
+            "from": settings.RESEND_FROM_EMAIL,
+            "to": [to_email],
+            "subject": "Confirmation de depot de votre dossier M-Motors",
+            "html": _build_dossier_submission_email_html(
+                dossier_reference=dossier_reference,
+                submitted_at_utc_iso=submitted_at_utc_iso,
+            ),
+        }
+    )

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -272,6 +274,103 @@ def test_submit_dossier_sets_status_depose_when_complete(client: TestClient, db:
     assert response.status_code == 200
     assert response.json()["status"] == DossierStatusEnum.depose.value
     assert response.json()["can_submit"] is True
+
+
+def test_submit_dossier_sends_confirmation_email_with_utc_timestamp(
+    client: TestClient, db: Session, monkeypatch
+) -> None:
+    """Envoie un email de confirmation avec un horodatage UTC ISO au dépôt dossier."""
+    user = create_user(db, email="client.submit.email@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier_payload = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+    dossier_id = dossier_payload["id"]
+
+    for piece_type in ("cni", "permis", "revenus", "domicile", "rib"):
+        db.add(
+            PieceJustificative(
+                dossier_id=dossier_id,
+                type_piece=piece_type,
+                filename=f"{piece_type}.pdf",
+                s3_key=f"dossiers/x/{piece_type}.pdf",
+                checksum="a" * 64,
+            )
+        )
+    db.commit()
+
+    captured: dict[str, str] = {}
+
+    def _fake_send_dossier_submission_email(*, to_email: str, dossier_reference: str, submitted_at_utc_iso: str) -> None:
+        """Capture les paramètres d'envoi email pour vérifier le contrat d'appel."""
+        captured["to_email"] = to_email
+        captured["dossier_reference"] = dossier_reference
+        captured["submitted_at_utc_iso"] = submitted_at_utc_iso
+
+    monkeypatch.setattr(dossier_endpoints, "send_dossier_submission_email", _fake_send_dossier_submission_email)
+
+    response = client.post(f"/api/v1/dossiers/{dossier_id}/submit", headers=headers)
+    assert response.status_code == 200
+    assert captured["to_email"] == user.email
+    assert captured["dossier_reference"] == response.json()["reference"]
+    assert captured["submitted_at_utc_iso"].endswith("Z")
+
+
+def test_submit_dossier_returns_submitted_at_in_utc(client: TestClient, db: Session) -> None:
+    """Retourne un horodatage de soumission cohérent avec le fuseau UTC."""
+    user = create_user(db, email="client.submit.utc@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier_payload = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+    dossier_id = dossier_payload["id"]
+
+    for piece_type in ("cni", "permis", "revenus", "domicile", "rib"):
+        db.add(
+            PieceJustificative(
+                dossier_id=dossier_id,
+                type_piece=piece_type,
+                filename=f"{piece_type}.pdf",
+                s3_key=f"dossiers/x/{piece_type}.pdf",
+                checksum="a" * 64,
+            )
+        )
+    db.commit()
+
+    response = client.post(f"/api/v1/dossiers/{dossier_id}/submit", headers=headers)
+    assert response.status_code == 200
+    submitted_at = response.json()["submitted_at"]
+    assert submitted_at is not None
+    submitted_at_dt = datetime.fromisoformat(submitted_at.replace("Z", "+00:00"))
+    assert submitted_at_dt.utcoffset() == timezone.utc.utcoffset(submitted_at_dt)
+
+
+def test_submit_dossier_persists_submitted_at_in_database(client: TestClient, db: Session) -> None:
+    """Apres soumission, `submitted_at` est bien enregistre sur le dossier en base (traitement futur)."""
+    user = create_user(db, email="client.submit.dbpersist@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier_payload = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+    dossier_id = dossier_payload["id"]
+
+    for piece_type in ("cni", "permis", "revenus", "domicile", "rib"):
+        db.add(
+            PieceJustificative(
+                dossier_id=dossier_id,
+                type_piece=piece_type,
+                filename=f"{piece_type}.pdf",
+                s3_key=f"dossiers/x/{piece_type}.pdf",
+                checksum="a" * 64,
+            )
+        )
+    db.commit()
+
+    response = client.post(f"/api/v1/dossiers/{dossier_id}/submit", headers=headers)
+    assert response.status_code == 200
+
+    db.expunge_all()
+    dossier_db = db.query(Dossier).filter(Dossier.id == dossier_id).one()
+    assert dossier_db.submitted_at is not None
+    assert dossier_db.submitted_at.tzinfo is not None
+    assert dossier_db.status == DossierStatusEnum.depose
 
 
 def test_delete_dossier_removes_owned_brouillon(client: TestClient, db: Session) -> None:

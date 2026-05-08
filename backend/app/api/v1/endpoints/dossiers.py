@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 from typing import cast
 
 from fastapi import APIRouter, Cookie, HTTPException, status
@@ -29,10 +30,12 @@ from app.services.object_storage import (
     get_s3_client,
     verify_object_checksum,
 )
+from app.services.emailing import send_dossier_submission_email
 
 router = APIRouter(prefix="/dossiers", tags=["Dossiers"])
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 REQUIRED_PIECE_TYPES: tuple[PieceType, ...] = ("cni", "permis", "revenus", "domicile", "rib")
+logger = logging.getLogger(__name__)
 
 
 def _resolve_user_from_cookie(access_token: str | None, db: DbSession) -> User:
@@ -93,6 +96,11 @@ def _build_piece_checklist(
     ]
     missing_pieces = [piece_type for piece_type in REQUIRED_PIECE_TYPES if piece_type not in uploaded_types]
     return checklist, missing_pieces, len(missing_pieces) == 0
+
+
+def _format_utc_timestamp(timestamp: datetime) -> str:
+    """Retourne une date ISO 8601 normalisée en UTC (suffixe Z)."""
+    return timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 @router.post("", response_model=DossierCreateOut, status_code=status.HTTP_201_CREATED)
@@ -226,6 +234,16 @@ def submit_dossier(
     dossier.submitted_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(dossier)
+    if dossier.submitted_at is not None:
+        try:
+            send_dossier_submission_email(
+                to_email=user.email,
+                dossier_reference=dossier.reference,
+                submitted_at_utc_iso=_format_utc_timestamp(dossier.submitted_at),
+            )
+        except Exception:
+            # L'échec email ne doit pas annuler une soumission validée en base.
+            logger.exception("Echec envoi email de confirmation de depot pour le dossier %s", dossier.reference)
     checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
     return DossierDetailOut(
         id=dossier.id,
