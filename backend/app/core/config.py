@@ -122,6 +122,10 @@ class Settings(BaseSettings):
 
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    DRAFT_REMINDER_AFTER_DAYS: int = Field(
+        default=30,
+        description="Délai (jours) après création avant envoi du rappel email pour un dossier encore en brouillon.",
+    )
 
     ALLOWED_ORIGINS: str = Field(
         default="https://localhost:8443,https://127.0.0.1:8443",
