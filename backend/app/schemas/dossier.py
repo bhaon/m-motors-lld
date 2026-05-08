@@ -72,6 +72,23 @@ class PieceUploadCompleteIn(BaseModel):
 class DossierPieceChecklistItemOut(BaseModel):
     type_piece: PieceType
     uploaded: bool
+    filename: str | None = None  # Nom du fichier uploadé, None si non déposé
+
+
+class HistoriqueItemOut(BaseModel):
+    """Entrée chronologique du journal de statuts d'un dossier."""
+
+    ancien_status: str | None = None
+    nouveau_status: str
+    commentaire: str | None = None
+    created_at: datetime
+
+
+class PieceDownloadUrlOut(BaseModel):
+    """URL pré-signée GET pour télécharger une pièce justificative."""
+
+    download_url: str
+    filename: str
 
 
 class DossierDetailOut(BaseModel):
@@ -85,6 +102,9 @@ class DossierDetailOut(BaseModel):
     client_id: int
     created_at: datetime | None = None
     submitted_at: datetime | None = None
+    motif_rejet: str | None = None
     checklist: list[DossierPieceChecklistItemOut]
     missing_pieces: list[PieceType]
     can_submit: bool
+    vehicle: VehicleSummaryOut | None = None
+    historique: list[HistoriqueItemOut] = []

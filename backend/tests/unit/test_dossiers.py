@@ -488,3 +488,166 @@ def test_list_my_dossiers_requires_authentication_dashboard(client: TestClient) 
     """GET /me retourne 401 sans cookie d'authentification."""
     response = client.get("/api/v1/dossiers/me")
     assert response.status_code == 401
+
+
+# ── US-04-02 : Détail dossier avec historique et téléchargement ───────────────
+
+def test_get_dossier_detail_includes_vehicle_info(client: TestClient, db: Session) -> None:
+    """GET /{id} retourne les infos véhicule (make, model, year) dans le détail du dossier."""
+    user = create_user(db, email="client.detail.vehicle@example.com")
+    vehicle = create_vehicle(db, make="Toyota", model="Yaris", year=2025, lld=False)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    dossier = client.post(
+        "/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers
+    ).json()
+
+    response = client.get(f"/api/v1/dossiers/{dossier['id']}", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["vehicle"]["make"] == "Toyota"
+    assert body["vehicle"]["model"] == "Yaris"
+    assert body["vehicle"]["year"] == 2025
+
+
+def test_get_dossier_detail_includes_empty_historique(client: TestClient, db: Session) -> None:
+    """GET /{id} retourne un historique vide pour un dossier nouvellement créé."""
+    user = create_user(db, email="client.detail.historique@example.com")
+    vehicle = create_vehicle(db, lld=False)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    dossier = client.post(
+        "/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers
+    ).json()
+
+    response = client.get(f"/api/v1/dossiers/{dossier['id']}", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["historique"] == []
+
+
+def test_get_dossier_detail_includes_motif_rejet_null_by_default(client: TestClient, db: Session) -> None:
+    """GET /{id} retourne motif_rejet à null pour un dossier non rejeté."""
+    user = create_user(db, email="client.detail.motif@example.com")
+    vehicle = create_vehicle(db, lld=False)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    dossier = client.post(
+        "/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers
+    ).json()
+
+    response = client.get(f"/api/v1/dossiers/{dossier['id']}", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["motif_rejet"] is None
+
+
+def test_get_dossier_detail_checklist_includes_filename_when_uploaded(
+    client: TestClient, db: Session, monkeypatch
+) -> None:
+    """GET /{id} retourne le nom du fichier dans la checklist pour une pièce uploadée."""
+    from app.models.dossier import PieceJustificative
+
+    user = create_user(db, email="client.detail.filename@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    dossier_payload = client.post(
+        "/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers
+    ).json()
+
+    piece = PieceJustificative(
+        dossier_id=dossier_payload["id"],
+        type_piece="cni",
+        filename="ma-cni.pdf",
+        s3_key="dossiers/1/cni/ma-cni.pdf",
+        checksum="a" * 64,
+    )
+    db.add(piece)
+    db.commit()
+
+    response = client.get(f"/api/v1/dossiers/{dossier_payload['id']}", headers=headers)
+
+    assert response.status_code == 200
+    checklist = {item["type_piece"]: item for item in response.json()["checklist"]}
+    assert checklist["cni"]["uploaded"] is True
+    assert checklist["cni"]["filename"] == "ma-cni.pdf"
+    assert checklist["permis"]["filename"] is None
+
+
+def test_download_url_returns_presigned_url(client: TestClient, db: Session, monkeypatch) -> None:
+    """GET /{id}/pieces/{type}/download-url retourne une URL pré-signée pour la pièce."""
+    from app.models.dossier import PieceJustificative
+    import app.api.v1.endpoints.dossiers as dossiers_module
+
+    user = create_user(db, email="client.download@example.com")
+    vehicle = create_vehicle(db, lld=False)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    dossier_payload = client.post(
+        "/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers
+    ).json()
+
+    piece = PieceJustificative(
+        dossier_id=dossier_payload["id"],
+        type_piece="rib",
+        filename="mon-rib.pdf",
+        s3_key="dossiers/1/rib/mon-rib.pdf",
+        checksum="b" * 64,
+    )
+    db.add(piece)
+    db.commit()
+
+    monkeypatch.setattr(
+        dossiers_module,
+        "generate_download_url",
+        lambda *args, **kwargs: "https://s3.example/presigned-download-url",
+    )
+    monkeypatch.setattr(dossiers_module, "get_s3_client", lambda: None)
+
+    response = client.get(
+        f"/api/v1/dossiers/{dossier_payload['id']}/pieces/rib/download-url", headers=headers
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["download_url"] == "https://s3.example/presigned-download-url"
+    assert body["filename"] == "mon-rib.pdf"
+
+
+def test_download_url_returns_404_when_piece_missing(client: TestClient, db: Session) -> None:
+    """GET /{id}/pieces/{type}/download-url retourne 404 si la pièce n'a pas été uploadée."""
+    user = create_user(db, email="client.download.missing@example.com")
+    vehicle = create_vehicle(db, lld=False)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    dossier_payload = client.post(
+        "/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers
+    ).json()
+
+    response = client.get(
+        f"/api/v1/dossiers/{dossier_payload['id']}/pieces/cni/download-url", headers=headers
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Document non trouvé."
+
+
+def test_download_url_rejects_non_owner(client: TestClient, db: Session) -> None:
+    """GET /{id}/pieces/{type}/download-url retourne 404 si le dossier n'appartient pas au client."""
+    owner = create_user(db, email="client.download.owner@example.com")
+    other = create_user(db, email="client.download.other@example.com")
+    vehicle = create_vehicle(db, lld=False)
+    owner_headers = _auth_cookie_header(client, email=owner.email, password="SecretMotDePasse1!")
+    other_headers = _auth_cookie_header(client, email=other.email, password="SecretMotDePasse1!")
+
+    dossier_payload = client.post(
+        "/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=owner_headers
+    ).json()
+
+    response = client.get(
+        f"/api/v1/dossiers/{dossier_payload['id']}/pieces/cni/download-url", headers=other_headers
+    )
+
+    assert response.status_code == 404
