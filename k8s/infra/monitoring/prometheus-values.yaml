@@ -43,11 +43,11 @@ grafana:
       traefik.ingress.kubernetes.io/router.tls: "true"
       cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts:
-      - grafana.votre-domaine.com
+      - grafana.netdevops.fr
     tls:
       - secretName: grafana-tls-secret
         hosts:
-          - grafana.votre-domaine.com
+          - grafana.netdevops.fr
 
   # Datasources préconfigurées
   datasources:
@@ -104,11 +104,11 @@ grafana:
   # SMTP pour alertes email (optionnel)
   grafana.ini:
     server:
-      root_url: "https://grafana.votre-domaine.com"
+      root_url: "https://grafana.netdevops.fr"
     smtp:
       enabled: false
       # host: smtp.gmail.com:587
-      # user: alerts@votre-domaine.com
+      # user: alerts@netdevops.fr
       # password: ""
     security:
       admin_user: admin

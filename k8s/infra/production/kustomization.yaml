@@ -7,6 +7,7 @@ resources:
   - namespace.yaml
   - resource-quota.yaml
   - network-policy.yaml
-  - secrets.yaml
+  - backup-network-policy.yaml
+  - sealedsecrets.yaml
   - rbac.yaml
   - rate-limit.yaml

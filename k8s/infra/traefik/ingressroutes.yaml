@@ -14,7 +14,7 @@ spec:
     - websecure
   routes:
     # Route API — rate limiting strict
-    - match: Host(`votre-domaine.com`) && PathPrefix(`/api`)
+    - match: Host(`netdevops.fr`) && PathPrefix(`/api`)
       kind: Rule
       middlewares:
         - name: security-headers
@@ -27,7 +27,7 @@ spec:
         - name: backend
           port: 80
     # Route Frontend
-    - match: Host(`votre-domaine.com`) || Host(`www.votre-domaine.com`)
+    - match: Host(`netdevops.fr`) || Host(`www.netdevops.fr`)
       kind: Rule
       middlewares:
         - name: security-headers
@@ -54,7 +54,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`staging.votre-domaine.com`)
+    - match: Host(`staging.netdevops.fr`)
       kind: Rule
       middlewares:
         - name: staging-auth
@@ -64,7 +64,7 @@ spec:
       services:
         - name: frontend
           port: 80
-    - match: Host(`staging.votre-domaine.com`) && PathPrefix(`/api`)
+    - match: Host(`staging.netdevops.fr`) && PathPrefix(`/api`)
       kind: Rule
       middlewares:
         - name: staging-auth

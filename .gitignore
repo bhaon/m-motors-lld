@@ -256,3 +256,9 @@ cython_debug/
 
 # VS Code
 .vscode/
+# ── Kubernetes secrets en clair (NE JAMAIS COMMITER) ──────────────────────────
+# Utiliser scripts/seal-secrets.sh pour générer les fichiers sealedsecrets.yaml
+# chiffrés qui peuvent être committés en toute sécurité dans GitHub.
+k8s/infra/dev/secrets.yaml
+k8s/infra/staging/secrets.yaml
+k8s/infra/production/secrets.yaml
