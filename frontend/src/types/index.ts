@@ -63,3 +63,23 @@ export interface Filters {
   prixMax: number | null;
   type: ContratType;
 }
+
+// ── US-04-04 : Contrats LLD ───────────────────────────────────────────────────
+
+export interface ContratVehicle {
+  make: string;
+  model: string;
+  year: number;
+  mensualite: number | null;
+}
+
+export interface ContratListItem {
+  id: number;
+  reference: string;
+  vehicle_id: number;
+  vehicle: ContratVehicle;
+  duree_mois: number | null;
+  date_debut: string | null;
+  date_fin: string | null;
+  is_active: boolean;
+}

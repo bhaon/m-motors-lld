@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from calendar import monthrange
+from datetime import date, datetime, timezone
 import logging
 from typing import cast
 
@@ -9,12 +10,14 @@ from jose import JWTError
 
 from app.core.deps import DbSession
 from app.core.security import decode_token
-from app.models.dossier import Dossier, DossierStatusEnum, PieceJustificative
+from app.models.dossier import Dossier, DossierStatusEnum, DossierTypeEnum, PieceJustificative
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from sqlalchemy.orm import joinedload
 
 from app.schemas.dossier import (
+    ContratListItemOut,
+    ContratVehicleOut,
     DossierCreateIn,
     DossierCreateOut,
     DossierDetailOut,
@@ -122,6 +125,15 @@ def _format_utc_timestamp(timestamp: datetime) -> str:
     return timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _add_months(d: date, months: int) -> date:
+    """Ajoute un nombre entier de mois à une date en respectant les fins de mois."""
+    month = d.month - 1 + months
+    year = d.year + month // 12
+    month = month % 12 + 1
+    day = min(d.day, monthrange(year, month)[1])
+    return date(year, month, day)
+
+
 @router.post("", response_model=DossierCreateOut, status_code=status.HTTP_201_CREATED)
 def create_dossier(
     payload: DossierCreateIn,
@@ -195,6 +207,52 @@ def list_my_dossiers(
         )
         for d in dossiers
     ]
+
+
+@router.get("/contrats", response_model=list[ContratListItemOut])
+def list_my_contrats(
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> list[ContratListItemOut]:
+    """Retourne les contrats LLD validés du client connecté, actifs et terminés."""
+    user = _resolve_user_from_cookie(access_token, db)
+    dossiers = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.vehicle))
+        .filter(
+            Dossier.client_id == user.id,
+            Dossier.type == DossierTypeEnum.lld,
+            Dossier.status == DossierStatusEnum.valide,
+        )
+        .order_by(Dossier.created_at.desc())
+        .all()
+    )
+    today = date.today()
+    result: list[ContratListItemOut] = []
+    for d in dossiers:
+        date_fin: date | None = None
+        if d.date_debut_contrat and d.duree_mois:
+            date_fin = _add_months(d.date_debut_contrat, d.duree_mois)
+        is_active = date_fin is None or date_fin >= today
+        result.append(
+            ContratListItemOut(
+                id=d.id,
+                reference=d.reference,
+                vehicle_id=d.vehicle_id,
+                vehicle=ContratVehicleOut(
+                    make=d.vehicle.make if d.vehicle else "—",
+                    model=d.vehicle.model if d.vehicle else "",
+                    year=d.vehicle.year if d.vehicle else 0,
+                    mensualite=float(d.vehicle.mensualite) if d.vehicle and d.vehicle.mensualite else None,
+                ),
+                duree_mois=d.duree_mois,
+                date_debut=d.date_debut_contrat,
+                date_fin=date_fin,
+                is_active=is_active,
+            )
+        )
+    result.sort(key=lambda c: (not c.is_active, -(c.date_debut.toordinal() if c.date_debut else 0)))
+    return result
 
 
 @router.get("/{dossier_id}", response_model=DossierDetailOut)

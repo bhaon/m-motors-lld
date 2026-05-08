@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Literal
-from datetime import datetime
+from datetime import date, datetime
 
 from app.models.dossier import DossierTypeEnum
 
@@ -108,3 +108,29 @@ class DossierDetailOut(BaseModel):
     can_submit: bool
     vehicle: VehicleSummaryOut | None = None
     historique: list[HistoriqueItemOut] = []
+
+
+# ── US-04-04 : Contrats LLD ───────────────────────────────────────────────────
+
+class ContratVehicleOut(BaseModel):
+    """Informations véhicule incluses dans le résumé d'un contrat LLD."""
+
+    make: str
+    model: str
+    year: int
+    mensualite: float | None = None
+
+
+class ContratListItemOut(BaseModel):
+    """Contrat LLD validé visible dans l'espace client."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    reference: str
+    vehicle_id: int
+    vehicle: ContratVehicleOut
+    duree_mois: int | None = None
+    date_debut: date | None = None
+    date_fin: date | None = None
+    is_active: bool

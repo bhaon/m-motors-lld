@@ -63,6 +63,20 @@ function FolderIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+/**
+ * Icône contrat (SVG) pour les éléments de menu.
+ */
+function ContractIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zm-1 1.5L18.5 9H13zM6 20V4h5v7h7v9zm2-5h8v2H8zm0-3h5v2H8z"
+      />
+    </svg>
+  );
+}
+
 export default function Navbar() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [initials, setInitials] = useState<string>("U");
@@ -310,6 +324,26 @@ export default function Navbar() {
                 >
                   <FolderIcon />
                   Mes dossiers
+                </Link>
+
+                <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+
+                <Link
+                  href="/mes-contrats"
+                  role="menuitem"
+                  onClick={() => setIsMenuOpen(false)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "12px 14px",
+                    textDecoration: "none",
+                    color: "#0f172a",
+                    fontWeight: 600,
+                  }}
+                >
+                  <ContractIcon />
+                  Mes contrats
                 </Link>
 
                 <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
