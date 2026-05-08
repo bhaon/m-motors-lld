@@ -20,6 +20,8 @@ from app.schemas.dossier import (
     DossierDetailOut,
     DossierListItemOut,
     DossierPieceChecklistItemOut,
+    HistoriqueItemOut,
+    PieceDownloadUrlOut,
     PieceType,
     PieceUploadCompleteIn,
     PieceUploadInitIn,
@@ -30,6 +32,7 @@ from app.services.object_storage import (
     build_piece_object_key,
     ensure_bucket_exists,
     ensure_bucket_cors,
+    generate_download_url,
     generate_upload_url,
     get_s3_client,
     verify_object_checksum,
@@ -90,12 +93,23 @@ def _build_piece_checklist(
     db: DbSession, *, dossier_id: int
 ) -> tuple[list[DossierPieceChecklistItemOut], list[PieceType], bool]:
     """Construit la checklist des pièces, la liste des manquantes et le booléen de soumission."""
+    pieces = (
+        db.query(PieceJustificative.type_piece, PieceJustificative.filename)
+        .filter(PieceJustificative.dossier_id == dossier_id)
+        .all()
+    )
+    filename_map: dict[str, str] = {}
     uploaded_types: set[PieceType] = set()
-    for item in db.query(PieceJustificative.type_piece).filter(PieceJustificative.dossier_id == dossier_id).all():
-        if item.type_piece in REQUIRED_PIECE_TYPES:
-            uploaded_types.add(cast(PieceType, item.type_piece))
+    for p in pieces:
+        if p.type_piece in REQUIRED_PIECE_TYPES:
+            uploaded_types.add(cast(PieceType, p.type_piece))
+            filename_map[p.type_piece] = p.filename
     checklist = [
-        DossierPieceChecklistItemOut(type_piece=piece_type, uploaded=piece_type in uploaded_types)
+        DossierPieceChecklistItemOut(
+            type_piece=piece_type,
+            uploaded=piece_type in uploaded_types,
+            filename=filename_map.get(piece_type),
+        )
         for piece_type in REQUIRED_PIECE_TYPES
     ]
     missing_pieces = [piece_type for piece_type in REQUIRED_PIECE_TYPES if piece_type not in uploaded_types]
@@ -188,10 +202,35 @@ def get_dossier_detail(
     db: DbSession,
     access_token: str | None = Cookie(default=None),
 ) -> DossierDetailOut:
-    """Retourne le détail d'un dossier client, la checklist et les pièces manquantes."""
+    """Retourne le détail complet d'un dossier : infos véhicule, checklist, historique et motif de rejet."""
     user = _resolve_user_from_cookie(access_token, db)
-    dossier = _get_owned_dossier(db, dossier_id=dossier_id, user_id=user.id)
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.vehicle), joinedload(Dossier.historique))
+        .filter(Dossier.id == dossier_id, Dossier.client_id == user.id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
     checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
+    vehicle_out = (
+        VehicleSummaryOut(
+            make=dossier.vehicle.make,
+            model=dossier.vehicle.model,
+            year=dossier.vehicle.year,
+        )
+        if dossier.vehicle
+        else None
+    )
+    historique_out = [
+        HistoriqueItemOut(
+            ancien_status=h.ancien_status,
+            nouveau_status=h.nouveau_status,
+            commentaire=h.commentaire,
+            created_at=h.created_at,
+        )
+        for h in dossier.historique
+    ]
     return DossierDetailOut(
         id=dossier.id,
         reference=dossier.reference,
@@ -201,10 +240,38 @@ def get_dossier_detail(
         client_id=dossier.client_id,
         created_at=dossier.created_at,
         submitted_at=dossier.submitted_at,
+        motif_rejet=dossier.motif_rejet,
         checklist=checklist,
         missing_pieces=missing_pieces,
         can_submit=can_submit,
+        vehicle=vehicle_out,
+        historique=historique_out,
     )
+
+
+@router.get("/{dossier_id}/pieces/{type_piece}/download-url", response_model=PieceDownloadUrlOut)
+def get_piece_download_url(
+    dossier_id: int,
+    type_piece: PieceType,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> PieceDownloadUrlOut:
+    """Génère une URL pré-signée GET (10 min) pour télécharger une pièce justificative."""
+    user = _resolve_user_from_cookie(access_token, db)
+    _get_owned_dossier(db, dossier_id=dossier_id, user_id=user.id)
+    piece = (
+        db.query(PieceJustificative)
+        .filter(
+            PieceJustificative.dossier_id == dossier_id,
+            PieceJustificative.type_piece == type_piece,
+        )
+        .first()
+    )
+    if not piece:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document non trouvé.")
+    s3_client = get_s3_client()
+    download_url = generate_download_url(s3_client, object_key=piece.s3_key, filename=piece.filename)
+    return PieceDownloadUrlOut(download_url=download_url, filename=piece.filename)
 
 
 @router.delete("/{dossier_id}", status_code=status.HTTP_204_NO_CONTENT)

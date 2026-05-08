@@ -119,6 +119,23 @@ def generate_upload_url(
     )
 
 
+def generate_download_url(client: BaseClient, *, object_key: str, filename: str) -> str:
+    """Génère une URL pré-signée GET pour télécharger une pièce justificative."""
+    presign_client = (
+        get_s3_presign_client() if settings.s3_public_endpoint_url else client
+    )
+    safe_name = filename.replace('"', "")
+    return presign_client.generate_presigned_url(
+        ClientMethod="get_object",
+        Params={
+            "Bucket": settings.S3_BUCKET,
+            "Key": object_key,
+            "ResponseContentDisposition": f'attachment; filename="{safe_name}"',
+        },
+        ExpiresIn=settings.S3_PRESIGN_EXPIRES_SECONDS,
+    )
+
+
 def verify_object_checksum(client: BaseClient, *, object_key: str, expected_checksum_hex: str) -> bool:
     """Télécharge l'objet et compare son SHA-256 (hex) au checksum attendu."""
     response = client.get_object(Bucket=settings.S3_BUCKET, Key=object_key)
