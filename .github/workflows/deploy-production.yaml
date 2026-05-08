@@ -76,8 +76,6 @@ jobs:
     with:
       environment: production
       image_tag: ${{ needs.validate.outputs.version }}
-    secrets:
-      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
 
   # ----------------------------------------------------------
   # APPROBATION MANUELLE — Bloque ici jusqu'à validation
