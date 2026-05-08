@@ -17,10 +17,18 @@ branch_labels = None
 depends_on = None
 
 
+def _has_column(bind: sa.engine.Connection, *, table_name: str, column_name: str) -> bool:
+    """Retourne True si la colonne existe déjà (migration idempotente)."""
+    inspector = sa.inspect(bind)
+    return any(col["name"] == column_name for col in inspector.get_columns(table_name))
+
+
 def upgrade() -> None:
     """Ajoute la trace d'envoi du rappel brouillon (évite les envois répétés)."""
+    bind = op.get_bind()
     with op.batch_alter_table("dossiers") as batch:
-        batch.add_column(sa.Column("draft_reminder_sent_at", sa.DateTime(timezone=True), nullable=True))
+        if not _has_column(bind, table_name="dossiers", column_name="draft_reminder_sent_at"):
+            batch.add_column(sa.Column("draft_reminder_sent_at", sa.DateTime(timezone=True), nullable=True))
 
 
 def downgrade() -> None:
