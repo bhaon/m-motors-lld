@@ -180,6 +180,7 @@ def test_update_vehicle_generates_audit_entry(client: TestClient, db: Session) -
     """PATCH /vehicules/{id} crée une entrée VEHICLE_UPDATED avec before/after state."""
     gest = create_user(db, role=RoleEnum.gestionnaire, email="gest.update@example.com")
     v = create_vehicle(db)
+    old_price = float(v.prix)
     headers = auth_header(gest)
 
     client.patch(f"/api/v1/vehicules/{v.id}", json={"prix": 20000.0}, headers=headers)
@@ -188,7 +189,7 @@ def test_update_vehicle_generates_audit_entry(client: TestClient, db: Session) -
     entry = _latest_entry(db, "VEHICLE_UPDATED")
     assert entry is not None
     assert entry.entity_id == v.id
-    assert entry.before_state == {"prix": float(v.prix)}
+    assert entry.before_state == {"prix": old_price}
     assert entry.after_state == {"prix": 20000.0}
 
 
