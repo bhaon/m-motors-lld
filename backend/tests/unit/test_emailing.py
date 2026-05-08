@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import pytest
 
-import app.services.emailing as emailing_module
 from app.services.emailing import _build_status_change_email_html, send_status_change_email
 
 
