@@ -16,13 +16,32 @@ Usage :
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import decimal
+from datetime import date, datetime, timezone
+from enum import Enum
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditTrail
 from app.models.user import User
+
+
+def _json_safe(value: Any) -> Any:
+    """Convertit les types non-JSON-serialisables issus de SQLAlchemy/Python."""
+    if isinstance(value, decimal.Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    return value
+
+
+def _normalize_state(state: dict[str, Any] | None) -> dict[str, Any] | None:
+    if state is None:
+        return None
+    return {k: _json_safe(v) for k, v in state.items()}
 
 # Constantes d'action — seules valeurs admises dans AuditTrail.action
 USER_CREATED = "USER_CREATED"
@@ -59,8 +78,8 @@ def record(
         operator_email=operator.email,
         operator_role=operator.role.value,
         ip_address=ip_address,
-        before_state=before_state,
-        after_state=after_state,
+        before_state=_normalize_state(before_state),
+        after_state=_normalize_state(after_state) or {},
     )
     db.add(entry)
     return entry

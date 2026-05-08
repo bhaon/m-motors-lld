@@ -247,17 +247,19 @@ def test_submit_dossier_generates_audit_entry(client: TestClient, db: Session) -
 # ── Append-only : pas d'endpoint UPDATE / DELETE ──────────────────────────────
 
 def test_no_update_endpoint_for_audit_trail(client: TestClient, db: Session) -> None:
-    """Aucun endpoint PATCH/PUT n'est exposé pour l'audit trail."""
+    """Aucun endpoint PATCH/PUT n'est exposé pour l'audit trail (404 = route inexistante)."""
     headers, _ = _admin_cookie(client, db)
     resp = client.patch("/api/v1/admin/audit-trail/1", headers=headers)
-    assert resp.status_code == 405
+    # 404 : la route n'existe pas du tout (plus strict que 405 Method Not Allowed)
+    assert resp.status_code == 404
 
 
 def test_no_delete_endpoint_for_audit_trail(client: TestClient, db: Session) -> None:
-    """Aucun endpoint DELETE n'est exposé pour l'audit trail."""
+    """Aucun endpoint DELETE n'est exposé pour l'audit trail (404 = route inexistante)."""
     headers, _ = _admin_cookie(client, db)
     resp = client.delete("/api/v1/admin/audit-trail/1", headers=headers)
-    assert resp.status_code == 405
+    # 404 : la route n'existe pas du tout (plus strict que 405 Method Not Allowed)
+    assert resp.status_code == 404
 
 
 # ── GET /admin/audit-trail ────────────────────────────────────────────────────
