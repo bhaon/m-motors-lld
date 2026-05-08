@@ -51,7 +51,7 @@ jobs:
           echo "Tag production actuel : ${LATEST_TAG}"
 
       - name: Scan frontend — CVE complet
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository }}-frontend:${{ steps.get-tag.outputs.tag }}
           format: "sarif"
@@ -61,7 +61,7 @@ jobs:
           ignore-unfixed: false
 
       - name: Scan backend — CVE complet
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository }}-backend:${{ steps.get-tag.outputs.tag }}
           format: "sarif"
@@ -71,13 +71,13 @@ jobs:
           ignore-unfixed: false
 
       - name: Upload résultats
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: "trivy-frontend-weekly.sarif"
           category: "weekly-scan-frontend"
 
       - name: Upload résultats backend
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: "trivy-backend-weekly.sarif"
           category: "weekly-scan-backend"

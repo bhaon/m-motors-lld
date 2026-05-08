@@ -42,7 +42,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       namespace: ${{ steps.set-namespace.outputs.namespace }}
-      kubeconfig_secret: ${{ steps.set-namespace.outputs.kubeconfig_secret }}
 
     steps:
       - name: Set namespace and secret from environment
@@ -51,15 +50,12 @@ jobs:
           case "${{ inputs.environment }}" in
             dev)
               echo "namespace=dev" >> $GITHUB_OUTPUT
-              echo "kubeconfig_secret=KUBECONFIG_DEV" >> $GITHUB_OUTPUT
               ;;
             staging)
               echo "namespace=staging" >> $GITHUB_OUTPUT
-              echo "kubeconfig_secret=KUBECONFIG_STAGING" >> $GITHUB_OUTPUT
               ;;
             production)
               echo "namespace=production" >> $GITHUB_OUTPUT
-              echo "kubeconfig_secret=KUBECONFIG_PROD" >> $GITHUB_OUTPUT
               ;;
           esac
 
@@ -157,13 +153,13 @@ jobs:
 
       - name: Smoke test post-rollback
         run: |
-          sleep 20
           case "${{ inputs.environment }}" in
-            dev)       URL="https://app-dev.votre-domaine.com" ;;
-            staging)   URL="https://staging.votre-domaine.com" ;;
-            production) URL="https://votre-domaine.com" ;;
+            dev)        URL="https://app-dev.netdevops.fr" ;;
+            staging)    URL="https://staging.netdevops.fr" ;;
+            production) URL="https://netdevops.fr" ;;
           esac
-          STATUS=$(curl -o /dev/null -s -w "%{http_code}" "${URL}/api/healthz" --max-time 15)
+          STATUS=$(curl -o /dev/null -s -w "%{http_code}" "${URL}/api/healthz" \
+            --max-time 15 --retry 12 --retry-delay 10 --retry-connrefused)
           if [ "$STATUS" != "200" ]; then
             echo "❌ Health check échoué après rollback : HTTP $STATUS"
             exit 1
