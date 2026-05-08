@@ -680,7 +680,6 @@ export default function GestionVehiculesPage() {
           <button
             type="button"
             onClick={openAdd}
-            aria-label="Ajouter un véhicule"
             style={{
               display: "flex",
               alignItems: "center",
