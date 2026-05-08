@@ -39,8 +39,6 @@ jobs:
     with:
       environment: dev
       image_tag: dev-${{ github.sha }}
-    secrets:
-      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
 
   # ----------------------------------------------------------
   # Déploiement Kustomize vers namespace dev

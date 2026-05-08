@@ -34,8 +34,6 @@ jobs:
     with:
       environment: staging
       image_tag: staging-${{ github.sha }}
-    secrets:
-      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
 
   deploy:
     name: Deploy to STAGING
