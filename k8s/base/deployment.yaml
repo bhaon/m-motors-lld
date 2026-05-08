@@ -31,6 +31,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: ghcr.io/bhaon/m-motors-lld-frontend:latest
@@ -127,6 +129,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1001
         fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         # Migrations via backend/manage.py (Alembic) — URL DB calculée depuis POSTGRES_*.
         - name: db-migrate
@@ -158,11 +162,13 @@ spec:
                 secretKeyRef:
                   name: resend-credentials
                   key: RESEND_API_KEY
+                  optional: true
             - name: RESEND_FROM_EMAIL
               valueFrom:
                 secretKeyRef:
                   name: resend-credentials
                   key: RESEND_FROM_EMAIL
+                  optional: true
             - name: POSTGRES_HOST
               value: postgresql
             - name: POSTGRES_PORT
@@ -245,11 +251,13 @@ spec:
                 secretKeyRef:
                   name: resend-credentials
                   key: RESEND_API_KEY
+                  optional: true
             - name: RESEND_FROM_EMAIL
               valueFrom:
                 secretKeyRef:
                   name: resend-credentials
                   key: RESEND_FROM_EMAIL
+                  optional: true
             - name: ALLOWED_HOSTS
               valueFrom:
                 configMapKeyRef:

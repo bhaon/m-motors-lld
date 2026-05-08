@@ -2,7 +2,8 @@
 # ============================================================
 # CRONJOB — Backup PostgreSQL production
 # Sauvegarde quotidienne à 2h00 UTC
-# Stocke les backups dans un PVC dédié
+# 1. initContainer (postgres:16-alpine) : pg_dump → volume partagé
+# 2. Container (minio/mc)               : upload vers MinIO + copie PVC + nettoyage
 # ============================================================
 apiVersion: batch/v1
 kind: CronJob
@@ -17,11 +18,16 @@ spec:
   jobTemplate:
     spec:
       template:
+        metadata:
+          labels:
+            app: postgresql-backup  # Ciblé par la NetworkPolicy backup-policy
         spec:
           serviceAccountName: app-service-account
           restartPolicy: OnFailure
-          containers:
-            - name: backup
+
+          initContainers:
+            # ── Étape 1 : pg_dump vers le volume partagé ──────────
+            - name: dump
               image: postgres:16-alpine
               command:
                 - /bin/sh
@@ -29,28 +35,20 @@ spec:
                 - |
                   set -e
                   DATE=$(date +%Y%m%d-%H%M%S)
-                  BACKUP_FILE="/backups/prod-backup-${DATE}.sql.gz"
+                  BACKUP_FILE="/tmp/backup/prod-backup-${DATE}.sql.gz"
+                  echo "Démarrage dump → ${BACKUP_FILE}"
 
-                  echo "Démarrage backup : ${BACKUP_FILE}"
                   pg_dump \
                     -h postgresql \
-                    -U ${POSTGRES_USER} \
-                    -d ${POSTGRES_DB} \
+                    -U "${POSTGRES_USER}" \
+                    -d "${POSTGRES_DB}" \
                     --no-password \
                     | gzip > "${BACKUP_FILE}"
 
-                  # Vérification
-                  if [ $? -eq 0 ]; then
-                    SIZE=$(du -sh "${BACKUP_FILE}" | cut -f1)
-                    echo "Backup OK : ${BACKUP_FILE} (${SIZE})"
-                  else
-                    echo "ERREUR backup"
-                    exit 1
-                  fi
-
-                  # Nettoyage — garder 30 jours
-                  find /backups -name "prod-backup-*.sql.gz" -mtime +30 -delete
-                  echo "Backups conservés : $(ls /backups | wc -l)"
+                  SIZE=$(du -sh "${BACKUP_FILE}" | cut -f1)
+                  echo "Dump OK : ${SIZE}"
+                  # Stocker le nom du fichier pour le container suivant
+                  echo "${BACKUP_FILE}" > /tmp/backup/LATEST
               env:
                 - name: POSTGRES_USER
                   valueFrom:
@@ -75,14 +73,81 @@ spec:
                   cpu: "200m"
                   memory: "256Mi"
               volumeMounts:
+                - name: backup-tmp
+                  mountPath: /tmp/backup
+
+          containers:
+            # ── Étape 2 : upload MinIO + copie PVC + nettoyage ──
+            - name: upload
+              image: minio/mc:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  BACKUP_FILE=$(cat /tmp/backup/LATEST)
+                  FILENAME=$(basename "${BACKUP_FILE}")
+                  DATE=$(date +%Y/%m/%d)
+
+                  echo "Upload vers MinIO : ${FILENAME}"
+
+                  # Configuration du client mc
+                  mc alias set backup \
+                    http://minio.production.svc.cluster.local:9000 \
+                    "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}" \
+                    --api S3v4 --quiet
+
+                  # Création du bucket si absent
+                  mc mb --ignore-existing backup/postgres-backups
+
+                  # Upload vers MinIO (avec organisation par date)
+                  mc cp "${BACKUP_FILE}" "backup/postgres-backups/${DATE}/${FILENAME}"
+                  echo "✅ Upload MinIO OK"
+
+                  # Copie sur le PVC local (résilience locale)
+                  cp "${BACKUP_FILE}" "/backups/${FILENAME}"
+                  echo "✅ Copie PVC OK"
+
+                  # Nettoyage MinIO : supprimer les backups > 90 jours
+                  mc rm --recursive --force --older-than 90d \
+                    backup/postgres-backups/ 2>/dev/null || true
+
+                  # Nettoyage PVC : garder 30 jours
+                  find /backups -name "prod-backup-*.sql.gz" -mtime +30 -delete
+                  echo "Backups locaux conservés : $(ls /backups | wc -l)"
+                  echo "✅ Backup complet terminé"
+              env:
+                - name: MINIO_ROOT_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: MINIO_ROOT_USER
+                - name: MINIO_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: MINIO_ROOT_PASSWORD
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "256Mi"
+              volumeMounts:
+                - name: backup-tmp
+                  mountPath: /tmp/backup
                 - name: backups
                   mountPath: /backups
+
           volumes:
+            - name: backup-tmp
+              emptyDir: {}           # Volume partagé entre initContainer et container
             - name: backups
               persistentVolumeClaim:
                 claimName: postgresql-backup-pvc
 ---
-# PVC dédié aux backups
+# PVC dédié aux backups locaux (résilience locale)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
