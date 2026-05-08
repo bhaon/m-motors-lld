@@ -484,7 +484,7 @@ def test_list_my_dossiers_ordered_most_recent_first(client: TestClient, db: Sess
     assert items[1]["id"] == first["id"]
 
 
-def test_list_my_dossiers_requires_authentication(client: TestClient, db: Session) -> None:
+def test_list_my_dossiers_requires_authentication_dashboard(client: TestClient) -> None:
     """GET /me retourne 401 sans cookie d'authentification."""
     response = client.get("/api/v1/dossiers/me")
     assert response.status_code == 401
