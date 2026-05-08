@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from app.models.vehicle import MoteurEnum
 
 
@@ -90,6 +90,15 @@ class VehicleCreate(BaseModel):
     spec_places: int = 5
     spec_puissance: str
     visible_catalogue: bool = True
+    photos_urls: Optional[List[str]] = None
+
+    @field_validator("img")
+    @classmethod
+    def img_non_vide(cls, v: str) -> str:
+        """US-05-01 — au moins une photo principale est obligatoire."""
+        if not v or not v.strip():
+            raise ValueError("L'URL de la photo principale est obligatoire.")
+        return v.strip()
 
     @model_validator(mode="after")
     def mensualite_si_lld(self) -> "VehicleCreate":
@@ -97,6 +106,14 @@ class VehicleCreate(BaseModel):
         if self.lld and self.mensualite is None:
             raise ValueError("mensualite est requise lorsque lld est activé")
         return self
+
+
+class VehicleCreateOut(BaseModel):
+    """Confirmation de création d'un véhicule (endpoint formulaire gestionnaire)."""
+
+    id: int
+    reference: str
+    message: str
 
 
 class VehicleUpdate(BaseModel):

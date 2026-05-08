@@ -5,8 +5,9 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.core.security import create_access_token
 from app.models.user import RoleEnum
-from app.models.vehicle import VehicleOption
+from app.models.vehicle import Vehicle, VehicleOption
 from tests.conftest import auth_header, create_user, create_vehicle
 
 
@@ -142,3 +143,154 @@ def test_vehicle_out_avec_options(db: Session) -> None:
     assert out.options[0].name == "GPS"
     assert out.options[0].n == "GPS"
     assert "€" in out.options[0].p
+
+
+# ── US-05-01 — Formulaire ajout véhicule (cookie auth) ───────────────────────
+
+def _vehicle_payload_achat() -> dict:
+    """Payload achat valide pour POST /vehicules/creer."""
+    return {
+        "make": "Citroën",
+        "model": "C3",
+        "year": 2024,
+        "km": 8000,
+        "moteur": "Essence",
+        "prix": 17990.0,
+        "lld": False,
+        "img": "https://example.com/c3.jpg",
+        "spec_carburant": "Essence",
+        "spec_boite": "Manuelle",
+        "spec_couleur": "Rouge",
+        "spec_places": 5,
+        "spec_puissance": "110 ch",
+    }
+
+
+def _cookie_header_for(client: TestClient, *, email: str, password: str) -> dict[str, str]:
+    """Authentifie et retourne le header Cookie pour les endpoints cookie-based."""
+    login = client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    assert login.status_code == 200
+    cookie = login.headers.get("set-cookie", "")
+    token = cookie.split("access_token=")[1].split(";")[0]
+    return {"Cookie": f"access_token={token}"}
+
+
+def test_creer_vehicule_achat_retourne_confirmation(client: TestClient, db: Session) -> None:
+    """POST /vehicules/creer crée un véhicule achat et retourne id, référence, message."""
+    g = create_user(db, role=RoleEnum.gestionnaire, email="gest.creer.achat@example.com")
+    headers = _cookie_header_for(client, email=g.email, password="SecretMotDePasse1!")
+
+    response = client.post("/api/v1/vehicules/creer", json=_vehicle_payload_achat(), headers=headers)
+
+    assert response.status_code == 201
+    body = response.json()
+    assert "id" in body
+    assert "reference" in body
+    assert "message" in body
+    assert "succès" in body["message"].lower()
+
+
+def test_creer_vehicule_lld_avec_mensualite(client: TestClient, db: Session) -> None:
+    """POST /vehicules/creer crée un véhicule LLD avec mensualité."""
+    g = create_user(db, role=RoleEnum.gestionnaire, email="gest.creer.lld@example.com")
+    headers = _cookie_header_for(client, email=g.email, password="SecretMotDePasse1!")
+    payload = {**_vehicle_payload_achat(), "lld": True, "mensualite": 299.0}
+
+    response = client.post("/api/v1/vehicules/creer", json=payload, headers=headers)
+
+    assert response.status_code == 201
+    vid = response.json()["id"]
+    v = db.query(Vehicle).filter(Vehicle.id == vid).first()
+    assert v is not None
+    assert v.lld is True
+    assert float(v.mensualite) == 299.0
+
+
+def test_creer_vehicule_lld_sans_mensualite_rejete(client: TestClient, db: Session) -> None:
+    """POST /vehicules/creer rejette LLD sans mensualité (422)."""
+    g = create_user(db, role=RoleEnum.gestionnaire, email="gest.creer.lld.nom@example.com")
+    headers = _cookie_header_for(client, email=g.email, password="SecretMotDePasse1!")
+    payload = {**_vehicle_payload_achat(), "lld": True}  # mensualite absent
+
+    response = client.post("/api/v1/vehicules/creer", json=payload, headers=headers)
+
+    assert response.status_code == 422
+
+
+def test_creer_vehicule_photo_vide_rejete(client: TestClient, db: Session) -> None:
+    """POST /vehicules/creer rejette une photo principale vide (422)."""
+    g = create_user(db, role=RoleEnum.gestionnaire, email="gest.creer.nophoto@example.com")
+    headers = _cookie_header_for(client, email=g.email, password="SecretMotDePasse1!")
+    payload = {**_vehicle_payload_achat(), "img": ""}
+
+    response = client.post("/api/v1/vehicules/creer", json=payload, headers=headers)
+
+    assert response.status_code == 422
+
+
+def test_creer_vehicule_client_refuse(client: TestClient, db: Session) -> None:
+    """POST /vehicules/creer retourne 403 pour un client."""
+    u = create_user(db, role=RoleEnum.client, email="client.creer@example.com")
+    headers = _cookie_header_for(client, email=u.email, password="SecretMotDePasse1!")
+
+    response = client.post("/api/v1/vehicules/creer", json=_vehicle_payload_achat(), headers=headers)
+
+    assert response.status_code == 403
+
+
+def test_creer_vehicule_non_authentifie_refuse(client: TestClient) -> None:
+    """POST /vehicules/creer retourne 401 sans cookie."""
+    response = client.post("/api/v1/vehicules/creer", json=_vehicle_payload_achat())
+
+    assert response.status_code == 401
+
+
+def test_creer_vehicule_superviseur_autorise(client: TestClient, db: Session) -> None:
+    """POST /vehicules/creer est accessible au superviseur."""
+    sup = create_user(db, role=RoleEnum.superviseur, email="sup.creer@example.com")
+    headers = _cookie_header_for(client, email=sup.email, password="SecretMotDePasse1!")
+
+    response = client.post("/api/v1/vehicules/creer", json=_vehicle_payload_achat(), headers=headers)
+
+    assert response.status_code == 201
+
+
+def test_creer_vehicule_visible_catalogue_par_defaut(client: TestClient, db: Session) -> None:
+    """Le véhicule créé est visible dans le catalogue par défaut."""
+    g = create_user(db, role=RoleEnum.gestionnaire, email="gest.creer.vis@example.com")
+    headers = _cookie_header_for(client, email=g.email, password="SecretMotDePasse1!")
+
+    response = client.post("/api/v1/vehicules/creer", json=_vehicle_payload_achat(), headers=headers)
+
+    assert response.status_code == 201
+    vid = response.json()["id"]
+    v = db.query(Vehicle).filter(Vehicle.id == vid).first()
+    assert v is not None
+    assert v.visible_catalogue is True
+
+
+def test_creer_vehicule_non_visible_catalogue(client: TestClient, db: Session) -> None:
+    """POST /vehicules/creer avec visible_catalogue=False crée un véhicule non publié."""
+    g = create_user(db, role=RoleEnum.gestionnaire, email="gest.creer.nonvis@example.com")
+    headers = _cookie_header_for(client, email=g.email, password="SecretMotDePasse1!")
+    payload = {**_vehicle_payload_achat(), "visible_catalogue": False}
+
+    response = client.post("/api/v1/vehicules/creer", json=payload, headers=headers)
+
+    assert response.status_code == 201
+    vid = response.json()["id"]
+    v = db.query(Vehicle).filter(Vehicle.id == vid).first()
+    assert v is not None
+    assert v.visible_catalogue is False
+
+
+def test_creer_vehicule_jwt_role_mismatch_rejete(client: TestClient, db: Session) -> None:
+    """POST /vehicules/creer rejette un JWT dont le rôle diffère du rôle en base."""
+    user = create_user(db, role=RoleEnum.client, email="jwt.mismatch.veh@example.com")
+    # Forge un token gestionnaire pour un utilisateur client en base
+    forged_token = create_access_token(subject=str(user.id), role="gestionnaire")
+    headers = {"Cookie": f"access_token={forged_token}"}
+
+    response = client.post("/api/v1/vehicules/creer", json=_vehicle_payload_achat(), headers=headers)
+
+    assert response.status_code == 403

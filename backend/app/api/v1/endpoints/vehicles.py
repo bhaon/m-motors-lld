@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, status
+from fastapi import APIRouter, Body, Cookie, HTTPException, Query, status
 
 from app.api.v1.openapi_responses import openapi_http_error
-from app.core.deps import DbSession, GestionnaireUser
-from app.models.vehicle import MoteurEnum, Vehicle
-from app.schemas.vehicle import VehicleCreate, VehicleListOut, VehicleOut, VehicleUpdate
+from app.core.deps import DbSession, GestionnaireUser, enforce_role, get_user_from_cookie
+from app.models.user import RoleEnum
+from app.models.vehicle import MoteurEnum, Vehicle, VehiclePhoto
+from app.schemas.vehicle import VehicleCreate, VehicleCreateOut, VehicleListOut, VehicleOut, VehicleUpdate
 
 router = APIRouter(prefix="/vehicules", tags=["Véhicules"])
 
@@ -114,7 +115,7 @@ def get_vehicle(vehicle_id: int, db: DbSession):
     "",
     response_model=VehicleOut,
     status_code=201,
-    summary="US-05-01 — Créer un véhicule",
+    summary="US-05-01 — Créer un véhicule (Bearer)",
     responses={**_R403_BO},
 )
 def create_vehicle(
@@ -122,11 +123,45 @@ def create_vehicle(
     db: DbSession,
     _: GestionnaireUser,
 ):
-    v = Vehicle(**payload.model_dump())
+    """Crée un véhicule via authentification Bearer (API / tests)."""
+    v = Vehicle(**payload.model_dump(exclude={"photos_urls"}))
     db.add(v)
+    db.flush()
+    for url in (payload.photos_urls or []):
+        db.add(VehiclePhoto(vehicle_id=v.id, url=url, is_main=False, order=1))
     db.commit()
     db.refresh(v)
     return VehicleOut.from_orm_vehicle(v)
+
+
+@router.post(
+    "/creer",
+    response_model=VehicleCreateOut,
+    status_code=201,
+    summary="US-05-01 — Créer un véhicule (Cookie — formulaire gestionnaire)",
+    responses={**_R403_BO},
+)
+def create_vehicle_form(
+    payload: Annotated[VehicleCreate, Body()],
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+):
+    """Crée un véhicule via authentification cookie (formulaire front gestionnaire)."""
+    user = get_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    v = Vehicle(**payload.model_dump(exclude={"photos_urls"}))
+    db.add(v)
+    db.flush()
+    for url in (payload.photos_urls or []):
+        db.add(VehiclePhoto(vehicle_id=v.id, url=url, is_main=False, order=1))
+    db.commit()
+    db.refresh(v)
+    return VehicleCreateOut(
+        id=v.id,
+        reference=f"VEH-{v.id:05d}",
+        message="Véhicule ajouté au catalogue avec succès.",
+    )
 
 
 @router.patch(

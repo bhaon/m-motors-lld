@@ -64,6 +64,17 @@ function FolderIcon({ size = 16 }: { size?: number }) {
 }
 
 /**
+ * Icône + (SVG) pour le lien "Ajouter un véhicule" (gestionnaire+).
+ */
+function PlusIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />
+    </svg>
+  );
+}
+
+/**
  * Icône contrat (SVG) pour les éléments de menu.
  */
 function ContractIcon({ size = 16 }: { size?: number }) {
@@ -77,11 +88,16 @@ function ContractIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+const GESTIONNAIRE_ROLES = new Set(["gestionnaire", "superviseur", "admin"]);
+
 export default function Navbar() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [initials, setInitials] = useState<string>("U");
+  const [role, setRole] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const isGestionnaire = role !== null && GESTIONNAIRE_ROLES.has(role);
 
   /**
    * Vérifie si l'utilisateur est connecté afin d'afficher la pastille profil.
@@ -98,21 +114,29 @@ export default function Navbar() {
       if (!response.ok) {
         setIsAuthenticated(false);
         setInitials("U");
+        setRole(null);
         return;
       }
       setIsAuthenticated(true);
       try {
-        const me = (await response.json()) as { first_name?: string; last_name?: string };
+        const me = (await response.json()) as {
+          first_name?: string;
+          last_name?: string;
+          role?: string;
+        };
         const a = (me.first_name || "").trim()[0] || "";
         const b = (me.last_name || "").trim()[0] || "";
         setInitials(`${a}${b}`.toUpperCase() || "U");
+        setRole(me.role ?? null);
       } catch {
         // En tests / réponses non JSON, on conserve le fallback.
         setInitials("U");
+        setRole(null);
       }
     } catch {
       setIsAuthenticated(false);
       setInitials("U");
+      setRole(null);
     }
   }, []);
 
@@ -345,6 +369,29 @@ export default function Navbar() {
                   <ContractIcon />
                   Mes contrats
                 </Link>
+
+                {isGestionnaire && (
+                  <>
+                    <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+                    <Link
+                      href="/backoffice/vehicules/nouveau"
+                      role="menuitem"
+                      onClick={() => setIsMenuOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "12px 14px",
+                        textDecoration: "none",
+                        color: "#0e7490",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <PlusIcon />
+                      Ajouter un véhicule
+                    </Link>
+                  </>
+                )}
 
                 <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
 
