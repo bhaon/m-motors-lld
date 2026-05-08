@@ -276,10 +276,10 @@ def test_submit_dossier_sets_status_depose_when_complete(client: TestClient, db:
     assert response.json()["can_submit"] is True
 
 
-def test_submit_dossier_sends_confirmation_email_with_utc_timestamp(
+def test_submit_dossier_sends_status_change_email_on_deposit(
     client: TestClient, db: Session, monkeypatch
 ) -> None:
-    """Envoie un email de confirmation avec un horodatage UTC ISO au dépôt dossier."""
+    """Envoie une notification de changement de statut (depose) lors de la soumission du dossier."""
     user = create_user(db, email="client.submit.email@example.com")
     vehicle = create_vehicle(db, lld=True)
     headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
@@ -300,19 +300,23 @@ def test_submit_dossier_sends_confirmation_email_with_utc_timestamp(
 
     captured: dict[str, str] = {}
 
-    def _fake_send_dossier_submission_email(*, to_email: str, dossier_reference: str, submitted_at_utc_iso: str) -> None:
-        """Capture les paramètres d'envoi email pour vérifier le contrat d'appel."""
+    def _fake_send_status_change_email(
+        *, to_email: str, dossier_reference: str, nouveau_status: str, dossier_url: str, motif_rejet: str | None = None
+    ) -> None:
+        """Capture les paramètres pour vérifier le contrat d'appel."""
         captured["to_email"] = to_email
         captured["dossier_reference"] = dossier_reference
-        captured["submitted_at_utc_iso"] = submitted_at_utc_iso
+        captured["nouveau_status"] = nouveau_status
+        captured["dossier_url"] = dossier_url
 
-    monkeypatch.setattr(dossier_endpoints, "send_dossier_submission_email", _fake_send_dossier_submission_email)
+    monkeypatch.setattr(dossier_endpoints, "send_status_change_email", _fake_send_status_change_email)
 
     response = client.post(f"/api/v1/dossiers/{dossier_id}/submit", headers=headers)
     assert response.status_code == 200
     assert captured["to_email"] == user.email
     assert captured["dossier_reference"] == response.json()["reference"]
-    assert captured["submitted_at_utc_iso"].endswith("Z")
+    assert captured["nouveau_status"] == "depose"
+    assert f"/mes-dossiers/{dossier_id}" in captured["dossier_url"]
 
 
 def test_submit_dossier_returns_submitted_at_in_utc(client: TestClient, db: Session) -> None:
@@ -651,3 +655,77 @@ def test_download_url_rejects_non_owner(client: TestClient, db: Session) -> None
     )
 
     assert response.status_code == 404
+
+
+# ── US-04-03 : Notification email à chaque changement de statut ──────────────
+
+def test_submit_dossier_email_dossier_url_contains_dossier_id(
+    client: TestClient, db: Session, monkeypatch
+) -> None:
+    """L'URL du dossier incluse dans la notification contient l'identifiant du dossier."""
+    user = create_user(db, email="client.emailurl@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier_payload = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+    dossier_id = dossier_payload["id"]
+
+    for piece_type in ("cni", "permis", "revenus", "domicile", "rib"):
+        db.add(
+            PieceJustificative(
+                dossier_id=dossier_id,
+                type_piece=piece_type,
+                filename=f"{piece_type}.pdf",
+                s3_key=f"dossiers/x/{piece_type}.pdf",
+                checksum="a" * 64,
+            )
+        )
+    db.commit()
+
+    captured_url: list[str] = []
+
+    def _fake_send(*, to_email: str, dossier_reference: str, nouveau_status: str, dossier_url: str, motif_rejet: str | None = None) -> None:
+        captured_url.append(dossier_url)
+
+    monkeypatch.setattr(dossier_endpoints, "send_status_change_email", _fake_send)
+
+    response = client.post(f"/api/v1/dossiers/{dossier_id}/submit", headers=headers)
+    assert response.status_code == 200
+    assert len(captured_url) == 1
+    assert str(dossier_id) in captured_url[0]
+    assert "mes-dossiers" in captured_url[0]
+
+
+def test_submit_dossier_email_failure_does_not_block_submission(
+    client: TestClient, db: Session, monkeypatch
+) -> None:
+    """Un échec d'envoi email n'annule pas une soumission déjà validée en base."""
+    user = create_user(db, email="client.emailfail@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+    dossier_payload = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "lld"}, headers=headers).json()
+    dossier_id = dossier_payload["id"]
+
+    for piece_type in ("cni", "permis", "revenus", "domicile", "rib"):
+        db.add(
+            PieceJustificative(
+                dossier_id=dossier_id,
+                type_piece=piece_type,
+                filename=f"{piece_type}.pdf",
+                s3_key=f"dossiers/x/{piece_type}.pdf",
+                checksum="a" * 64,
+            )
+        )
+    db.commit()
+
+    def _failing_send(**_: object) -> None:
+        raise RuntimeError("Resend indisponible")
+
+    monkeypatch.setattr(dossier_endpoints, "send_status_change_email", _failing_send)
+
+    response = client.post(f"/api/v1/dossiers/{dossier_id}/submit", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "depose"
+
+    db.expunge_all()
+    dossier_db = db.query(Dossier).filter(Dossier.id == dossier_id).one()
+    assert dossier_db.status == DossierStatusEnum.depose

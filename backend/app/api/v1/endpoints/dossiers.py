@@ -37,7 +37,8 @@ from app.services.object_storage import (
     get_s3_client,
     verify_object_checksum,
 )
-from app.services.emailing import send_dossier_submission_email
+from app.core.config import settings
+from app.services.emailing import send_status_change_email
 
 router = APIRouter(prefix="/dossiers", tags=["Dossiers"])
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
@@ -311,16 +312,16 @@ def submit_dossier(
     dossier.submitted_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(dossier)
-    if dossier.submitted_at is not None:
-        try:
-            send_dossier_submission_email(
-                to_email=user.email,
-                dossier_reference=dossier.reference,
-                submitted_at_utc_iso=_format_utc_timestamp(dossier.submitted_at),
-            )
-        except Exception:
-            # L'échec email ne doit pas annuler une soumission validée en base.
-            logger.exception("Echec envoi email de confirmation de depot pour le dossier %s", dossier.reference)
+    try:
+        send_status_change_email(
+            to_email=user.email,
+            dossier_reference=dossier.reference,
+            nouveau_status=dossier.status.value,
+            dossier_url=f"{settings.FRONTEND_BASE_URL}/mes-dossiers/{dossier.id}",
+        )
+    except Exception:
+        # L'échec email ne doit pas annuler une soumission validée en base.
+        logger.exception("Echec envoi notification statut pour le dossier %s", dossier.reference)
     checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
     return DossierDetailOut(
         id=dossier.id,
