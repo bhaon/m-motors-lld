@@ -94,6 +94,8 @@ spec:
           emptyDir: {}
         - name: cache
           emptyDir: {}
+      imagePullSecrets:
+        - name: ghcr-secret
 ---
 # ============================================================
 # BASE DEPLOYMENT — Backend API
@@ -328,3 +330,5 @@ spec:
         - name: media
           persistentVolumeClaim:
             claimName: media-pvc
+      imagePullSecrets:
+        - name: ghcr-secret
