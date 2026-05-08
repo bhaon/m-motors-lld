@@ -30,6 +30,15 @@ def _has_column(bind: sa.engine.Connection, *, table_name: str, column_name: str
     return any(col["name"] == column_name for col in inspector.get_columns(table_name))
 
 
+def _column_type_name(bind: sa.engine.Connection, *, table_name: str, column_name: str) -> str | None:
+    """Retourne le nom de type SQL (en minuscule) d'une colonne, sinon None."""
+    inspector = sa.inspect(bind)
+    for col in inspector.get_columns(table_name):
+        if col["name"] == column_name:
+            return str(col["type"]).lower()
+    return None
+
+
 def upgrade() -> None:
     """Ajoute les champs d'inscription et chiffre les donnees personnelles."""
     bind = op.get_bind()
@@ -67,24 +76,28 @@ def upgrade() -> None:
                 privacy_accepted_at = COALESCE(created_at, NOW())
             """
         )
-        op.execute(
-            sa.text(
+        first_name_type = _column_type_name(bind, table_name="users", column_name="first_name")
+        if first_name_type != "bytea":
+            op.execute(
+                sa.text(
+                    """
+                ALTER TABLE users
+                ALTER COLUMN first_name TYPE bytea
+                USING pgp_sym_encrypt(first_name, :encryption_key, 'cipher-algo=aes256')
                 """
-            ALTER TABLE users
-            ALTER COLUMN first_name TYPE bytea
-            USING pgp_sym_encrypt(first_name, :encryption_key, 'cipher-algo=aes256')
-            """
-            ).bindparams(encryption_key=encryption_key)
-        )
-        op.execute(
-            sa.text(
+                ).bindparams(encryption_key=encryption_key)
+            )
+        last_name_type = _column_type_name(bind, table_name="users", column_name="last_name")
+        if last_name_type != "bytea":
+            op.execute(
+                sa.text(
+                    """
+                ALTER TABLE users
+                ALTER COLUMN last_name TYPE bytea
+                USING pgp_sym_encrypt(last_name, :encryption_key, 'cipher-algo=aes256')
                 """
-            ALTER TABLE users
-            ALTER COLUMN last_name TYPE bytea
-            USING pgp_sym_encrypt(last_name, :encryption_key, 'cipher-algo=aes256')
-            """
-            ).bindparams(encryption_key=encryption_key)
-        )
+                ).bindparams(encryption_key=encryption_key)
+            )
     else:
         op.execute(
             """
@@ -111,24 +124,28 @@ def downgrade() -> None:
     encryption_key = settings.PII_ENCRYPTION_KEY or settings.SECRET_KEY
 
     if is_postgres:
-        op.execute(
-            sa.text(
+        first_name_type = _column_type_name(bind, table_name="users", column_name="first_name")
+        if first_name_type == "bytea":
+            op.execute(
+                sa.text(
+                    """
+                ALTER TABLE users
+                ALTER COLUMN first_name TYPE varchar(100)
+                USING pgp_sym_decrypt(first_name, :encryption_key)
                 """
-            ALTER TABLE users
-            ALTER COLUMN first_name TYPE varchar(100)
-            USING pgp_sym_decrypt(first_name, :encryption_key)
-            """
-            ).bindparams(encryption_key=encryption_key)
-        )
-        op.execute(
-            sa.text(
+                ).bindparams(encryption_key=encryption_key)
+            )
+        last_name_type = _column_type_name(bind, table_name="users", column_name="last_name")
+        if last_name_type == "bytea":
+            op.execute(
+                sa.text(
+                    """
+                ALTER TABLE users
+                ALTER COLUMN last_name TYPE varchar(100)
+                USING pgp_sym_decrypt(last_name, :encryption_key)
                 """
-            ALTER TABLE users
-            ALTER COLUMN last_name TYPE varchar(100)
-            USING pgp_sym_decrypt(last_name, :encryption_key)
-            """
-            ).bindparams(encryption_key=encryption_key)
-        )
+                ).bindparams(encryption_key=encryption_key)
+            )
 
     with op.batch_alter_table("users") as batch:
         batch.drop_constraint("uq_users_email_verification_token", type_="unique")
