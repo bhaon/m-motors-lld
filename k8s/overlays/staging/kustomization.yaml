@@ -27,4 +27,5 @@ images:
 labels:
   - pairs:
       environment: staging
-    includeSelectors: true
+    includeSelectors: false
+    includeTemplates: true

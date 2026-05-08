@@ -1,6 +1,6 @@
  "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 /**
@@ -49,6 +49,20 @@ function LogoutIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+/**
+ * Icône dossier (SVG) pour les éléments de menu.
+ */
+function FolderIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M10 4l2 2h8a2 2 0 0 1 2 2v9a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zm0 2H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8H11.17z"
+      />
+    </svg>
+  );
+}
+
 export default function Navbar() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [initials, setInitials] = useState<string>("U");
@@ -56,21 +70,9 @@ export default function Navbar() {
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   /**
-   * Construit des initiales "PN" à partir du prénom/nom (fallback "U").
-   */
-  function buildInitials(firstName?: string, lastName?: string): string {
-    const first = (firstName || "").trim();
-    const last = (lastName || "").trim();
-    const a = first ? first[0] : "";
-    const b = last ? last[0] : "";
-    const out = `${a}${b}`.toUpperCase();
-    return out || "U";
-  }
-
-  /**
    * Vérifie si l'utilisateur est connecté afin d'afficher la pastille profil.
    */
-  async function checkAuthStatus() {
+  const checkAuthStatus = useCallback(async () => {
     try {
       if (process.env.NODE_ENV === "test") return;
       if (typeof fetch !== "function") return;
@@ -87,7 +89,9 @@ export default function Navbar() {
       setIsAuthenticated(true);
       try {
         const me = (await response.json()) as { first_name?: string; last_name?: string };
-        setInitials(buildInitials(me.first_name, me.last_name));
+        const a = (me.first_name || "").trim()[0] || "";
+        const b = (me.last_name || "").trim()[0] || "";
+        setInitials(`${a}${b}`.toUpperCase() || "U");
       } catch {
         // En tests / réponses non JSON, on conserve le fallback.
         setInitials("U");
@@ -96,11 +100,11 @@ export default function Navbar() {
       setIsAuthenticated(false);
       setInitials("U");
     }
-  }
+  }, []);
 
   useEffect(() => {
     checkAuthStatus();
-  }, []);
+  }, [checkAuthStatus]);
 
   useEffect(() => {
     /**
@@ -190,29 +194,33 @@ export default function Navbar() {
         >
           Catalogue
         </Link>
-        {/* Point d'entrée principal du tunnel d'inscription. */}
-        <Link
-          href="/inscription"
-          style={{
-            color: "var(--white)",
-            textDecoration: "none",
-            fontSize: ".85rem",
-            fontWeight: 500,
-          }}
-        >
-          Inscription
-        </Link>
-        <Link
-          href="/connexion"
-          style={{
-            color: "var(--white)",
-            textDecoration: "none",
-            fontSize: ".85rem",
-            fontWeight: 500,
-          }}
-        >
-          Connexion
-        </Link>
+        {/* Point d'entrée principal du tunnel d'inscription (visible hors session). */}
+        {!isAuthenticated ? (
+          <>
+            <Link
+              href="/inscription"
+              style={{
+                color: "var(--white)",
+                textDecoration: "none",
+                fontSize: ".85rem",
+                fontWeight: 500,
+              }}
+            >
+              Inscription
+            </Link>
+            <Link
+              href="/connexion"
+              style={{
+                color: "var(--white)",
+                textDecoration: "none",
+                fontSize: ".85rem",
+                fontWeight: 500,
+              }}
+            >
+              Connexion
+            </Link>
+          </>
+        ) : null}
         {/* Lien placeholder en attendant une page "À propos" dédiée. */}
         <Link
           href="#"
@@ -282,6 +290,26 @@ export default function Navbar() {
                 >
                   <UserIcon />
                   Profile
+                </Link>
+
+                <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+
+                <Link
+                  href="/mes-dossiers"
+                  role="menuitem"
+                  onClick={() => setIsMenuOpen(false)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "12px 14px",
+                    textDecoration: "none",
+                    color: "#0f172a",
+                    fontWeight: 600,
+                  }}
+                >
+                  <FolderIcon />
+                  Mes dossiers
                 </Link>
 
                 <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />

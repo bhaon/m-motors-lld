@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import urlparse
 from urllib.parse import quote_plus
-from typing import Annotated, Any, List
+from typing import Any, List
 
-from pydantic import BeforeValidator, Field, model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -105,15 +106,30 @@ class Settings(BaseSettings):
         default="M-Motors <no-reply@mmotors.dev>",
         description="Adresse expéditeur utilisée pour les emails de vérification.",
     )
+    S3_ENDPOINT_URL: str = Field(
+        default="http://minio:9000",
+        description="Endpoint S3 compatible (MinIO en cluster).",
+    )
+    S3_PUBLIC_ENDPOINT_URL: str | None = Field(
+        default=None,
+        description="Endpoint S3 public utilisé pour les URLs pré-signées exposées au navigateur.",
+    )
+    S3_REGION: str = Field(default="us-east-1", description="Région S3 logique.")
+    S3_BUCKET: str = Field(default="mmotors-documents", description="Bucket de stockage des pièces justificatives.")
+    S3_ACCESS_KEY: str = Field(default="minioadmin", description="Access key S3.")
+    S3_SECRET_KEY: str = Field(default="minioadmin", description="Secret key S3.")
+    S3_PRESIGN_EXPIRES_SECONDS: int = Field(default=600, description="Durée de validité de l'URL pré-signée.")
 
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    DRAFT_REMINDER_AFTER_DAYS: int = Field(
+        default=30,
+        description="Délai (jours) après création avant envoi du rappel email pour un dossier encore en brouillon.",
+    )
 
-    ALLOWED_ORIGINS: Annotated[List[str], BeforeValidator(_parse_allowed_origins)] = Field(
-        default_factory=lambda: [
-            "https://localhost:8443",
-            "https://127.0.0.1:8443",
-        ],
+    ALLOWED_ORIGINS: str = Field(
+        default="https://localhost:8443,https://127.0.0.1:8443",
+        description="Origines CORS autorisées (CSV ou JSON array).",
     )
 
     @model_validator(mode="after")
@@ -149,6 +165,25 @@ class Settings(BaseSettings):
         if url is None:
             raise RuntimeError("DATABASE_URL absente après validation — incohérence interne.")
         return url
+
+    @property
+    def s3_public_endpoint_url(self) -> str | None:
+        """Retourne un endpoint S3 public valide (http/https) ou ``None``."""
+        value = self.S3_PUBLIC_ENDPOINT_URL
+        if not value:
+            return None
+        cleaned = value.strip().rstrip("/")
+        if not cleaned:
+            return None
+        parsed = urlparse(cleaned)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return None
+        return cleaned
+
+    @property
+    def allowed_origins(self) -> List[str]:
+        """Retourne la liste CORS normalisée à partir de ``ALLOWED_ORIGINS``."""
+        return _parse_allowed_origins(self.ALLOWED_ORIGINS)
 
 
 # Les champs requis sont fournis par l’environnement ; mypy ne le déduit pas.

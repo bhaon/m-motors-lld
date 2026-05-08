@@ -10,6 +10,11 @@ on:
   push:
     branches:
       - develop
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_dispatch:  # Déclenchement manuel possible
 
 # Permissions requises par le workflow réutilisable ci.yaml (job build : push GHCR + SARIF Trivy).
@@ -98,16 +103,13 @@ jobs:
 
       - name: Smoke tests
         run: |
-          echo "Attente stabilisation (15s)..."
-          sleep 15
           # Health check via l’ingress public : pas de pods/exec ni port-forward, donc pas de droit
           # supplémentaire sur le service account Kubernetes (curl s’exécute sur le runner GitHub).
           DEFAULT_URL="https://app-dev.netdevops.fr/api/healthz"
           URL="${DEV_SMOKE_HEALTH_URL:-$DEFAULT_URL}"
           echo "GET $URL"
-          # En DEV, le certificat peut être auto-signé ; on tolère ce cas pour éviter un faux négatif.
-          curl -k -fsS --retry 3 --retry-delay 3 --max-time 20 "$URL"
-        continue-on-error: true
+          # En DEV, le certificat peut être auto-signé ; -k tolère les certs self-signed.
+          curl -k -fsS --retry 10 --retry-delay 10 --retry-connrefused --max-time 20 "$URL"
 
       - name: Rollback si déploiement échoué
         if: failure()
@@ -128,7 +130,7 @@ jobs:
                 "fields": [
                   {"title": "Commit", "value": "${{ github.sha }}", "short": true},
                   {"title": "Auteur", "value": "${{ github.actor }}", "short": true},
-                  {"title": "URL", "value": "https://app-dev.votre-domaine.com", "short": false}
+                  {"title": "URL", "value": "https://app-dev.netdevops.fr", "short": false}
                 ]
               }]
             }

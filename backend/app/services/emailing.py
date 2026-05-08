@@ -142,3 +142,141 @@ def send_password_reset_email(*, to_email: str, reset_link: str) -> None:
             "html": _build_password_reset_email_html(reset_link),
         }
     )
+
+
+def _build_dossier_submission_email_html(*, dossier_reference: str, submitted_at_utc_iso: str) -> str:
+    """Construit le HTML de confirmation de dépôt de dossier côté client."""
+    return f"""
+    <div style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+        <tr>
+          <td style="background:#0f172a;padding:20px 24px;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:.04em;">
+            M-<span style="color:#06b6d4;">MOTORS</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 24px 18px;">
+            <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">Votre dossier a bien ete depose</h1>
+            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+              Nous confirmons la reception de votre dossier <strong>{dossier_reference}</strong>.
+            </p>
+            <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#4b5563;">
+              Date de soumission (UTC): <strong>{submitted_at_utc_iso}</strong>
+            </p>
+            <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#4b5563;">
+              Votre demande est transmise a l'equipe de traitement.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.6;">
+            Cet email a ete envoye automatiquement, merci de ne pas y repondre.<br />
+            © M-Motors
+          </td>
+        </tr>
+      </table>
+    </div>
+    """.strip()
+
+
+def _build_draft_reminder_email_html(*, dossier_reference: str, mes_dossiers_url: str) -> str:
+    """Construit le HTML du rappel pour finaliser un dossier resté en brouillon."""
+    return f"""
+    <div style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+        <tr>
+          <td style="background:#0f172a;padding:20px 24px;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:.04em;">
+            M-<span style="color:#06b6d4;">MOTORS</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 24px 18px;">
+            <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">Votre dossier attend d'être finalisé</h1>
+            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+              Le dossier <strong>{dossier_reference}</strong> est encore enregistré en brouillon et n'a pas encore été soumis.
+            </p>
+            <p style="margin:0 0 22px;font-size:14px;line-height:1.6;color:#4b5563;">
+              Vous pouvez reprendre la saisie et le compléter quand vous le souhaitez depuis votre espace client.
+            </p>
+            <a
+              href="{mes_dossiers_url}"
+              style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:14px;"
+            >
+              Accéder à mes dossiers
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 24px 22px;">
+            <p style="margin:14px 0 8px;font-size:13px;line-height:1.6;color:#6b7280;">
+              Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :
+            </p>
+            <p style="margin:0;font-size:12px;line-height:1.5;word-break:break-all;">
+              <a href="{mes_dossiers_url}" style="color:#0369a1;text-decoration:underline;">{mes_dossiers_url}</a>
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.6;">
+            Cet email a été envoyé automatiquement, merci de ne pas y répondre.<br />
+            © M-Motors
+          </td>
+        </tr>
+      </table>
+    </div>
+    """.strip()
+
+
+def send_draft_reminder_email(*, to_email: str, dossier_reference: str, mes_dossiers_url: str) -> bool:
+    """
+    Envoie le rappel de finalisation pour un dossier brouillon via Resend quand la clé API est disponible.
+
+    Renvoie ``True`` si l'email a bien été envoyé via Resend, ``False`` sinon (pour réessayer plus tard).
+    """
+    if resend is None:
+        logger.warning("Package resend absent : email de rappel brouillon non envoye pour %s", to_email)
+        return False
+    if not settings.RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY absente : email de rappel brouillon non envoye pour %s", to_email)
+        return False
+
+    resend.api_key = settings.RESEND_API_KEY
+    try:
+        resend.Emails.send(
+            {
+                "from": settings.RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": "Rappel : finalisez votre dossier M-Motors",
+                "html": _build_draft_reminder_email_html(
+                    dossier_reference=dossier_reference,
+                    mes_dossiers_url=mes_dossiers_url,
+                ),
+            }
+        )
+    except Exception:  # pragma: no cover - dépend du réseau / API Resend
+        logger.exception("Echec d'envoi Resend pour le rappel brouillon (dossier %s)", dossier_reference)
+        return False
+    return True
+
+
+def send_dossier_submission_email(*, to_email: str, dossier_reference: str, submitted_at_utc_iso: str) -> None:
+    """Envoie l'email de confirmation de dépôt dossier via Resend quand la clé API est configurée."""
+    if resend is None:
+        logger.warning("Package resend absent : email de depot dossier non envoye pour %s", to_email)
+        return
+    if not settings.RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY absente : email de depot dossier non envoye pour %s", to_email)
+        return
+
+    resend.api_key = settings.RESEND_API_KEY
+    resend.Emails.send(
+        {
+            "from": settings.RESEND_FROM_EMAIL,
+            "to": [to_email],
+            "subject": "Confirmation de depot de votre dossier M-Motors",
+            "html": _build_dossier_submission_email_html(
+                dossier_reference=dossier_reference,
+                submitted_at_utc_iso=submitted_at_utc_iso,
+            ),
+        }
+    )

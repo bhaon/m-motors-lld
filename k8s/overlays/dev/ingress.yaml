@@ -36,3 +36,82 @@ spec:
                 name: frontend
                 port:
                   name: http
+---
+# ============================================================
+# INGRESS — dev (route S3 dédiée)
+# Sépare la route objet de l'app pour isoler middleware/diagnostic.
+# ============================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: s3-ingress
+  namespace: dev
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/service.passhostheader: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: dev-s3-cors@kubernetescrd
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - s3-dev.netdevops.fr
+      secretName: s3-dev-tls-secret
+  rules:
+    - host: s3-dev.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  number: 9000
+---
+# ============================================================
+# MIDDLEWARE — CORS upload objet (dev)
+# Force les en-têtes CORS sur la route S3 via Traefik.
+# ============================================================
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: s3-cors
+  namespace: dev
+spec:
+  headers:
+    accessControlAllowOriginList:
+      - "https://app-dev.netdevops.fr"
+    accessControlAllowMethods:
+      - "GET"
+      - "HEAD"
+      - "PUT"
+      - "OPTIONS"
+    accessControlAllowHeaders:
+      - "*"
+    accessControlExposeHeaders:
+      - "ETag"
+      - "x-amz-request-id"
+      - "x-amz-id-2"
+      - "x-amz-checksum-sha256"
+    accessControlMaxAge: 3600
+    addVaryHeader: true
+---
+# ============================================================
+# CERTIFICATE — TLS dédié pour s3-dev
+# Évite le fallback Traefik default cert sur la route objet.
+# ============================================================
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: s3-dev-tls
+  namespace: dev
+spec:
+  secretName: s3-dev-tls-secret
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - s3-dev.netdevops.fr

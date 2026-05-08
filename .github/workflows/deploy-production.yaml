@@ -10,6 +10,11 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"  # Uniquement les tags semver (v1.2.3)
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_dispatch:
     inputs:
       tag:
@@ -17,9 +22,9 @@ on:
         required: true
         type: string
 
-# Permissions requises par le workflow réutilisable ci.yaml (job build : push GHCR + SARIF Trivy).
+# Permissions minimales au niveau workflow ; contents: write est élevé au niveau du job deploy uniquement.
 permissions:
-  contents: write
+  contents: read
   packages: write
   security-events: write
 
@@ -84,6 +89,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [validate, ci]
     environment: production  # 👈 Bloque jusqu'à approbation dans GitHub UI
+    permissions:
+      contents: write  # requis pour créer la GitHub Release (softprops/action-gh-release)
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -148,17 +155,14 @@ jobs:
       - name: Production smoke tests (via HTTPS public)
         id: smoke_tests
         run: |
-          echo "Attente stabilisation (30s)..."
-          sleep 30
-
           # Smoke tests contre l'hôte défini dans PRODUCTION_PUBLIC_URL (Ingress TLS).
+          # --retry-connrefused + retry étendu remplace le sleep fixe de stabilisation.
           echo "Smoke tests sur: $PRODUCTION_PUBLIC_URL"
 
           for endpoint in "/api/healthz" "/api/readyz"; do
             STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
               "${PRODUCTION_PUBLIC_URL}${endpoint}" \
-              --max-time 15 \
-              -k \
+              --max-time 15 --retry 18 --retry-delay 10 --retry-connrefused \
               -H "User-Agent: GitHub-Actions-ProdSmokeTest")
             if [ "$STATUS" != "200" ]; then
               echo "❌ Endpoint $endpoint retourne HTTP $STATUS"
@@ -169,7 +173,7 @@ jobs:
 
           # Test frontend
           STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
-            "${PRODUCTION_PUBLIC_URL}/" --max-time 15 -k)
+            "${PRODUCTION_PUBLIC_URL}/" --max-time 15 --retry 5 --retry-delay 10 --retry-connrefused)
           if [ "$STATUS" != "200" ]; then
             echo "❌ Frontend retourne HTTP $STATUS"
             exit 1
@@ -182,7 +186,7 @@ jobs:
       # ROLLBACK AUTOMATIQUE si une étape échoue
       # ----------------------------------------------------------
       - name: Rollback automatique
-        if: failure() && (steps.rollout_frontend.outcome == 'failure' || steps.rollout_backend.outcome == 'failure' || steps.smoke_tests.outcome == 'failure')
+        if: failure()
         run: |
           echo "🔄 Rollback production en cours..."
           kubectl rollout undo deployment/frontend -n ${{ env.NAMESPACE }}
@@ -266,12 +270,21 @@ jobs:
       PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_SMOKE_BASE_URL != '' && vars.PRODUCTION_SMOKE_BASE_URL || 'https://netdevops.fr' }}
 
     steps:
-      - name: Wait 2 minutes
-        run: sleep 120
-
-      - name: Extended health check
+      - name: Extended health check (stabilité sur 5 minutes)
         run: |
-          for i in {1..5}; do
+          # Premier check avec retry étendu (jusqu'à 3 min) pour absorber le démarrage.
+          for i in {1..18}; do
+            STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
+              "${PRODUCTION_PUBLIC_URL}/api/healthz" --max-time 10 -k)
+            [ "$STATUS" = "200" ] && break
+            [ "$i" -eq 18 ] && { echo "❌ Timeout : service non disponible après 3 minutes"; exit 1; }
+            sleep 10
+          done
+          echo "Check 1/5 → OK"
+
+          # Vérifications de stabilité toutes les minutes (4 checks supplémentaires = 4 min)
+          for i in {2..5}; do
+            sleep 60
             STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
               "${PRODUCTION_PUBLIC_URL}/api/healthz" --max-time 10 -k)
             echo "Check $i/5 → HTTP $STATUS"
@@ -279,6 +292,5 @@ jobs:
               echo "❌ Health check $i échoué"
               exit 1
             fi
-            sleep 60
           done
-          echo "✅ Production stable après 2 minutes"
+          echo "✅ Production stable"

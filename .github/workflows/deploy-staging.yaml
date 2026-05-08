@@ -10,6 +10,11 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_dispatch:
 
 # Permissions requises par le workflow réutilisable ci.yaml (job build : push GHCR + SARIF Trivy).
@@ -90,21 +95,19 @@ jobs:
 
       - name: Extended smoke tests
         run: |
-          echo "Attente stabilisation (30s)..."
-          sleep 30
           BASE_URL="https://staging.netdevops.fr"
 
-          # Test via endpoint public HTTPS
-          curl -f --retry 5 --retry-delay 10 \
+          # Test via endpoint public HTTPS (retry étendu pour laisser le temps au pod de démarrer)
+          curl -f --retry 12 --retry-delay 10 --retry-connrefused \
             "$BASE_URL/api/healthz" \
             -H "User-Agent: GitHub-Actions-SmokeTest"
 
           # Test readiness backend
-          curl -f --retry 3 --retry-delay 5 \
+          curl -f --retry 5 --retry-delay 10 --retry-connrefused \
             "$BASE_URL/api/readyz"
 
           # Test frontend répond
-          curl -f --retry 3 --retry-delay 5 \
+          curl -f --retry 5 --retry-delay 10 --retry-connrefused \
             "$BASE_URL/" \
             -o /dev/null -w "HTTP Status: %{http_code}\n"
 

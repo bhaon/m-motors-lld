@@ -8,6 +8,8 @@ import SearchBar from "@/components/SearchBar";
 import FiltersRow from "@/components/FiltersRow";
 import VehicleCard from "@/components/VehicleCard";
 import VehicleModal from "@/components/VehicleModal";
+import DossierConfirmModal from "@/components/DossierConfirmModal";
+import DossierPiecesModal from "@/components/DossierPiecesModal";
 import Toast from "@/components/Toast";
 
 interface CataloguePageProps {
@@ -62,15 +64,73 @@ export default function CataloguePage({
   vehicles,
 }: Readonly<CataloguePageProps>) {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [pendingDossier, setPendingDossier] = useState<{
+    vehicle: Vehicle;
+    type: "lld" | "achat";
+  } | null>(null);
+  const [createdDossier, setCreatedDossier] = useState<{
+    id: number;
+    reference: string;
+  } | null>(null);
   const { filters, filtered, marques, modeles, setType, setField, reset } =
     useFilters(vehicles);
   const { toast, showToast } = useToast();
 
+  /**
+   * Résout l'URL backend de création de dossier depuis le catalogue.
+   */
+  function resolveDossiersUrl(): string {
+    const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
+    const base = pub ? pub.replace(/\/$/, "") : "";
+    return base ? `${base}/api/v1/dossiers` : "/api/v1/dossiers";
+  }
+
+  /**
+   * Ouvre la confirmation de dépôt avant toute création effective.
+   */
   function handleDossier(v: Vehicle, type: "lld" | "achat") {
     setSelectedVehicle(null);
-    showToast(
-      `Dossier ${type.toUpperCase()} initié pour ${v.make} ${v.model} — Redirection vers EP-03`,
-    );
+    setPendingDossier({ vehicle: v, type });
+  }
+
+  /**
+   * Annule la confirmation de dépôt sans créer de dossier.
+   */
+  function cancelPendingDossier() {
+    setPendingDossier(null);
+  }
+
+  /**
+   * Crée le dossier uniquement après confirmation explicite dans la modale.
+   */
+  async function confirmPendingDossier() {
+    if (!pendingDossier) return;
+    try {
+      const response = await fetch(resolveDossiersUrl(), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicle_id: pendingDossier.vehicle.id,
+          type: pendingDossier.type,
+        }),
+      });
+      const payload = (await response.json()) as {
+        id?: number;
+        reference?: string;
+        detail?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.detail || "Impossible de créer le dossier.");
+      }
+      const createdReference = payload.reference || "DOS-EN-ATTENTE";
+      const createdId = Number(payload.id || 0);
+      setPendingDossier(null);
+      setCreatedDossier({ id: createdId, reference: createdReference });
+      showToast(`Dossier ${pendingDossier.type.toUpperCase()} créé (${createdReference})`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Erreur technique lors du dépôt.");
+    }
   }
 
   if (vehicles.length === 0) {
@@ -154,6 +214,21 @@ export default function CataloguePage({
         onClose={() => setSelectedVehicle(null)}
         onDossier={handleDossier}
       />
+      {pendingDossier ? (
+        <DossierConfirmModal
+          vehicle={pendingDossier.vehicle}
+          type={pendingDossier.type}
+          onConfirm={confirmPendingDossier}
+          onCancel={cancelPendingDossier}
+        />
+      ) : null}
+      {createdDossier ? (
+        <DossierPiecesModal
+          dossierId={createdDossier.id}
+          dossierReference={createdDossier.reference}
+          onClose={() => setCreatedDossier(null)}
+        />
+      ) : null}
 
       <Toast message={toast.message} visible={toast.visible} />
     </>

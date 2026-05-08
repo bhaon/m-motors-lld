@@ -11,3 +11,4 @@ resources:
   - service.yaml
   - postgresql.yaml
   - redis.yaml
+  - minio.yaml
