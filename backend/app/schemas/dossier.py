@@ -153,6 +153,15 @@ class DossierPrendreEnChargeOut(BaseModel):
     gestionnaire_id: int
 
 
+class DossierValiderOut(BaseModel):
+    """Réponse après validation d'un dossier par le gestionnaire (US-06-04)."""
+
+    id: int
+    reference: str
+    status: str
+    validated_at: datetime | None = None
+
+
 # ── US-06-03 : Détail dossier gestionnaire ────────────────────────────────────
 
 class PieceBoOut(BaseModel):
@@ -171,6 +180,7 @@ class DossierBoDetailOut(BaseModel):
     reference: str
     type: DossierTypeEnum
     status: str
+    validated_at: datetime | None = None
     submitted_at: datetime | None = None
     created_at: datetime | None = None
     motif_rejet: str | None = None

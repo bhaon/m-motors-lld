@@ -25,6 +25,7 @@ from app.schemas.dossier import (
     DossierCreateOut,
     DossierDetailOut,
     DossierListItemOut,
+    DossierValiderOut,
     DossierPieceChecklistItemOut,
     DossierPrendreEnChargeOut,
     HistoriqueItemOut,
@@ -393,6 +394,7 @@ def get_dossier_bo_detail(
         reference=dossier.reference,
         type=dossier.type,
         status=dossier.status.value,
+        validated_at=dossier.validated_at,
         submitted_at=dossier.submitted_at,
         created_at=dossier.created_at,
         motif_rejet=dossier.motif_rejet,
@@ -542,6 +544,98 @@ def prendre_en_charge(
         reference=dossier.reference,
         status=dossier.status.value,
         gestionnaire_id=dossier.gestionnaire_id,
+    )
+
+
+# ── US-06-04 — Validation d'un dossier ───────────────────────────────────────
+
+@router.patch(
+    "/{dossier_id}/valider",
+    response_model=DossierValiderOut,
+    summary="US-06-04 — Validation d'un dossier par le gestionnaire",
+)
+def valider_dossier(
+    dossier_id: int,
+    db: DbSession,
+    request: Request,
+    access_token: str | None = Cookie(default=None),
+) -> DossierValiderOut:
+    """Passe le dossier au statut « valide », enregistre ``validated_at``, notifie le client.
+
+    Règles :
+    - Le dossier doit être au statut ``en_instruction``.
+    - Si déjà ``valide``, l'appel est idempotent (pas de doublon historique / audit / email).
+    - Toute autre transition lève 409.
+    """
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.client))
+        .filter(Dossier.id == dossier_id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    if dossier.status == DossierStatusEnum.valide:
+        return DossierValiderOut(
+            id=dossier.id,
+            reference=dossier.reference,
+            status=dossier.status.value,
+            validated_at=dossier.validated_at,
+        )
+
+    if dossier.status != DossierStatusEnum.en_instruction:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Impossible de valider un dossier au statut '{dossier.status.value}'. "
+                "Le dossier doit être « en_instruction »."
+            ),
+        )
+
+    old_status = dossier.status.value
+    now = datetime.now(timezone.utc)
+    dossier.status = DossierStatusEnum.valide
+    dossier.validated_at = now
+
+    db.add(
+        DossierHistorique(
+            dossier_id=dossier.id,
+            ancien_status=old_status,
+            nouveau_status=DossierStatusEnum.valide.value,
+            commentaire=f"Dossier validé par {user.first_name} {user.last_name} ({user.email})",
+            operateur_id=user.id,
+        )
+    )
+
+    audit_service.record(
+        db,
+        action=audit_service.DOSSIER_VALIDE,
+        entity_type="dossier",
+        entity_id=dossier.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state={"status": old_status, "validated_at": None},
+        after_state={
+            "status": DossierStatusEnum.valide.value,
+            "validated_at": dossier.validated_at.isoformat(),
+            "gestionnaire_email": user.email,
+        },
+    )
+
+    db.commit()
+    db.refresh(dossier)
+
+    _notify_status_change(dossier, dossier.client.email)
+
+    return DossierValiderOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        status=dossier.status.value,
+        validated_at=dossier.validated_at,
     )
 
 

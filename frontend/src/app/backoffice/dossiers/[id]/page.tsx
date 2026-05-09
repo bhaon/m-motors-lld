@@ -2,6 +2,7 @@
 
 /**
  * US-06-03 — Détail complet d'un dossier pour le gestionnaire.
+ * US-06-04 — Validation du dossier (bouton, statut validé, validated_at).
  *
  * Affiche : client, véhicule, type de contrat, pièces justificatives consultables
  * dans le navigateur (visionneuse intégrée), historique des actions.
@@ -38,6 +39,7 @@ interface DossierBoDetail {
   reference: string;
   type: "achat" | "lld";
   status: string;
+  validated_at: string | null;
   submitted_at: string | null;
   created_at: string | null;
   motif_rejet: string | null;
@@ -92,6 +94,7 @@ export default function BackofficeDossierDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [takingCharge, setTakingCharge] = useState(false);
+  const [validating, setValidating] = useState(false);
   const [toast, setToast] = useState("");
   const [viewer, setViewer] = useState<ViewerState | null>(null);
   const [loadingPiece, setLoadingPiece] = useState<PieceType | null>(null);
@@ -115,6 +118,42 @@ export default function BackofficeDossierDetailPage() {
   }, [id]);
 
   useEffect(() => { fetchDetail(); }, [fetchDetail]);
+
+  /**
+   * Valide le dossier côté API (US-06-04) et met à jour l'état local.
+   */
+  async function handleValiderDossier() {
+    if (!detail) return;
+    setValidating(true);
+    setError("");
+    try {
+      const res = await fetch(`${apiBase()}/api/v1/dossiers/${detail.id}/valider`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        detail?: string;
+        status?: string;
+        validated_at?: string | null;
+      };
+      if (!res.ok) throw new Error(payload.detail ?? "Erreur lors de la validation.");
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: payload.status ?? "valide",
+              validated_at: payload.validated_at ?? prev.validated_at,
+            }
+          : prev,
+      );
+      setToast(`Dossier ${detail.reference} validé.`);
+      setTimeout(() => setToast(""), 3500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur inattendue.");
+    } finally {
+      setValidating(false);
+    }
+  }
 
   async function handlePrendreEnCharge() {
     if (!detail) return;
@@ -204,28 +243,49 @@ export default function BackofficeDossierDetailPage() {
                   </span>
                 </div>
 
-                {/* Bouton prise en charge */}
-                {detail.status === "depose" && (
-                  <button
-                    type="button"
-                    aria-label={`Prendre en charge le dossier ${detail.reference}`}
-                    disabled={takingCharge}
-                    onClick={handlePrendreEnCharge}
-                    style={{
-                      padding: "8px 20px", background: takingCharge ? "#94a3b8" : "#0e7490",
-                      color: "#fff", border: 0, borderRadius: 8, fontWeight: 700,
-                      cursor: takingCharge ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {takingCharge ? "…" : "Prendre en charge"}
-                  </button>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: ".75rem", flexWrap: "wrap" }}>
+                  {/* Bouton prise en charge */}
+                  {detail.status === "depose" && (
+                    <button
+                      type="button"
+                      aria-label={`Prendre en charge le dossier ${detail.reference}`}
+                      disabled={takingCharge}
+                      onClick={handlePrendreEnCharge}
+                      style={{
+                        padding: "8px 20px", background: takingCharge ? "#94a3b8" : "#0e7490",
+                        color: "#fff", border: 0, borderRadius: 8, fontWeight: 700,
+                        cursor: takingCharge ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {takingCharge ? "…" : "Prendre en charge"}
+                    </button>
+                  )}
+                  {/* US-06-04 — Validation */}
+                  {detail.status === "en_instruction" && (
+                    <button
+                      type="button"
+                      aria-label={`Valider le dossier ${detail.reference}`}
+                      disabled={validating}
+                      onClick={handleValiderDossier}
+                      style={{
+                        padding: "8px 20px", background: validating ? "#94a3b8" : "#15803d",
+                        color: "#fff", border: 0, borderRadius: 8, fontWeight: 700,
+                        cursor: validating ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {validating ? "…" : "Valider le dossier"}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", color: "var(--muted)", fontSize: ".9rem" }}>
                 <span>Créé le : <strong style={{ color: "var(--navy)" }}>{formatDate(detail.created_at)}</strong></span>
                 {detail.submitted_at && (
                   <span>Déposé le : <strong style={{ color: "var(--navy)" }}>{formatDate(detail.submitted_at)}</strong></span>
+                )}
+                {detail.validated_at && (
+                  <span>Validé le : <strong style={{ color: "var(--navy)" }}>{formatDate(detail.validated_at)}</strong></span>
                 )}
               </div>
 

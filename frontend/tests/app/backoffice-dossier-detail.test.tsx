@@ -17,6 +17,7 @@ function makeDetail(overrides: Partial<Record<string, unknown>> = {}) {
     reference: "DET-2026-00042",
     type: "achat",
     status: "depose",
+    validated_at: null,
     submitted_at: "2026-03-15T10:00:00Z",
     created_at: "2026-03-14T08:00:00Z",
     motif_rejet: null,
@@ -304,6 +305,67 @@ describe("BackofficeDossierDetailPage — prise en charge", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(/impossible de prendre en charge/i),
     );
+  });
+});
+
+// ── Validation dossier (US-06-04) ─────────────────────────────────────────────
+
+describe("BackofficeDossierDetailPage — validation dossier", () => {
+  it("affiche le bouton « Valider le dossier » pour un dossier en_instruction", async () => {
+    mockFetch(makeDetail({ status: "en_instruction" }));
+    render(<BackofficeDossierDetailPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /valider le dossier det-2026-00042/i }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("n'affiche pas le bouton de validation pour un dossier déposé", async () => {
+    render(<BackofficeDossierDetailPage />);
+    await waitFor(() => expect(screen.getByText("DET-2026-00042")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /valider le dossier/i })).not.toBeInTheDocument();
+  });
+
+  it("appelle PATCH /valider et affiche un toast après succès", async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeDetail({ status: "en_instruction" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 42,
+          reference: "DET-2026-00042",
+          status: "valide",
+          validated_at: "2026-03-20T14:00:00Z",
+        }),
+      });
+
+    render(<BackofficeDossierDetailPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /valider le dossier det-2026-00042/i }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/dossier det-2026-00042 validé/i)).toBeInTheDocument(),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/dossiers/42/valider"),
+      expect.objectContaining({ method: "PATCH", credentials: "include" }),
+    );
+  });
+
+  it("affiche la date de validation lorsque présente dans le détail", async () => {
+    mockFetch(
+      makeDetail({
+        status: "valide",
+        validated_at: "2026-03-20T14:00:00Z",
+      }),
+    );
+    render(<BackofficeDossierDetailPage />);
+    await waitFor(() => expect(screen.getByText(/validé le/i)).toBeInTheDocument());
   });
 });
 
