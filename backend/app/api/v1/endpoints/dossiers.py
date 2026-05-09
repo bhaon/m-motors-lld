@@ -5,23 +5,33 @@ from datetime import date, datetime, timezone
 import logging
 from typing import cast
 
-from fastapi import APIRouter, Cookie, HTTPException, Request, status
+from typing import Annotated
+from fastapi import APIRouter, Cookie, HTTPException, Query, Request, status
 
 from app.core.deps import DbSession, enforce_role, get_user_from_cookie
-from app.models.dossier import Dossier, DossierStatusEnum, DossierTypeEnum, PieceJustificative
+from app.models.dossier import Dossier, DossierHistorique, DossierStatusEnum, DossierTypeEnum, PieceJustificative
 from app.models.user import RoleEnum, User
 from app.models.vehicle import Vehicle
 from sqlalchemy.orm import joinedload
 
 from app.schemas.dossier import (
+    ClientSummaryOut,
     ContratListItemOut,
     ContratVehicleOut,
+    DossierBoDetailOut,
+    DossierBoItemOut,
+    DossierBoListOut,
     DossierCreateIn,
     DossierCreateOut,
     DossierDetailOut,
     DossierListItemOut,
+    DossierRejeterIn,
+    DossierRejeterOut,
+    DossierValiderOut,
     DossierPieceChecklistItemOut,
+    DossierPrendreEnChargeOut,
     HistoriqueItemOut,
+    PieceBoOut,
     PieceDownloadUrlOut,
     PieceType,
     PieceUploadCompleteIn,
@@ -125,6 +135,29 @@ def _add_months(d: date, months: int) -> date:
     return date(year, month, day)
 
 
+def _notify_status_change(
+    dossier: Dossier,
+    client_email: str,
+    *,
+    motif_rejet: str | None = None,
+) -> None:
+    """Envoie la notification de changement de statut au client. Non-bloquant."""
+    try:
+        send_status_change_email(
+            to_email=client_email,
+            dossier_reference=dossier.reference,
+            nouveau_status=dossier.status.value,
+            dossier_url=f"{settings.FRONTEND_BASE_URL}/mes-dossiers/{dossier.id}",
+            motif_rejet=motif_rejet,
+        )
+    except Exception:
+        logger.exception(
+            "Echec notification statut '%s' pour dossier %s",
+            dossier.status.value,
+            dossier.reference,
+        )
+
+
 @router.post("", response_model=DossierCreateOut, status_code=status.HTTP_201_CREATED)
 def create_dossier(
     payload: DossierCreateIn,
@@ -200,37 +233,519 @@ def list_my_dossiers(
     ]
 
 
-@router.get("/backoffice", response_model=list[DossierListItemOut])
+@router.get("/backoffice", response_model=DossierBoListOut, summary="US-06-01 — Tableau de bord gestionnaire")
 def list_all_dossiers_backoffice(
     db: DbSession,
     access_token: str | None = Cookie(default=None),
-) -> list[DossierListItemOut]:
-    """Liste tous les dossiers (tous clients) — réservé gestionnaire, superviseur, admin."""
+    # Filtres — Query() obligatoire pour list[str], sinon FastAPI lit le corps JSON
+    statuts: Annotated[list[str] | None, Query()] = None,
+    type_contrat: Annotated[str | None, Query()] = None,
+    date_from: Annotated[datetime | None, Query()] = None,
+    date_to: Annotated[datetime | None, Query()] = None,
+    # Tri
+    sort: Annotated[str, Query()] = "submitted_asc",
+    # Pagination
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> DossierBoListOut:
+    """Liste paginée et filtrée des dossiers pour le tableau de bord gestionnaire.
+
+    Filtres disponibles :
+    - ``statuts`` (répétable) : ex. depose,en_instruction. Défaut = depose + en_instruction.
+    - ``type_contrat`` : achat | lld.
+    - ``date_from`` / ``date_to`` : plage sur submitted_at.
+
+    Tri : submitted_asc (défaut, plus anciens en premier), submitted_desc, created_desc.
+    Pagination : page (≥ 1) + page_size (1–100, défaut 20).
+    """
     user = _resolve_user_from_cookie(access_token, db)
     enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
-    dossiers = (
+
+    # Valeurs par défaut des statuts (dossiers en attente de traitement)
+    active_statuts = statuts if statuts else ["depose", "en_instruction"]
+
+    # Validation des valeurs de statut
+    valid_statuts = {s.value for s in DossierStatusEnum}
+    for s in active_statuts:
+        if s not in valid_statuts:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Statut inconnu : '{s}'. Valeurs acceptées : {sorted(valid_statuts)}",
+            )
+
+    q = (
         db.query(Dossier)
-        .options(joinedload(Dossier.vehicle))
-        .order_by(Dossier.created_at.desc(), Dossier.id.desc())
-        .all()
+        .options(joinedload(Dossier.vehicle), joinedload(Dossier.client), joinedload(Dossier.pieces))
+        .filter(Dossier.status.in_(active_statuts))
     )
-    return [
-        DossierListItemOut(
+
+    if type_contrat:
+        if type_contrat not in {t.value for t in DossierTypeEnum}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Type inconnu : '{type_contrat}'. Valeurs acceptées : achat, lld",
+            )
+        q = q.filter(Dossier.type == type_contrat)
+
+    if date_from:
+        q = q.filter(Dossier.submitted_at >= date_from)
+    if date_to:
+        q = q.filter(Dossier.submitted_at <= date_to)
+
+    # Tri
+    if sort == "submitted_asc":
+        q = q.order_by(Dossier.submitted_at.asc().nulls_last(), Dossier.id.asc())
+    elif sort == "submitted_desc":
+        q = q.order_by(Dossier.submitted_at.desc().nulls_first(), Dossier.id.desc())
+    else:
+        # created_desc — tri de création décroissant (brouillons inclus)
+        q = q.order_by(Dossier.created_at.desc(), Dossier.id.desc())
+
+    total = q.count()
+
+    page = max(1, page)
+    page_size = min(100, max(1, page_size))
+    offset = (page - 1) * page_size
+    dossiers = q.offset(offset).limit(page_size).all()
+
+    items = [
+        DossierBoItemOut(
             id=d.id,
             reference=d.reference,
             type=d.type,
             status=d.status.value,
-            vehicle_id=d.vehicle_id,
-            client_id=d.client_id,
+            submitted_at=d.submitted_at,
             created_at=d.created_at,
             vehicle=VehicleSummaryOut(
                 make=d.vehicle.make if d.vehicle else "—",
                 model=d.vehicle.model if d.vehicle else "",
                 year=d.vehicle.year if d.vehicle else 0,
             ),
+            client=ClientSummaryOut(
+                id=d.client.id,
+                email=d.client.email,
+                first_name=d.client.first_name,
+                last_name=d.client.last_name,
+            ),
+            pieces_count=len(d.pieces),
         )
         for d in dossiers
     ]
+
+    return DossierBoListOut(total=total, page=page, page_size=page_size, items=items)
+
+
+# ── US-06-03 — Détail dossier gestionnaire ───────────────────────────────────
+
+@router.get(
+    "/backoffice/{dossier_id}",
+    response_model=DossierBoDetailOut,
+    summary="US-06-03 — Détail complet d'un dossier pour le gestionnaire",
+)
+def get_dossier_bo_detail(
+    dossier_id: int,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> DossierBoDetailOut:
+    """Retourne le détail complet d'un dossier : client, véhicule, pièces, historique.
+
+    Accessible aux gestionnaires, superviseurs et admins uniquement.
+    """
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = (
+        db.query(Dossier)
+        .options(
+            joinedload(Dossier.client),
+            joinedload(Dossier.vehicle),
+            joinedload(Dossier.pieces),
+            joinedload(Dossier.historique),
+        )
+        .filter(Dossier.id == dossier_id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    uploaded_map: dict[str, PieceJustificative] = {
+        p.type_piece: p for p in dossier.pieces if p.type_piece in REQUIRED_PIECE_TYPES
+    }
+    pieces = [
+        PieceBoOut(
+            type_piece=cast(PieceType, t),
+            uploaded=t in uploaded_map,
+            filename=uploaded_map[t].filename if t in uploaded_map else None,
+            uploaded_at=uploaded_map[t].uploaded_at if t in uploaded_map else None,
+        )
+        for t in REQUIRED_PIECE_TYPES
+    ]
+
+    historique_out = [
+        HistoriqueItemOut(
+            ancien_status=h.ancien_status,
+            nouveau_status=h.nouveau_status,
+            commentaire=h.commentaire,
+            created_at=h.created_at,
+        )
+        for h in dossier.historique
+    ]
+
+    return DossierBoDetailOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        type=dossier.type,
+        status=dossier.status.value,
+        validated_at=dossier.validated_at,
+        submitted_at=dossier.submitted_at,
+        created_at=dossier.created_at,
+        rejected_at=dossier.rejected_at,
+        motif_rejet=dossier.motif_rejet,
+        notes_internes=dossier.notes_internes,
+        vehicle=VehicleSummaryOut(
+            make=dossier.vehicle.make if dossier.vehicle else "—",
+            model=dossier.vehicle.model if dossier.vehicle else "",
+            year=dossier.vehicle.year if dossier.vehicle else 0,
+        ),
+        client=ClientSummaryOut(
+            id=dossier.client.id,
+            email=dossier.client.email,
+            first_name=dossier.client.first_name,
+            last_name=dossier.client.last_name,
+        ),
+        pieces=pieces,
+        historique=historique_out,
+    )
+
+
+@router.get(
+    "/backoffice/{dossier_id}/pieces/{type_piece}/download-url",
+    response_model=PieceDownloadUrlOut,
+    summary="US-06-03 — URL pré-signée pour consulter une pièce (gestionnaire)",
+)
+def get_piece_download_url_bo(
+    dossier_id: int,
+    type_piece: PieceType,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> PieceDownloadUrlOut:
+    """Génère une URL pré-signée GET (10 min) pour qu'un gestionnaire consulte une pièce."""
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = db.query(Dossier).filter(Dossier.id == dossier_id).first()
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    piece = (
+        db.query(PieceJustificative)
+        .filter(
+            PieceJustificative.dossier_id == dossier_id,
+            PieceJustificative.type_piece == type_piece,
+        )
+        .first()
+    )
+    if not piece:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document non trouvé.")
+
+    s3_client = get_s3_client()
+    # disposition="inline" : le navigateur affiche le PDF dans l'iframe au lieu de le télécharger
+    download_url = generate_download_url(
+        s3_client,
+        object_key=piece.s3_key,
+        filename=piece.filename,
+        disposition="inline",
+    )
+    return PieceDownloadUrlOut(download_url=download_url, filename=piece.filename)
+
+
+# ── US-06-02 — Prise en charge d'un dossier ──────────────────────────────────
+
+@router.patch(
+    "/{dossier_id}/prendre-en-charge",
+    response_model=DossierPrendreEnChargeOut,
+    summary="US-06-02 — Prise en charge d'un dossier par le gestionnaire",
+)
+def prendre_en_charge(
+    dossier_id: int,
+    db: DbSession,
+    request: Request,
+    access_token: str | None = Cookie(default=None),
+) -> DossierPrendreEnChargeOut:
+    """Affecte le dossier au gestionnaire connecté et passe son statut à 'en_instruction'.
+
+    Règles :
+    - Le dossier doit être au statut ``depose``.
+    - Le gestionnaire déjà assigné peut ré-exécuter l'action (idempotent).
+    - Toute tentative sur un dossier dans un autre statut lève 409.
+    """
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.client))
+        .filter(Dossier.id == dossier_id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    if dossier.status not in (DossierStatusEnum.depose, DossierStatusEnum.en_instruction):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Impossible de prendre en charge un dossier au statut '{dossier.status.value}'. "
+                "Seuls les dossiers 'depose' ou déjà 'en_instruction' sont acceptés."
+            ),
+        )
+
+    # Idempotence : déjà en instruction et même gestionnaire → pas de doublon en base
+    already_taken = (
+        dossier.status == DossierStatusEnum.en_instruction
+        and dossier.gestionnaire_id == user.id
+    )
+
+    old_status = dossier.status.value
+    dossier.status = DossierStatusEnum.en_instruction
+    dossier.gestionnaire_id = user.id
+
+    if not already_taken:
+        # Entrée dans l'historique du dossier
+        db.add(DossierHistorique(
+            dossier_id=dossier.id,
+            ancien_status=old_status,
+            nouveau_status=DossierStatusEnum.en_instruction.value,
+            commentaire=f"Pris en charge par {user.first_name} {user.last_name} ({user.email})",
+            operateur_id=user.id,
+        ))
+
+        # Audit trail
+        audit_service.record(
+            db,
+            action=audit_service.DOSSIER_PRIS_EN_CHARGE,
+            entity_type="dossier",
+            entity_id=dossier.id,
+            operator=user,
+            ip_address=request.client.host if request.client else None,
+            before_state={"status": old_status, "gestionnaire_id": dossier.gestionnaire_id},
+            after_state={
+                "status": DossierStatusEnum.en_instruction.value,
+                "gestionnaire_id": user.id,
+                "gestionnaire_email": user.email,
+            },
+        )
+
+    db.commit()
+    db.refresh(dossier)
+
+    if not already_taken:
+        _notify_status_change(dossier, dossier.client.email)
+
+    return DossierPrendreEnChargeOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        status=dossier.status.value,
+        gestionnaire_id=dossier.gestionnaire_id,
+    )
+
+
+# ── US-06-04 — Validation d'un dossier ───────────────────────────────────────
+
+@router.patch(
+    "/{dossier_id}/valider",
+    response_model=DossierValiderOut,
+    summary="US-06-04 — Validation d'un dossier par le gestionnaire",
+)
+def valider_dossier(
+    dossier_id: int,
+    db: DbSession,
+    request: Request,
+    access_token: str | None = Cookie(default=None),
+) -> DossierValiderOut:
+    """Passe le dossier au statut « valide », enregistre ``validated_at``, notifie le client.
+
+    Règles :
+    - Le dossier doit être au statut ``en_instruction``.
+    - Si déjà ``valide``, l'appel est idempotent (pas de doublon historique / audit / email).
+    - Toute autre transition lève 409.
+    """
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.client))
+        .filter(Dossier.id == dossier_id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    if dossier.status == DossierStatusEnum.valide:
+        return DossierValiderOut(
+            id=dossier.id,
+            reference=dossier.reference,
+            status=dossier.status.value,
+            validated_at=dossier.validated_at,
+        )
+
+    if dossier.status != DossierStatusEnum.en_instruction:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Impossible de valider un dossier au statut '{dossier.status.value}'. "
+                "Le dossier doit être « en_instruction »."
+            ),
+        )
+
+    old_status = dossier.status.value
+    now = datetime.now(timezone.utc)
+    dossier.status = DossierStatusEnum.valide
+    dossier.validated_at = now
+
+    db.add(
+        DossierHistorique(
+            dossier_id=dossier.id,
+            ancien_status=old_status,
+            nouveau_status=DossierStatusEnum.valide.value,
+            commentaire=f"Dossier validé par {user.first_name} {user.last_name} ({user.email})",
+            operateur_id=user.id,
+        )
+    )
+
+    audit_service.record(
+        db,
+        action=audit_service.DOSSIER_VALIDE,
+        entity_type="dossier",
+        entity_id=dossier.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state={"status": old_status, "validated_at": None},
+        after_state={
+            "status": DossierStatusEnum.valide.value,
+            "validated_at": dossier.validated_at.isoformat(),
+            "gestionnaire_email": user.email,
+        },
+    )
+
+    db.commit()
+    db.refresh(dossier)
+
+    _notify_status_change(dossier, dossier.client.email)
+
+    return DossierValiderOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        status=dossier.status.value,
+        validated_at=dossier.validated_at,
+    )
+
+
+# ── US-06-05 — Rejet d'un dossier avec motif obligatoire ─────────────────────
+
+_STATUTS_REJETABLES_GESTIONNAIRE = frozenset(
+    {DossierStatusEnum.depose, DossierStatusEnum.en_instruction}
+)
+
+
+@router.patch(
+    "/{dossier_id}/rejeter",
+    response_model=DossierRejeterOut,
+    summary="US-06-05 — Rejet d'un dossier par le gestionnaire (motif obligatoire)",
+)
+def rejeter_dossier(
+    dossier_id: int,
+    payload: DossierRejeterIn,
+    db: DbSession,
+    request: Request,
+    access_token: str | None = Cookie(default=None),
+) -> DossierRejeterOut:
+    """Passe le dossier au statut « rejete », enregistre le motif, ``rejected_at``, notifie le client.
+
+    Règles :
+    - Le dossier doit être ``depose`` ou ``en_instruction``.
+    - Le motif (trim) fait au moins 20 caractères (voir schéma).
+    - Si déjà ``rejete``, l'appel est idempotent (pas de doublon historique / audit / email).
+    """
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.client))
+        .filter(Dossier.id == dossier_id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    if dossier.status == DossierStatusEnum.rejete:
+        return DossierRejeterOut(
+            id=dossier.id,
+            reference=dossier.reference,
+            status=dossier.status.value,
+            motif_rejet=dossier.motif_rejet or "",
+            rejected_at=dossier.rejected_at,
+        )
+
+    if dossier.status not in _STATUTS_REJETABLES_GESTIONNAIRE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Impossible de rejeter un dossier au statut '{dossier.status.value}'. "
+                "Seuls les dossiers « depose » ou « en_instruction » peuvent être rejetés."
+            ),
+        )
+
+    old_status = dossier.status.value
+    motif = payload.motif
+    now = datetime.now(timezone.utc)
+    dossier.status = DossierStatusEnum.rejete
+    dossier.motif_rejet = motif
+    dossier.rejected_at = now
+
+    db.add(
+        DossierHistorique(
+            dossier_id=dossier.id,
+            ancien_status=old_status,
+            nouveau_status=DossierStatusEnum.rejete.value,
+            commentaire=(
+                f"Dossier rejeté par {user.first_name} {user.last_name} ({user.email}). "
+                f"Motif : {motif}"
+            ),
+            operateur_id=user.id,
+        )
+    )
+
+    audit_service.record(
+        db,
+        action=audit_service.DOSSIER_REJETE,
+        entity_type="dossier",
+        entity_id=dossier.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state={"status": old_status, "motif_rejet": None},
+        after_state={
+            "status": DossierStatusEnum.rejete.value,
+            "motif_rejet": motif,
+            "rejected_at": dossier.rejected_at.isoformat(),
+            "gestionnaire_email": user.email,
+        },
+    )
+
+    db.commit()
+    db.refresh(dossier)
+
+    _notify_status_change(dossier, dossier.client.email, motif_rejet=motif)
+
+    return DossierRejeterOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        status=dossier.status.value,
+        motif_rejet=motif,
+        rejected_at=dossier.rejected_at,
+    )
 
 
 @router.get("/contrats", response_model=list[ContratListItemOut])
@@ -406,16 +921,7 @@ def submit_dossier(
     )
     db.commit()
     db.refresh(dossier)
-    try:
-        send_status_change_email(
-            to_email=user.email,
-            dossier_reference=dossier.reference,
-            nouveau_status=dossier.status.value,
-            dossier_url=f"{settings.FRONTEND_BASE_URL}/mes-dossiers/{dossier.id}",
-        )
-    except Exception:
-        # L'échec email ne doit pas annuler une soumission validée en base.
-        logger.exception("Echec envoi notification statut pour le dossier %s", dossier.reference)
+    _notify_status_change(dossier, user.email)
     checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
     return DossierDetailOut(
         id=dossier.id,

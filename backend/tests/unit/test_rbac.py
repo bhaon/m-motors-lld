@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -72,10 +74,24 @@ def test_backoffice_returns_all_clients_dossiers(client: TestClient, db: Session
     client_a = create_user(db, email="rbac.clienta.alldo@example.com")
     client_b = create_user(db, email="rbac.clientb.alldo@example.com")
     vehicle = create_vehicle(db, lld=False)
-
+    ts = datetime.now(timezone.utc)
     db.add_all([
-        Dossier(reference="DOS-RBAC-A", type=DossierTypeEnum.achat, client_id=client_a.id, vehicle_id=vehicle.id),
-        Dossier(reference="DOS-RBAC-B", type=DossierTypeEnum.achat, client_id=client_b.id, vehicle_id=vehicle.id),
+        Dossier(
+            reference="DOS-RBAC-A",
+            type=DossierTypeEnum.achat,
+            status=DossierStatusEnum.depose,
+            client_id=client_a.id,
+            vehicle_id=vehicle.id,
+            submitted_at=ts,
+        ),
+        Dossier(
+            reference="DOS-RBAC-B",
+            type=DossierTypeEnum.achat,
+            status=DossierStatusEnum.depose,
+            client_id=client_b.id,
+            vehicle_id=vehicle.id,
+            submitted_at=ts,
+        ),
     ])
     db.commit()
 
@@ -83,7 +99,7 @@ def test_backoffice_returns_all_clients_dossiers(client: TestClient, db: Session
     response = client.get("/api/v1/dossiers/backoffice", headers=headers)
 
     assert response.status_code == 200
-    refs = [item["reference"] for item in response.json()]
+    refs = [item["reference"] for item in response.json()["items"]]
     assert "DOS-RBAC-A" in refs
     assert "DOS-RBAC-B" in refs
 

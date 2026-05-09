@@ -120,8 +120,19 @@ def generate_upload_url(
     )
 
 
-def generate_download_url(client: BaseClient, *, object_key: str, filename: str) -> str:
-    """Génère une URL pré-signée GET pour télécharger une pièce justificative."""
+def generate_download_url(
+    client: BaseClient,
+    *,
+    object_key: str,
+    filename: str,
+    disposition: str = "attachment",
+) -> str:
+    """Génère une URL pré-signée GET pour accéder à une pièce justificative.
+
+    ``disposition`` contrôle le header ``Content-Disposition`` embarqué dans l'URL :
+    - ``"attachment"`` (défaut) : force le téléchargement côté navigateur.
+    - ``"inline"`` : permet l'affichage direct dans le navigateur (PDF, image).
+    """
     presign_client = (
         get_s3_presign_client() if settings.s3_public_endpoint_url else client
     )
@@ -131,7 +142,7 @@ def generate_download_url(client: BaseClient, *, object_key: str, filename: str)
         Params={
             "Bucket": settings.S3_BUCKET,
             "Key": object_key,
-            "ResponseContentDisposition": f'attachment; filename="{safe_name}"',
+            "ResponseContentDisposition": f'{disposition}; filename="{safe_name}"',
         },
         ExpiresIn=settings.S3_PRESIGN_EXPIRES_SECONDS,
     )

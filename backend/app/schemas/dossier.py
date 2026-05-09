@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Literal
 from datetime import date, datetime
 
@@ -107,6 +107,114 @@ class DossierDetailOut(BaseModel):
     missing_pieces: list[PieceType]
     can_submit: bool
     vehicle: VehicleSummaryOut | None = None
+    historique: list[HistoriqueItemOut] = []
+
+
+# ── US-06-01 : Tableau de bord gestionnaire ───────────────────────────────────
+
+class ClientSummaryOut(BaseModel):
+    """Résumé client pour la vue back-office d'un dossier."""
+
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+
+
+class DossierBoItemOut(BaseModel):
+    """Dossier enrichi pour le tableau de bord gestionnaire (US-06-01)."""
+
+    id: int
+    reference: str
+    type: DossierTypeEnum
+    status: str
+    submitted_at: datetime | None = None
+    created_at: datetime | None = None
+    vehicle: VehicleSummaryOut
+    client: ClientSummaryOut
+    pieces_count: int
+
+
+class DossierBoListOut(BaseModel):
+    """Réponse paginée du tableau de bord gestionnaire."""
+
+    total: int
+    page: int
+    page_size: int
+    items: list[DossierBoItemOut]
+
+
+class DossierPrendreEnChargeOut(BaseModel):
+    """Réponse après prise en charge d'un dossier (US-06-02)."""
+
+    id: int
+    reference: str
+    status: str
+    gestionnaire_id: int
+
+
+class DossierValiderOut(BaseModel):
+    """Réponse après validation d'un dossier par le gestionnaire (US-06-04)."""
+
+    id: int
+    reference: str
+    status: str
+    validated_at: datetime | None = None
+
+
+class DossierRejeterIn(BaseModel):
+    """Payload pour rejeter un dossier (US-06-05) — motif communiqué au client."""
+
+    motif: str = Field(..., description="Motif obligatoire (min. 20 caractères utiles).")
+
+    @field_validator("motif")
+    @classmethod
+    def motif_longueur(cls, v: str) -> str:
+        s = v.strip()
+        if len(s) < 20:
+            raise ValueError("Le motif doit contenir au moins 20 caractères.")
+        if len(s) > 4000:
+            raise ValueError("Le motif ne peut pas dépasser 4000 caractères.")
+        return s
+
+
+class DossierRejeterOut(BaseModel):
+    """Réponse après rejet d'un dossier par le gestionnaire (US-06-05)."""
+
+    id: int
+    reference: str
+    status: str
+    motif_rejet: str
+    rejected_at: datetime | None = None
+
+
+# ── US-06-03 : Détail dossier gestionnaire ────────────────────────────────────
+
+class PieceBoOut(BaseModel):
+    """Pièce justificative vue du gestionnaire (uploaded ou manquante)."""
+
+    type_piece: PieceType
+    uploaded: bool
+    filename: str | None = None
+    uploaded_at: datetime | None = None
+
+
+class DossierBoDetailOut(BaseModel):
+    """Détail complet d'un dossier pour le gestionnaire (US-06-03)."""
+
+    id: int
+    reference: str
+    type: DossierTypeEnum
+    status: str
+    validated_at: datetime | None = None
+    submitted_at: datetime | None = None
+    created_at: datetime | None = None
+    rejected_at: datetime | None = None
+    motif_rejet: str | None = None
+    notes_internes: str | None = None
+    vehicle: VehicleSummaryOut
+    client: ClientSummaryOut
+    pieces: list[PieceBoOut]
     historique: list[HistoriqueItemOut] = []
 
 

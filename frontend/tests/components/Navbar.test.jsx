@@ -174,4 +174,76 @@ describe("Navbar", () => {
       expect(screen.queryByRole("menu", { name: /menu utilisateur/i })).not.toBeInTheDocument();
     });
   });
+
+  it("affiche les liens back-office gestionnaire mais pas le reporting", async () => {
+    process.env.NODE_ENV = "production";
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        first_name: "G",
+        last_name: "estion",
+        role: "gestionnaire",
+      }),
+    });
+    render(<Navbar />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /ouvrir le menu utilisateur/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /ouvrir le menu utilisateur/i }));
+
+    expect(screen.getByRole("menuitem", { name: /gestion véhicules/i })).toHaveAttribute(
+      "href",
+      "/backoffice/vehicules",
+    );
+    expect(screen.getByRole("menuitem", { name: /dossiers en attente/i })).toHaveAttribute(
+      "href",
+      "/backoffice/dossiers",
+    );
+    expect(screen.queryByRole("menuitem", { name: /reporting dossiers/i })).not.toBeInTheDocument();
+  });
+
+  it("affiche le lien Reporting dossiers pour un superviseur", async () => {
+    process.env.NODE_ENV = "production";
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        first_name: "S",
+        last_name: "up",
+        role: "superviseur",
+      }),
+    });
+    render(<Navbar />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /ouvrir le menu utilisateur/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /ouvrir le menu utilisateur/i }));
+
+    expect(screen.getByRole("menuitem", { name: /reporting dossiers/i })).toHaveAttribute(
+      "href",
+      "/backoffice/reporting",
+    );
+  });
+
+  it("affiche Reporting dossiers pour un admin", async () => {
+    process.env.NODE_ENV = "production";
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        first_name: "A",
+        last_name: "dm",
+        role: "admin",
+      }),
+    });
+    render(<Navbar />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /ouvrir le menu utilisateur/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /ouvrir le menu utilisateur/i }));
+
+    expect(screen.getByRole("menuitem", { name: /reporting dossiers/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /administration/i })).toBeInTheDocument();
+  });
 });
