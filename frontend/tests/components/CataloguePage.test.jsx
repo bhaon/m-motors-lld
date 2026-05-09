@@ -9,6 +9,8 @@ describe("CataloguePage", () => {
   beforeEach(() => {
     jest.resetAllMocks();
     global.fetch = fetchMock;
+    // Réponse par défaut : galerie vide (appelée à chaque ouverture de VehicleModal)
+    fetchMock.mockResolvedValue({ ok: true, json: async () => [] });
     process.env = { ...originalEnv };
   });
 
@@ -42,7 +44,10 @@ describe("CataloguePage", () => {
     fireEvent.click(screen.getByText("Déposer un dossier LLD"));
 
     expect(screen.getByText("Confirmer le dépôt du dossier")).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/dossiers"),
+      expect.anything(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/v1\/dossiers$/),
@@ -105,7 +110,10 @@ describe("CataloguePage", () => {
       screen.getByRole("button", { name: "Annuler le dépôt (fond de modale)" }),
     );
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/dossiers"),
+      expect.anything(),
+    );
     expect(
       screen.queryByText("Confirmer le dépôt du dossier"),
     ).not.toBeInTheDocument();
@@ -134,6 +142,7 @@ describe("CataloguePage", () => {
   it("uploade une pièce et affiche le checkmark vert", async () => {
     const v = SAMPLE_VEHICLES[0];
     fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => [] }) // galerie
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ id: 55, reference: "DOS-2026-00055" }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 
@@ -32,6 +33,8 @@ interface VehicleBoItem {
   lld: boolean;
   mensualite: number | null;
   img: string;
+  archived: boolean;
+  archived_at: string | null;
   visible_catalogue: boolean;
   specs: VehicleSpecs;
 }
@@ -82,8 +85,44 @@ function apiBase(): string {
   return pub ? pub.replace(/\/$/, "") : "";
 }
 
-function urlBackoffice(): string {
-  return `${apiBase()}/api/v1/vehicules/backoffice`;
+function urlBackoffice(archived = false): string {
+  return `${apiBase()}/api/v1/vehicules/backoffice${archived ? "?archived=true" : ""}`;
+}
+
+function urlRestaurer(id: number): string {
+  return `${apiBase()}/api/v1/vehicules/${id}/restaurer`;
+}
+
+function urlPhotos(vehicleId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos`;
+}
+
+function urlPhotoDelete(vehicleId: number, photoId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos/${photoId}`;
+}
+
+function urlPhotoMain(vehicleId: number, photoId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos/${photoId}/principal`;
+}
+
+function urlPhotoReorder(vehicleId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos/reordonner`;
+}
+
+function urlPhotoUploadInit(vehicleId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos/upload-init`;
+}
+
+function urlPhotoUploadComplete(vehicleId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos/upload-complete`;
+}
+
+function urlPhotoLibrary(): string {
+  return `${apiBase()}/api/v1/vehicules/photos/bibliotheque`;
+}
+
+function urlPhotoFromLibrary(vehicleId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos/depuis-bibliotheque`;
 }
 
 function urlCreer(): string {
@@ -158,18 +197,22 @@ function Badge({
 
 // ── Formulaire véhicule (réutilisé add + edit) ────────────────────────────────
 
+/** Formulaire modal création / édition ; reconstruit un `VehicleBoItem` après succès API. */
 function VehicleForm({
   mode,
   initial,
   onSuccess,
   onCancel,
   targetId,
+  archivedSnapshot,
 }: {
   mode: "add" | "edit";
   initial: FormState;
   onSuccess: (v: VehicleBoItem, isNew: boolean) => void;
   onCancel: () => void;
   targetId?: number;
+  /** État archive au moment d’ouvrir le formulaire (mode edit uniquement). */
+  archivedSnapshot?: { archived: boolean; archived_at: string | null };
 }) {
   const [form, setForm] = useState<FormState>(initial);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -255,6 +298,7 @@ function VehicleForm({
 
       if (mode === "add") {
         // POST /creer retourne { id, reference, message } — on reconstruit un VehicleBoItem minimal
+        // (champs archive : toujours faux / null pour un véhicule fraîchement créé)
         const created: VehicleBoItem = {
           id: (data as { id: number }).id,
           make: body.make,
@@ -266,6 +310,8 @@ function VehicleForm({
           lld: body.lld,
           mensualite: body.mensualite ?? null,
           img: body.img,
+          archived: false,
+          archived_at: null,
           visible_catalogue: body.visible_catalogue,
           specs: {
             carburant: body.spec_carburant,
@@ -277,7 +323,7 @@ function VehicleForm({
         };
         onSuccess(created, true);
       } else {
-        // PATCH retourne VehicleOut (sans visible_catalogue) — on fusionne avec les données du form
+        // PATCH retourne VehicleOut (sans visible_catalogue ni archive) — fusion form + snapshot ouverture
         const updated: VehicleBoItem = {
           id: targetId!,
           make: body.make,
@@ -289,6 +335,9 @@ function VehicleForm({
           lld: body.lld,
           mensualite: body.mensualite ?? null,
           img: body.img,
+          // L’API ne renvoie pas l’état archive : on le reprend du véhicule édité (liste Actifs / Archivés cohérente)
+          archived: archivedSnapshot?.archived ?? false,
+          archived_at: archivedSnapshot?.archived_at ?? null,
           visible_catalogue: body.visible_catalogue,
           specs: {
             carburant: body.spec_carburant,
@@ -439,9 +488,14 @@ function VehicleForm({
             placeholder="https://example.com/photo.jpg" style={inputStyle} />
           <FieldError message={errors.img} />
           {form.img.trim() && (
-            <img src={form.img.trim()} alt="Aperçu"
+            <Image
+              src={form.img.trim()}
+              alt="Aperçu"
+              width={320}
+              height={120}
+              unoptimized
               style={{ marginTop: 8, maxHeight: 120, maxWidth: "100%", objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb" }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            />
           )}
         </div>
       </fieldset>
@@ -539,6 +593,343 @@ function Modal({
   );
 }
 
+// ── Gestion des photos ────────────────────────────────────────────────────────
+
+interface PhotoItem {
+  id: number;
+  url: string;
+  is_main: boolean;
+  order: number;
+}
+
+interface LibraryPhoto {
+  id: number;
+  url: string;
+  vehicle_id: number;
+  vehicle_make: string;
+  vehicle_model: string;
+}
+
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5 Mo
+
+function PhotoModal({ vehicle, onClose }: { vehicle: VehicleBoItem; onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<"galerie" | "upload" | "bibliotheque">("galerie");
+
+  // Galerie
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(true);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [orderEdits, setOrderEdits] = useState<Record<number, string>>({});
+
+  // Upload
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadState, setUploadState] = useState<{ total: number; done: number; current: string; error: string }>
+    ({ total: 0, done: 0, current: "", error: "" });
+  const [fileErrors, setFileErrors] = useState<string[]>([]);
+
+  // Bibliothèque
+  const [library, setLibrary] = useState<LibraryPhoto[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+
+  // ── Galerie ────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    fetch(urlPhotos(vehicle.id), { credentials: "include" })
+      .then((r) => r.json())
+      .then((data: PhotoItem[]) => { setPhotos(data); setGalleryLoading(false); })
+      .catch(() => setGalleryLoading(false));
+  }, [vehicle.id]);
+
+  async function handleSetMain(photoId: number) {
+    const res = await fetch(urlPhotoMain(vehicle.id, photoId), { method: "PATCH", credentials: "include" });
+    if (res.ok) setPhotos(await res.json());
+  }
+
+  async function handleDelete(photoId: number) {
+    const res = await fetch(urlPhotoDelete(vehicle.id, photoId), { method: "DELETE", credentials: "include" });
+    if (res.ok || res.status === 204) { setPhotos((prev) => prev.filter((p) => p.id !== photoId)); setDeleteConfirm(null); }
+  }
+
+  async function handleReorder() {
+    const payload = photos.filter((p) => orderEdits[p.id] !== undefined)
+      .map((p) => ({ id: p.id, order: parseInt(orderEdits[p.id] ?? String(p.order), 10) }));
+    if (!payload.length) return;
+    const res = await fetch(urlPhotoReorder(vehicle.id), {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photos: payload }),
+    });
+    if (res.ok) { setPhotos(await res.json()); setOrderEdits({}); }
+  }
+
+  // ── Upload ──────────────────────────────────────────────────────────────────
+
+  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    const errors: string[] = [];
+    const valid: File[] = [];
+    for (const f of files) {
+      if (!["image/jpeg", "image/jpg", "image/png"].includes(f.type)) {
+        errors.push(`${f.name} : format non supporté (JPG/PNG uniquement).`);
+      } else if (f.size > MAX_PHOTO_SIZE) {
+        errors.push(`${f.name} : fichier trop volumineux (5 Mo max).`);
+      } else {
+        valid.push(f);
+      }
+    }
+    setFileErrors(errors);
+    setSelectedFiles(valid);
+  }
+
+  async function handleUpload() {
+    if (!selectedFiles.length) return;
+    setUploadState({ total: selectedFiles.length, done: 0, current: "", error: "" });
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      setUploadState((s) => ({ ...s, current: file.name }));
+      try {
+        // 1. Obtenir l'URL pré-signée
+        const initRes = await fetch(urlPhotoUploadInit(vehicle.id), {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, content_type: file.type, file_size: file.size }),
+        });
+        if (!initRes.ok) throw new Error("Impossible d'initialiser l'upload.");
+        const { upload_url, object_key } = (await initRes.json()) as { upload_url: string; object_key: string };
+
+        // 2. Upload direct vers MinIO
+        const putRes = await fetch(upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+        if (!putRes.ok) throw new Error(`Upload MinIO échoué pour ${file.name}.`);
+
+        // 3. Confirmer en base
+        const completeRes = await fetch(urlPhotoUploadComplete(vehicle.id), {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ object_key }),
+        });
+        if (!completeRes.ok) throw new Error("Confirmation d'upload échouée.");
+        const updatedPhotos = (await completeRes.json()) as PhotoItem[];
+        setPhotos(updatedPhotos);
+        setUploadState((s) => ({ ...s, done: s.done + 1 }));
+      } catch (err: unknown) {
+        setUploadState((s) => ({ ...s, error: err instanceof Error ? err.message : "Erreur inattendue." }));
+        break;
+      }
+    }
+    setSelectedFiles([]);
+    setUploadState((s) => {
+      if (s.error) return s;
+      setActiveTab("galerie");
+      return { ...s, current: "", total: 0, done: 0 };
+    });
+  }
+
+  // ── Bibliothèque ────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (activeTab !== "bibliotheque") return;
+    setLibraryLoading(true);
+    fetch(urlPhotoLibrary(), { credentials: "include" })
+      .then((r) => r.json())
+      .then((data: LibraryPhoto[]) => {
+        setLibrary(data.filter((p) => p.vehicle_id !== vehicle.id));
+        setLibraryLoading(false);
+      })
+      .catch(() => setLibraryLoading(false));
+  }, [activeTab, vehicle.id]);
+
+  async function handleAddFromLibrary(sourceId: number) {
+    const res = await fetch(urlPhotoFromLibrary(vehicle.id), {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_photo_id: sourceId }),
+    });
+    if (res.ok) {
+      const updated = (await res.json()) as PhotoItem[];
+      setPhotos(updated);
+      setActiveTab("galerie");
+    }
+  }
+
+  // ── Rendu ───────────────────────────────────────────────────────────────────
+
+  const tabBtn = (tab: typeof activeTab, label: string) => (
+    <button key={tab} type="button"
+      aria-pressed={activeTab === tab}
+      onClick={() => setActiveTab(tab)}
+      style={{
+        padding: "7px 18px", border: 0, borderRadius: "7px 7px 0 0",
+        background: activeTab === tab ? "var(--navy)" : "#f1f5f9",
+        color: activeTab === tab ? "#fff" : "#374151",
+        fontWeight: 700, fontSize: ".85rem", cursor: "pointer",
+      }}
+    >{label}</button>
+  );
+
+  return (
+    <Modal title={`Photos — ${vehicle.make} ${vehicle.model}`} onClose={onClose}>
+      {/* Onglets */}
+      <div style={{ display: "flex", gap: ".4rem", marginBottom: "1.2rem", borderBottom: "2px solid #e5e7eb", paddingBottom: ".4rem" }}>
+        {tabBtn("galerie", `Galerie (${photos.length})`)}
+        {tabBtn("upload", "Uploader")}
+        {tabBtn("bibliotheque", "Bibliothèque")}
+      </div>
+
+      {/* ── Onglet Galerie ── */}
+      {activeTab === "galerie" && (
+        galleryLoading ? <p style={{ color: "#6b7280" }}>Chargement…</p> : (
+          <>
+            {photos.length === 0 ? (
+              <p style={{ color: "#6b7280", marginBottom: "1rem" }}>Aucune photo. Utilisez l&apos;onglet <strong>Uploader</strong>.</p>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: ".8rem", marginBottom: "1.2rem" }}>
+                {photos.map((p) => (
+                  <div key={p.id} style={{ border: p.is_main ? "2px solid #0e7490" : "1px solid #e5e7eb", borderRadius: 9, overflow: "hidden", background: "#f9fafb" }}>
+                    <Image
+                      src={p.url}
+                      alt={`Photo ${p.id}`}
+                      aria-label={`Photo ${p.id}`}
+                      width={320}
+                      height={80}
+                      unoptimized
+                      style={{ width: "100%", height: 80, objectFit: "cover", display: "block" }}
+                    />
+                    <div style={{ padding: "5px 7px" }}>
+                      {p.is_main && <span style={{ display: "block", fontSize: ".68rem", fontWeight: 700, color: "#0e7490", marginBottom: 3 }}>Principale</span>}
+                      <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 3 }}>
+                        <span style={{ fontSize: ".7rem", color: "#6b7280" }}>Ordre :</span>
+                        <input type="number" aria-label={`Ordre photo ${p.id}`}
+                          value={orderEdits[p.id] ?? String(p.order)}
+                          onChange={(e) => setOrderEdits((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                          style={{ width: 42, padding: "2px 4px", border: "1px solid #d1d5db", borderRadius: 4, fontSize: ".75rem" }} />
+                      </div>
+                      {!p.is_main && (
+                        <button type="button" aria-label={`Définir photo ${p.id} comme principale`} onClick={() => handleSetMain(p.id)}
+                          style={{ width: "100%", padding: "3px 0", background: "#ecfeff", color: "#0e7490", border: "1px solid #bae6fd", borderRadius: 4, fontSize: ".7rem", fontWeight: 600, cursor: "pointer", marginBottom: 3 }}>
+                          Définir principale
+                        </button>
+                      )}
+                      {deleteConfirm === p.id ? (
+                        <div style={{ display: "flex", gap: 3 }}>
+                          <button type="button" aria-label={`Confirmer suppression photo ${p.id}`} onClick={() => handleDelete(p.id)}
+                            style={{ flex: 1, padding: "3px 0", background: "#b91c1c", color: "#fff", border: 0, borderRadius: 4, fontSize: ".7rem", fontWeight: 700, cursor: "pointer" }}>Oui</button>
+                          <button type="button" onClick={() => setDeleteConfirm(null)}
+                            style={{ flex: 1, padding: "3px 0", background: "#f3f4f6", color: "#374151", border: 0, borderRadius: 4, fontSize: ".7rem", cursor: "pointer" }}>Non</button>
+                        </div>
+                      ) : (
+                        <button type="button" aria-label={`Supprimer photo ${p.id}`} onClick={() => setDeleteConfirm(p.id)}
+                          style={{ width: "100%", padding: "3px 0", background: "#fee2e2", color: "#b91c1c", border: 0, borderRadius: 4, fontSize: ".7rem", fontWeight: 600, cursor: "pointer" }}>
+                          Supprimer
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {Object.keys(orderEdits).length > 0 && (
+              <button type="button" onClick={handleReorder}
+                style={{ padding: "7px 16px", background: "var(--navy)", color: "#fff", border: 0, borderRadius: 7, fontWeight: 700, fontSize: ".85rem", cursor: "pointer" }}>
+                Appliquer le nouvel ordre
+              </button>
+            )}
+          </>
+        )
+      )}
+
+      {/* ── Onglet Upload ── */}
+      {activeTab === "upload" && (
+        <div>
+          <label style={{ display: "block", fontWeight: 600, fontSize: ".85rem", color: "#374151", marginBottom: 8 }}>
+            Sélectionner des fichiers (JPG ou PNG, max 5 Mo par photo)
+          </label>
+          <input
+            type="file"
+            accept="image/jpeg,image/jpg,image/png"
+            multiple
+            aria-label="Sélectionner des photos"
+            onChange={handleFilePick}
+            style={{ display: "block", marginBottom: 8, fontSize: ".88rem" }}
+          />
+          {fileErrors.length > 0 && (
+            <div role="alert" style={{ background: "#fee2e2", borderRadius: 7, padding: "8px 12px", marginBottom: 8 }}>
+              {fileErrors.map((e, i) => <p key={i} style={{ margin: 0, fontSize: ".82rem", color: "#b91c1c" }}>{e}</p>)}
+            </div>
+          )}
+          {selectedFiles.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <p style={{ fontSize: ".85rem", color: "#374151", marginBottom: 4 }}>
+                {selectedFiles.length} fichier(s) sélectionné(s) :
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: ".82rem", color: "#6b7280" }}>
+                {selectedFiles.map((f) => <li key={f.name}>{f.name} ({(f.size / 1024).toFixed(0)} Ko)</li>)}
+              </ul>
+            </div>
+          )}
+          {uploadState.total > 0 && (
+            <p style={{ fontSize: ".85rem", color: "#374151", marginBottom: 8 }}>
+              {uploadState.error
+                ? <span style={{ color: "#b91c1c" }}>{uploadState.error}</span>
+                : <>Upload en cours : <strong>{uploadState.current}</strong> ({uploadState.done}/{uploadState.total})</>}
+            </p>
+          )}
+          <button
+            type="button"
+            aria-label="Uploader les photos sélectionnées"
+            onClick={handleUpload}
+            disabled={!selectedFiles.length || uploadState.total > uploadState.done}
+            style={{
+              padding: "9px 22px",
+              background: !selectedFiles.length ? "#94a3b8" : "var(--navy)",
+              color: "#fff", border: 0, borderRadius: 7, fontWeight: 700, fontSize: ".9rem",
+              cursor: !selectedFiles.length ? "not-allowed" : "pointer",
+            }}
+          >
+            {uploadState.total > uploadState.done ? "Upload en cours…" : "Uploader"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Onglet Bibliothèque ── */}
+      {activeTab === "bibliotheque" && (
+        libraryLoading ? <p style={{ color: "#6b7280" }}>Chargement…</p> : library.length === 0 ? (
+          <p style={{ color: "#6b7280" }}>Aucune photo disponible dans la bibliothèque.</p>
+        ) : (
+          <div>
+            <p style={{ fontSize: ".85rem", color: "#6b7280", marginBottom: "1rem" }}>
+              Cliquez sur une photo pour l&apos;ajouter à la galerie de ce véhicule.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: ".8rem" }}>
+              {library.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-label={`Ajouter la photo ${p.id} du ${p.vehicle_make} ${p.vehicle_model}`}
+                  onClick={() => handleAddFromLibrary(p.id)}
+                  style={{ border: "1px solid #e5e7eb", borderRadius: 9, overflow: "hidden", background: "#f9fafb", cursor: "pointer", padding: 0, textAlign: "left" }}
+                >
+                  <Image
+                    src={p.url}
+                    alt={`${p.vehicle_make} ${p.vehicle_model}`}
+                    width={320}
+                    height={80}
+                    unoptimized
+                    style={{ width: "100%", height: 80, objectFit: "cover", display: "block" }}
+                  />
+                  <div style={{ padding: "4px 6px" }}>
+                    <span style={{ fontSize: ".7rem", color: "#374151", fontWeight: 600 }}>
+                      {p.vehicle_make} {p.vehicle_model}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      )}
+    </Modal>
+  );
+}
+
 // ── Page principale ──────────────────────────────────────────────────────────
 
 export default function GestionVehiculesPage() {
@@ -554,6 +945,12 @@ export default function GestionVehiculesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
+  // Filtre Actifs / Archivés
+  const [activeFilter, setActiveFilter] = useState<"actifs" | "archives">("actifs");
+
+  // Gestion des photos
+  const [photoTarget, setPhotoTarget] = useState<VehicleBoItem | null>(null);
+
   // Toggle LLD warning: véhicule en attente de confirmation
   const [toggleWarning, setToggleWarning] = useState<{
     vehicleId: number;
@@ -568,7 +965,7 @@ export default function GestionVehiculesPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(urlBackoffice(), { credentials: "include" });
+      const res = await fetch(urlBackoffice(activeFilter === "archives"), { credentials: "include" });
       if (!res.ok) {
         const payload = (await res.json().catch(() => ({}))) as { detail?: string };
         throw new Error(payload.detail || "Erreur de chargement.");
@@ -580,7 +977,7 @@ export default function GestionVehiculesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeFilter]);
 
   useEffect(() => {
     fetchVehicles();
@@ -630,6 +1027,23 @@ export default function GestionVehiculesPage() {
       setToast({ type: "success", text: "Véhicule archivé." });
     } catch (err: unknown) {
       setDeleteError(err instanceof Error ? err.message : "Erreur inattendue.");
+    }
+  }
+
+  async function handleRestore(vehicle: VehicleBoItem) {
+    try {
+      const res = await fetch(urlRestaurer(vehicle.id), {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(payload.detail || "Erreur lors de la restauration.");
+      }
+      setVehicles((prev) => prev.filter((v) => v.id !== vehicle.id));
+      setToast({ type: "success", text: `${vehicle.make} ${vehicle.model} restauré au catalogue.` });
+    } catch (err: unknown) {
+      setToast({ type: "error", text: err instanceof Error ? err.message : "Erreur inattendue." });
     }
   }
 
@@ -698,6 +1112,11 @@ export default function GestionVehiculesPage() {
       <Navbar />
 
       {/* Modal add/edit */}
+      {/* Modal photos */}
+      {photoTarget && (
+        <PhotoModal vehicle={photoTarget} onClose={() => setPhotoTarget(null)} />
+      )}
+
       {modalMode !== "closed" && (
         <Modal
           title={modalMode === "add" ? "Ajouter un véhicule" : `Modifier — ${editTarget?.make} ${editTarget?.model}`}
@@ -707,6 +1126,12 @@ export default function GestionVehiculesPage() {
             mode={modalMode}
             initial={modalMode === "edit" && editTarget ? vehicleToForm(editTarget) : INITIAL_FORM}
             targetId={editTarget?.id}
+            // Permet de garder archived / archived_at après PATCH (réponse API incomplète)
+            archivedSnapshot={
+              modalMode === "edit" && editTarget
+                ? { archived: editTarget.archived, archived_at: editTarget.archived_at }
+                : undefined
+            }
             onSuccess={handleFormSuccess}
             onCancel={closeModal}
           />
@@ -778,8 +1203,32 @@ export default function GestionVehiculesPage() {
           </div>
         )}
 
-        {/* Barre de stats */}
-        {!loading && !loadError && (
+        {/* Onglets filtre Actifs / Archivés */}
+        <div style={{ display: "flex", gap: ".5rem", marginBottom: "1.2rem", borderBottom: "2px solid #e5e7eb", paddingBottom: ".5rem" }}>
+          {(["actifs", "archives"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              aria-pressed={activeFilter === f}
+              onClick={() => { setActiveFilter(f); setToggleWarning(null); setDeleteConfirmId(null); }}
+              style={{
+                padding: "7px 18px",
+                borderRadius: "8px 8px 0 0",
+                border: activeFilter === f ? "2px solid var(--navy)" : "2px solid transparent",
+                background: activeFilter === f ? "var(--navy)" : "#f1f5f9",
+                color: activeFilter === f ? "#fff" : "#374151",
+                fontWeight: 700,
+                fontSize: ".88rem",
+                cursor: "pointer",
+              }}
+            >
+              {f === "actifs" ? "Actifs" : "Archivés"}
+            </button>
+          ))}
+        </div>
+
+        {/* Barre de stats (vue actifs uniquement) */}
+        {!loading && !loadError && activeFilter === "actifs" && (
           <div style={{ display: "flex", gap: "1rem", marginBottom: "1.4rem", flexWrap: "wrap" }}>
             {[
               { label: "Total", value: total, color: "#0f172a", bg: "#f1f5f9" },
@@ -826,14 +1275,20 @@ export default function GestionVehiculesPage() {
         {/* État vide */}
         {!loading && !loadError && vehicles.length === 0 && (
           <div style={{ textAlign: "center", padding: "4rem 0", color: "#6b7280" }}>
-            <p style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>Aucun véhicule dans le catalogue</p>
-            <button
-              type="button"
-              onClick={openAdd}
-              style={{ padding: "9px 22px", background: "var(--navy)", color: "#fff", border: 0, borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
-            >
-              + Ajouter le premier véhicule
-            </button>
+            {activeFilter === "actifs" ? (
+              <>
+                <p style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>Aucun véhicule dans le catalogue</p>
+                <button
+                  type="button"
+                  onClick={openAdd}
+                  style={{ padding: "9px 22px", background: "var(--navy)", color: "#fff", border: 0, borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+                >
+                  + Ajouter le premier véhicule
+                </button>
+              </>
+            ) : (
+              <p style={{ fontSize: "1.1rem", fontWeight: 600 }}>Aucun véhicule archivé</p>
+            )}
           </div>
         )}
 
@@ -848,7 +1303,7 @@ export default function GestionVehiculesPage() {
                   <th style={thStyle}>Année</th>
                   <th style={thStyle}>Type</th>
                   <th style={thStyle}>Prix HT</th>
-                  <th style={thStyle}>Visibilité</th>
+                  <th style={thStyle}>{activeFilter === "archives" ? "Archivé le" : "Visibilité"}</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
@@ -859,13 +1314,13 @@ export default function GestionVehiculesPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
                     <td style={tdStyle}>
-                      <img
+                      <Image
                         src={v.img}
                         alt={`${v.make} ${v.model}`}
+                        width={64}
+                        height={44}
+                        unoptimized
                         style={{ width: 64, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb" }}
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.visibility = "hidden";
-                        }}
                       />
                     </td>
                     <td style={tdStyle}>
@@ -890,15 +1345,32 @@ export default function GestionVehiculesPage() {
                       {v.prix.toLocaleString("fr-FR")} €
                     </td>
                     <td style={tdStyle}>
-                      {v.visible_catalogue ? (
+                      {activeFilter === "archives" ? (
+                        <span style={{ fontSize: ".8rem", color: "#6b7280" }}>
+                          {v.archived_at
+                            ? new Date(v.archived_at).toLocaleDateString("fr-FR")
+                            : "—"}
+                        </span>
+                      ) : v.visible_catalogue ? (
                         <Badge label="Visible" color="#15803d" bg="#dcfce7" />
                       ) : (
                         <Badge label="Masqué" color="#92400e" bg="#fef3c7" />
                       )}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right", whiteSpace: "nowrap" }}>
-                      {/* Confirmation de suppression */}
-                      {deleteConfirmId === v.id ? (
+                      {/* Vue archivés : seul bouton Restaurer */}
+                      {activeFilter === "archives" ? (
+                        <button
+                          type="button"
+                          aria-label={`Restaurer ${v.make} ${v.model}`}
+                          onClick={() => handleRestore(v)}
+                          style={{ padding: "5px 14px", background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: 6, fontWeight: 700, fontSize: ".82rem", cursor: "pointer" }}
+                        >
+                          Restaurer
+                        </button>
+                      ) : null}
+                      {/* Actions normales (vue actifs uniquement) */}
+                      {activeFilter === "actifs" && deleteConfirmId === v.id ? (
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: ".82rem", color: "#374151", fontWeight: 600 }}>Confirmer ?</span>
                           <button
@@ -918,7 +1390,7 @@ export default function GestionVehiculesPage() {
                             Non
                           </button>
                         </span>
-                      ) : toggleWarning?.vehicleId === v.id ? (
+                      ) : activeFilter === "actifs" && toggleWarning?.vehicleId === v.id ? (
                         /* Avertissement dossiers actifs avant bascule */
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: ".82rem", color: "#b45309", fontWeight: 600 }}>
@@ -941,7 +1413,7 @@ export default function GestionVehiculesPage() {
                             Annuler
                           </button>
                         </span>
-                      ) : (
+                      ) : activeFilter === "actifs" ? (
                         <span style={{ display: "inline-flex", gap: 8 }}>
                           <button
                             type="button"
@@ -950,6 +1422,14 @@ export default function GestionVehiculesPage() {
                             style={{ padding: "5px 14px", background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 6, fontWeight: 600, fontSize: ".82rem", cursor: "pointer" }}
                           >
                             → {v.lld ? "Vente" : "LLD"}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Gérer les photos de ${v.make} ${v.model}`}
+                            onClick={() => setPhotoTarget(v)}
+                            style={{ padding: "5px 14px", background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", borderRadius: 6, fontWeight: 600, fontSize: ".82rem", cursor: "pointer" }}
+                          >
+                            Photos
                           </button>
                           <button
                             type="button"
@@ -968,7 +1448,7 @@ export default function GestionVehiculesPage() {
                             Supprimer
                           </button>
                         </span>
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 ))}

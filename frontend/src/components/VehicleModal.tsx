@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Vehicle } from "@/types";
 
@@ -10,11 +10,27 @@ interface VehicleModalProps {
   onDossier: (v: Vehicle, type: "lld" | "achat") => void;
 }
 
+interface PhotoItem {
+  id: number;
+  url: string;
+  is_main: boolean;
+  order: number;
+}
+
+function resolveApiBase(): string {
+  const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
+  return pub ? pub.replace(/\/$/, "") : "";
+}
+
 export default function VehicleModal({
   vehicle: v,
   onClose,
   onDossier,
 }: Readonly<VehicleModalProps>) {
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [activePhoto, setActivePhoto] = useState<string | null>(null);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -27,6 +43,20 @@ export default function VehicleModal({
     };
   }, [v, onClose]);
 
+  useEffect(() => {
+    if (!v) {
+      setPhotos([]);
+      setGalleryOpen(false);
+      setActivePhoto(null);
+      return;
+    }
+    const base = resolveApiBase();
+    fetch(`${base}/api/v1/vehicules/${v.id}/galerie`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: PhotoItem[]) => setPhotos(data))
+      .catch(() => setPhotos([]));
+  }, [v]);
+
   if (!v) return null;
 
   const specRows = [
@@ -38,8 +68,9 @@ export default function VehicleModal({
     ["Places", `${v.specs.places} places`],
   ] as const;
 
+  const displayImg = activePhoto ?? v.img;
+
   return (
-    /* Backdrop : fond = bouton natif plein écran, panneau au-dessus (z-index) */
     <div
       style={{
         position: "fixed",
@@ -91,7 +122,7 @@ export default function VehicleModal({
           }}
         >
           <Image
-            src={v.img}
+            src={displayImg}
             alt={`${v.make} ${v.model}`}
             fill
             style={{ objectFit: "cover", opacity: 0.85 }}
@@ -201,6 +232,92 @@ export default function VehicleModal({
             </h2>
           </div>
         </div>
+
+        {/* ── Galerie accordéon ───────────────────────────────────────── */}
+        {photos.length > 0 && (
+          <div style={{ borderBottom: "1px solid var(--border)" }}>
+            <button
+              type="button"
+              aria-expanded={galleryOpen}
+              onClick={() => setGalleryOpen((o) => !o)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: ".75rem 1.5rem",
+                background: "var(--off)",
+                border: "none",
+                cursor: "pointer",
+                fontSize: ".82rem",
+                fontWeight: 600,
+                color: "var(--navy)",
+              }}
+            >
+              <span>Galerie photos ({photos.length})</span>
+              <span style={{ fontSize: "1rem", transition: "transform .2s", transform: galleryOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
+                ▾
+              </span>
+            </button>
+
+            {galleryOpen && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))",
+                  gap: ".5rem",
+                  padding: ".75rem 1.5rem 1rem",
+                  background: "#fff",
+                }}
+              >
+                {photos.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    aria-label={`Afficher photo ${p.id}${p.is_main ? " (principale)" : ""}`}
+                    onClick={() => setActivePhoto(p.url)}
+                    style={{
+                      padding: 0,
+                      border: (activePhoto ?? v.img) === p.url
+                        ? "2.5px solid #185FA5"
+                        : "2px solid var(--border)",
+                      borderRadius: "6px",
+                      overflow: "hidden",
+                      cursor: "pointer",
+                      background: "none",
+                      position: "relative",
+                      aspectRatio: "4/3",
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.url}
+                      alt=""
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                    {p.is_main && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: "3px",
+                          left: "3px",
+                          background: "#185FA5",
+                          color: "#fff",
+                          fontSize: ".6rem",
+                          fontWeight: 700,
+                          padding: "1px 5px",
+                          borderRadius: "3px",
+                        }}
+                      >
+                        Principale
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Body */}
         <div style={{ padding: "1.5rem" }}>

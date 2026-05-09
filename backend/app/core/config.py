@@ -116,6 +116,7 @@ class Settings(BaseSettings):
     )
     S3_REGION: str = Field(default="us-east-1", description="Région S3 logique.")
     S3_BUCKET: str = Field(default="mmotors-documents", description="Bucket de stockage des pièces justificatives.")
+    S3_PHOTOS_BUCKET: str = Field(default="mmotors-photos", description="Bucket public pour les photos des véhicules.")
     S3_ACCESS_KEY: str = Field(default="minioadmin", description="Access key S3.")
     S3_SECRET_KEY: str = Field(default="minioadmin", description="Secret key S3.")
     S3_PRESIGN_EXPIRES_SECONDS: int = Field(default=600, description="Durée de validité de l'URL pré-signée.")
