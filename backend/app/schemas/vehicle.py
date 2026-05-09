@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from app.models.vehicle import MoteurEnum
@@ -75,9 +76,11 @@ class VehicleListOut(BaseModel):
 
 
 class VehicleBoOut(VehicleOut):
-    """Schéma de sortie back-office : inclut visible_catalogue."""
+    """Schéma de sortie back-office : inclut visible_catalogue, archived, archived_at."""
 
     visible_catalogue: bool
+    archived: bool = False
+    archived_at: Optional[datetime] = None
 
     @classmethod
     def from_bo_vehicle(cls, v) -> "VehicleBoOut":
@@ -101,6 +104,8 @@ class VehicleBoOut(VehicleOut):
             ),
             options=[VehicleOptionOut.model_validate(o) for o in v.options],
             visible_catalogue=v.visible_catalogue,
+            archived=v.archived,
+            archived_at=v.archived_at,
         )
 
 

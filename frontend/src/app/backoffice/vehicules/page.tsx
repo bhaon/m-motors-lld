@@ -32,6 +32,8 @@ interface VehicleBoItem {
   lld: boolean;
   mensualite: number | null;
   img: string;
+  archived: boolean;
+  archived_at: string | null;
   visible_catalogue: boolean;
   specs: VehicleSpecs;
 }
@@ -82,8 +84,12 @@ function apiBase(): string {
   return pub ? pub.replace(/\/$/, "") : "";
 }
 
-function urlBackoffice(): string {
-  return `${apiBase()}/api/v1/vehicules/backoffice`;
+function urlBackoffice(archived = false): string {
+  return `${apiBase()}/api/v1/vehicules/backoffice${archived ? "?archived=true" : ""}`;
+}
+
+function urlRestaurer(id: number): string {
+  return `${apiBase()}/api/v1/vehicules/${id}/restaurer`;
 }
 
 function urlCreer(): string {
@@ -554,6 +560,9 @@ export default function GestionVehiculesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
+  // Filtre Actifs / Archivés
+  const [activeFilter, setActiveFilter] = useState<"actifs" | "archives">("actifs");
+
   // Toggle LLD warning: véhicule en attente de confirmation
   const [toggleWarning, setToggleWarning] = useState<{
     vehicleId: number;
@@ -568,7 +577,7 @@ export default function GestionVehiculesPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(urlBackoffice(), { credentials: "include" });
+      const res = await fetch(urlBackoffice(activeFilter === "archives"), { credentials: "include" });
       if (!res.ok) {
         const payload = (await res.json().catch(() => ({}))) as { detail?: string };
         throw new Error(payload.detail || "Erreur de chargement.");
@@ -580,7 +589,7 @@ export default function GestionVehiculesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeFilter]);
 
   useEffect(() => {
     fetchVehicles();
@@ -630,6 +639,23 @@ export default function GestionVehiculesPage() {
       setToast({ type: "success", text: "Véhicule archivé." });
     } catch (err: unknown) {
       setDeleteError(err instanceof Error ? err.message : "Erreur inattendue.");
+    }
+  }
+
+  async function handleRestore(vehicle: VehicleBoItem) {
+    try {
+      const res = await fetch(urlRestaurer(vehicle.id), {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(payload.detail || "Erreur lors de la restauration.");
+      }
+      setVehicles((prev) => prev.filter((v) => v.id !== vehicle.id));
+      setToast({ type: "success", text: `${vehicle.make} ${vehicle.model} restauré au catalogue.` });
+    } catch (err: unknown) {
+      setToast({ type: "error", text: err instanceof Error ? err.message : "Erreur inattendue." });
     }
   }
 
@@ -778,8 +804,32 @@ export default function GestionVehiculesPage() {
           </div>
         )}
 
-        {/* Barre de stats */}
-        {!loading && !loadError && (
+        {/* Onglets filtre Actifs / Archivés */}
+        <div style={{ display: "flex", gap: ".5rem", marginBottom: "1.2rem", borderBottom: "2px solid #e5e7eb", paddingBottom: ".5rem" }}>
+          {(["actifs", "archives"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              aria-pressed={activeFilter === f}
+              onClick={() => { setActiveFilter(f); setToggleWarning(null); setDeleteConfirmId(null); }}
+              style={{
+                padding: "7px 18px",
+                borderRadius: "8px 8px 0 0",
+                border: activeFilter === f ? "2px solid var(--navy)" : "2px solid transparent",
+                background: activeFilter === f ? "var(--navy)" : "#f1f5f9",
+                color: activeFilter === f ? "#fff" : "#374151",
+                fontWeight: 700,
+                fontSize: ".88rem",
+                cursor: "pointer",
+              }}
+            >
+              {f === "actifs" ? "Actifs" : "Archivés"}
+            </button>
+          ))}
+        </div>
+
+        {/* Barre de stats (vue actifs uniquement) */}
+        {!loading && !loadError && activeFilter === "actifs" && (
           <div style={{ display: "flex", gap: "1rem", marginBottom: "1.4rem", flexWrap: "wrap" }}>
             {[
               { label: "Total", value: total, color: "#0f172a", bg: "#f1f5f9" },
@@ -826,14 +876,20 @@ export default function GestionVehiculesPage() {
         {/* État vide */}
         {!loading && !loadError && vehicles.length === 0 && (
           <div style={{ textAlign: "center", padding: "4rem 0", color: "#6b7280" }}>
-            <p style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>Aucun véhicule dans le catalogue</p>
-            <button
-              type="button"
-              onClick={openAdd}
-              style={{ padding: "9px 22px", background: "var(--navy)", color: "#fff", border: 0, borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
-            >
-              + Ajouter le premier véhicule
-            </button>
+            {activeFilter === "actifs" ? (
+              <>
+                <p style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>Aucun véhicule dans le catalogue</p>
+                <button
+                  type="button"
+                  onClick={openAdd}
+                  style={{ padding: "9px 22px", background: "var(--navy)", color: "#fff", border: 0, borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+                >
+                  + Ajouter le premier véhicule
+                </button>
+              </>
+            ) : (
+              <p style={{ fontSize: "1.1rem", fontWeight: 600 }}>Aucun véhicule archivé</p>
+            )}
           </div>
         )}
 
@@ -848,7 +904,7 @@ export default function GestionVehiculesPage() {
                   <th style={thStyle}>Année</th>
                   <th style={thStyle}>Type</th>
                   <th style={thStyle}>Prix HT</th>
-                  <th style={thStyle}>Visibilité</th>
+                  <th style={thStyle}>{activeFilter === "archives" ? "Archivé le" : "Visibilité"}</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
@@ -890,15 +946,32 @@ export default function GestionVehiculesPage() {
                       {v.prix.toLocaleString("fr-FR")} €
                     </td>
                     <td style={tdStyle}>
-                      {v.visible_catalogue ? (
+                      {activeFilter === "archives" ? (
+                        <span style={{ fontSize: ".8rem", color: "#6b7280" }}>
+                          {v.archived_at
+                            ? new Date(v.archived_at).toLocaleDateString("fr-FR")
+                            : "—"}
+                        </span>
+                      ) : v.visible_catalogue ? (
                         <Badge label="Visible" color="#15803d" bg="#dcfce7" />
                       ) : (
                         <Badge label="Masqué" color="#92400e" bg="#fef3c7" />
                       )}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right", whiteSpace: "nowrap" }}>
-                      {/* Confirmation de suppression */}
-                      {deleteConfirmId === v.id ? (
+                      {/* Vue archivés : seul bouton Restaurer */}
+                      {activeFilter === "archives" ? (
+                        <button
+                          type="button"
+                          aria-label={`Restaurer ${v.make} ${v.model}`}
+                          onClick={() => handleRestore(v)}
+                          style={{ padding: "5px 14px", background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: 6, fontWeight: 700, fontSize: ".82rem", cursor: "pointer" }}
+                        >
+                          Restaurer
+                        </button>
+                      ) : null}
+                      {/* Actions normales (vue actifs uniquement) */}
+                      {activeFilter === "actifs" && deleteConfirmId === v.id ? (
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: ".82rem", color: "#374151", fontWeight: 600 }}>Confirmer ?</span>
                           <button
@@ -918,7 +991,7 @@ export default function GestionVehiculesPage() {
                             Non
                           </button>
                         </span>
-                      ) : toggleWarning?.vehicleId === v.id ? (
+                      ) : activeFilter === "actifs" && toggleWarning?.vehicleId === v.id ? (
                         /* Avertissement dossiers actifs avant bascule */
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: ".82rem", color: "#b45309", fontWeight: 600 }}>
@@ -941,7 +1014,7 @@ export default function GestionVehiculesPage() {
                             Annuler
                           </button>
                         </span>
-                      ) : (
+                      ) : activeFilter === "actifs" ? (
                         <span style={{ display: "inline-flex", gap: 8 }}>
                           <button
                             type="button"
@@ -968,7 +1041,7 @@ export default function GestionVehiculesPage() {
                             Supprimer
                           </button>
                         </span>
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 ))}

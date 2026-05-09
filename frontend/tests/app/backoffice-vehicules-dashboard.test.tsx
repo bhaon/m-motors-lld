@@ -456,4 +456,91 @@ describe("GestionVehiculesPage", () => {
       expect(screen.getByRole("button", { name: /basculer renault clio en lld/i })).toBeInTheDocument();
     });
   });
+
+  // ── Archivage / filtre Archivés ──────────────────────────────────────────────
+
+  it("affiche les onglets Actifs et Archivés", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, json: async () => [] } as Response);
+    render(<GestionVehiculesPage />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^actifs$/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^archivés$/i })).toBeInTheDocument();
+    });
+  });
+
+  it("l'onglet Actifs est sélectionné par défaut (aria-pressed=true)", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, json: async () => [] } as Response);
+    render(<GestionVehiculesPage />);
+    await waitFor(() => {
+      const actifBtn = screen.getByRole("button", { name: /^actifs$/i });
+      expect(actifBtn).toHaveAttribute("aria-pressed", "true");
+    });
+  });
+
+  it("cliquer sur Archivés appelle l'API avec ?archived=true", async () => {
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response);
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /^archivés$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^archivés$/i }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining("archived=true"),
+        expect.objectContaining({ credentials: "include" }),
+      );
+    });
+  });
+
+  it("affiche le bouton Restaurer pour chaque véhicule archivé", async () => {
+    const archivedVehicle = {
+      ...VEHICLE_ACHAT,
+      archived: true,
+      archived_at: "2026-05-01T10:00:00Z",
+      visible_catalogue: false,
+    };
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [archivedVehicle] } as Response);
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /^archivés$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^archivés$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /restaurer renault clio/i })).toBeInTheDocument();
+    });
+  });
+
+  it("restaurer un véhicule le retire de la liste archivée", async () => {
+    const archivedVehicle = {
+      ...VEHICLE_ACHAT,
+      archived: true,
+      archived_at: "2026-05-01T10:00:00Z",
+      visible_catalogue: false,
+    };
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [archivedVehicle] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...VEHICLE_ACHAT, archived: false }) } as Response);
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /^archivés$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^archivés$/i }));
+    await waitFor(() => screen.getByRole("button", { name: /restaurer renault clio/i }));
+    fireEvent.click(screen.getByRole("button", { name: /restaurer renault clio/i }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`/api/v1/vehicules/${VEHICLE_ACHAT.id}/restaurer`),
+        expect.objectContaining({ method: "POST", credentials: "include" }),
+      );
+      expect(screen.queryByRole("button", { name: /restaurer renault clio/i })).not.toBeInTheDocument();
+    });
+  });
 });

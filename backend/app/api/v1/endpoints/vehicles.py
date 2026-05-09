@@ -95,13 +95,18 @@ def list_vehicles_backoffice(
     access_token: str | None = Cookie(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=200),
+    archived: bool = Query(default=False, description="true → véhicules archivés ; false (défaut) → actifs"),
 ) -> list[VehicleBoOut]:
-    """Liste tous les véhicules non archivés pour le back-office (visible_catalogue inclus)."""
+    """Liste les véhicules back-office.
+
+    Par défaut retourne les véhicules actifs (archived=false).
+    Passez archived=true pour consulter les véhicules archivés.
+    """
     user = get_user_from_cookie(access_token, db)
     enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
     vehicles = (
         db.query(Vehicle)
-        .filter(Vehicle.archived == False)
+        .filter(Vehicle.archived == archived)
         .order_by(Vehicle.id.desc())
         .offset(skip)
         .limit(limit)
@@ -326,6 +331,50 @@ def toggle_lld(
         toggled=True,
         active_dossiers_count=active_count,
     )
+
+
+@router.post(
+    "/{vehicle_id}/restaurer",
+    response_model=VehicleBoOut,
+    summary="US-05-04 — Restaurer un véhicule archivé",
+    responses={**_R403_BO, **_R404_VEHICULE},
+)
+def restore_vehicle(
+    vehicle_id: int,
+    db: DbSession,
+    request: Request,
+    current_user: GestionnaireMultiAuth,
+) -> VehicleBoOut:
+    """Restaure un véhicule archivé (annule le soft-delete) et le remet visible au catalogue."""
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == True).first()
+    if not v:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Véhicule archivé introuvable.",
+        )
+
+    before_state = {
+        "id": v.id, "make": v.make, "model": v.model,
+        "archived": True,
+        "archived_at": v.archived_at.isoformat() if v.archived_at else None,
+    }
+    v.archived = False
+    v.archived_at = None
+    v.visible_catalogue = True
+
+    audit_service.record(
+        db,
+        action=audit_service.VEHICLE_RESTORED,
+        entity_type="vehicle",
+        entity_id=v.id,
+        operator=current_user,
+        ip_address=request.client.host if request.client else None,
+        before_state=before_state,
+        after_state={"archived": False, "visible_catalogue": True},
+    )
+    db.commit()
+    db.refresh(v)
+    return VehicleBoOut.from_bo_vehicle(v)
 
 
 @router.delete(
