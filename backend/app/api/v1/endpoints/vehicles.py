@@ -50,6 +50,11 @@ _R404_VEHICULE = openapi_http_error(
 )
 
 
+def _serialize_vehicle_photos(photos: list[VehiclePhoto]) -> list[VehiclePhotoOut]:
+    """Convertit des entités SQLAlchemy VehiclePhoto en schéma de sortie API."""
+    return [VehiclePhotoOut.model_validate(photo) for photo in photos]
+
+
 # ──────────────────────────────────────────────
 # EP-01 — Public (US-01-01 à US-01-05)
 # ──────────────────────────────────────────────
@@ -458,7 +463,8 @@ def get_galerie(vehicle_id: int, db: DbSession) -> list[VehiclePhotoOut]:
     )
     if not v:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
-    return sorted(v.photos, key=lambda p: p.order)
+    sorted_photos = sorted(v.photos, key=lambda p: p.order)
+    return _serialize_vehicle_photos(sorted_photos)
 
 
 # ── US-05-05 — Gestion des photos ─────────────────────────────────────────────
@@ -511,7 +517,7 @@ def list_photos(
     v = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
     if not v:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
-    return v.photos
+    return _serialize_vehicle_photos(v.photos)
 
 
 @router.post(
@@ -563,7 +569,7 @@ def complete_photo_upload(
     db.add(VehiclePhoto(vehicle_id=vehicle_id, url=public_url, is_main=False, order=max_order + 1))
     db.commit()
     db.refresh(v)
-    return v.photos
+    return _serialize_vehicle_photos(v.photos)
 
 
 @router.post(
@@ -590,7 +596,7 @@ def add_photo_from_library(
     db.add(VehiclePhoto(vehicle_id=vehicle_id, url=source.url, is_main=False, order=max_order + 1))
     db.commit()
     db.refresh(v)
-    return v.photos
+    return _serialize_vehicle_photos(v.photos)
 
 
 @router.post(
@@ -615,7 +621,7 @@ def add_photos(
         db.add(VehiclePhoto(vehicle_id=vehicle_id, url=url.strip(), is_main=False, order=max_order + i + 1))
     db.commit()
     db.refresh(v)
-    return v.photos
+    return _serialize_vehicle_photos(v.photos)
 
 
 @router.post(
@@ -640,7 +646,8 @@ def reorder_photos(
             photo_map[item.id].order = item.order
     db.commit()
     db.refresh(v)
-    return sorted(v.photos, key=lambda p: p.order)
+    sorted_photos = sorted(v.photos, key=lambda p: p.order)
+    return _serialize_vehicle_photos(sorted_photos)
 
 
 @router.patch(
@@ -669,7 +676,7 @@ def set_main_photo(
     v.img = target.url
     db.commit()
     db.refresh(v)
-    return v.photos
+    return _serialize_vehicle_photos(v.photos)
 
 
 @router.delete(
