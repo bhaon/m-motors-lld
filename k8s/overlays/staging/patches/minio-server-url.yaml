@@ -1,0 +1,14 @@
+---
+# URL publique vue par les clients (navigateur) — doit rester alignée avec S3_PUBLIC_ENDPOINT_URL / Ingress S3.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+spec:
+  template:
+    spec:
+      containers:
+        - name: minio
+          env:
+            - name: MINIO_SERVER_URL
+              value: "https://s3-staging.netdevops.fr"
