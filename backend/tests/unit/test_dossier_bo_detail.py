@@ -250,7 +250,7 @@ def test_download_url_piece_not_uploaded_returns_404(client: TestClient, db: Ses
 
 
 def test_download_url_returns_url_when_piece_exists(client: TestClient, db: Session, monkeypatch) -> None:
-    """Une pièce uploadée retourne une URL pré-signée."""
+    """Une pièce uploadée retourne une URL pré-signée avec disposition inline."""
     from app.models.dossier import PieceJustificative
 
     d = _make_dossier(db, client_email="c.dlok@ex.com", ref="DLOK-001")
@@ -264,14 +264,14 @@ def test_download_url_returns_url_when_piece_exists(client: TestClient, db: Sess
     db.add(piece)
     db.commit()
 
-    monkeypatch.setattr(
-        "app.api.v1.endpoints.dossiers.get_s3_client",
-        lambda: MagicMock(),
-    )
-    monkeypatch.setattr(
-        "app.api.v1.endpoints.dossiers.generate_download_url",
-        lambda client, *, object_key, filename: "https://minio.example.com/presigned/cni.pdf",
-    )
+    captured: list[str] = []
+
+    def _fake_generate(s3, *, object_key, filename, disposition="attachment"):
+        captured.append(disposition)
+        return "https://minio.example.com/presigned/cni.pdf"
+
+    monkeypatch.setattr("app.api.v1.endpoints.dossiers.get_s3_client", lambda: MagicMock())
+    monkeypatch.setattr("app.api.v1.endpoints.dossiers.generate_download_url", _fake_generate)
 
     headers = _gest_headers(client, db, "gest.dlok@ex.com")
     resp = client.get(f"/api/v1/dossiers/backoffice/{d.id}/pieces/cni/download-url", headers=headers)
@@ -280,3 +280,5 @@ def test_download_url_returns_url_when_piece_exists(client: TestClient, db: Sess
     body = resp.json()
     assert body["download_url"] == "https://minio.example.com/presigned/cni.pdf"
     assert body["filename"] == "cni.pdf"
+    # L'endpoint gestionnaire demande disposition=inline pour affichage navigateur
+    assert captured == ["inline"]

@@ -444,7 +444,13 @@ def get_piece_download_url_bo(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document non trouvé.")
 
     s3_client = get_s3_client()
-    download_url = generate_download_url(s3_client, object_key=piece.s3_key, filename=piece.filename)
+    # disposition="inline" : le navigateur affiche le PDF dans l'iframe au lieu de le télécharger
+    download_url = generate_download_url(
+        s3_client,
+        object_key=piece.s3_key,
+        filename=piece.filename,
+        disposition="inline",
+    )
     return PieceDownloadUrlOut(download_url=download_url, filename=piece.filename)
 
 
