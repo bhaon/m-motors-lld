@@ -1,5 +1,10 @@
 import { apiBase, apiUrl } from "@/lib/api";
 
+/** Accès mutable à `process.env` pour les tests (NODE_ENV est readonly dans les types récents). */
+function mutableEnv(): Record<string, string | undefined> {
+  return process.env as Record<string, string | undefined>;
+}
+
 const originalEnv = { ...process.env };
 
 afterEach(() => {
@@ -42,7 +47,7 @@ describe("apiUrl", () => {
 
 describe("apiBase sans window (SSR Node)", () => {
   const originalWindow = globalThis.window;
-  const originalNodeEnv = process.env.NODE_ENV;
+  const originalNodeEnv = mutableEnv().NODE_ENV;
 
   beforeEach(() => {
     Object.defineProperty(globalThis, "window", {
@@ -58,7 +63,9 @@ describe("apiBase sans window (SSR Node)", () => {
       value: originalWindow,
       writable: true,
     });
-    process.env.NODE_ENV = originalNodeEnv;
+    const e = mutableEnv();
+    if (originalNodeEnv === undefined) delete e.NODE_ENV;
+    else e.NODE_ENV = originalNodeEnv;
   });
 
   it("utilise API_INTERNAL_URL en priorité", () => {
@@ -76,14 +83,14 @@ describe("apiBase sans window (SSR Node)", () => {
   it("sinon fallback production", () => {
     delete process.env.API_INTERNAL_URL;
     delete process.env.NEXT_PUBLIC_API_URL;
-    process.env.NODE_ENV = "production";
+    mutableEnv().NODE_ENV = "production";
     expect(apiBase()).toBe("http://backend");
   });
 
   it("sinon fallback développement", () => {
     delete process.env.API_INTERNAL_URL;
     delete process.env.NEXT_PUBLIC_API_URL;
-    process.env.NODE_ENV = "development";
+    mutableEnv().NODE_ENV = "development";
     expect(apiBase()).toBe("http://127.0.0.1:8000");
   });
 });
