@@ -164,18 +164,22 @@ function Badge({
 
 // ── Formulaire véhicule (réutilisé add + edit) ────────────────────────────────
 
+/** Formulaire modal création / édition ; reconstruit un `VehicleBoItem` après succès API. */
 function VehicleForm({
   mode,
   initial,
   onSuccess,
   onCancel,
   targetId,
+  archivedSnapshot,
 }: {
   mode: "add" | "edit";
   initial: FormState;
   onSuccess: (v: VehicleBoItem, isNew: boolean) => void;
   onCancel: () => void;
   targetId?: number;
+  /** État archive au moment d’ouvrir le formulaire (mode edit uniquement). */
+  archivedSnapshot?: { archived: boolean; archived_at: string | null };
 }) {
   const [form, setForm] = useState<FormState>(initial);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -261,6 +265,7 @@ function VehicleForm({
 
       if (mode === "add") {
         // POST /creer retourne { id, reference, message } — on reconstruit un VehicleBoItem minimal
+        // (champs archive : toujours faux / null pour un véhicule fraîchement créé)
         const created: VehicleBoItem = {
           id: (data as { id: number }).id,
           make: body.make,
@@ -272,6 +277,8 @@ function VehicleForm({
           lld: body.lld,
           mensualite: body.mensualite ?? null,
           img: body.img,
+          archived: false,
+          archived_at: null,
           visible_catalogue: body.visible_catalogue,
           specs: {
             carburant: body.spec_carburant,
@@ -283,7 +290,7 @@ function VehicleForm({
         };
         onSuccess(created, true);
       } else {
-        // PATCH retourne VehicleOut (sans visible_catalogue) — on fusionne avec les données du form
+        // PATCH retourne VehicleOut (sans visible_catalogue ni archive) — fusion form + snapshot ouverture
         const updated: VehicleBoItem = {
           id: targetId!,
           make: body.make,
@@ -295,6 +302,9 @@ function VehicleForm({
           lld: body.lld,
           mensualite: body.mensualite ?? null,
           img: body.img,
+          // L’API ne renvoie pas l’état archive : on le reprend du véhicule édité (liste Actifs / Archivés cohérente)
+          archived: archivedSnapshot?.archived ?? false,
+          archived_at: archivedSnapshot?.archived_at ?? null,
           visible_catalogue: body.visible_catalogue,
           specs: {
             carburant: body.spec_carburant,
@@ -733,6 +743,12 @@ export default function GestionVehiculesPage() {
             mode={modalMode}
             initial={modalMode === "edit" && editTarget ? vehicleToForm(editTarget) : INITIAL_FORM}
             targetId={editTarget?.id}
+            // Permet de garder archived / archived_at après PATCH (réponse API incomplète)
+            archivedSnapshot={
+              modalMode === "edit" && editTarget
+                ? { archived: editTarget.archived, archived_at: editTarget.archived_at }
+                : undefined
+            }
             onSuccess={handleFormSuccess}
             onCancel={closeModal}
           />
