@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 
@@ -498,9 +499,12 @@ export default function NouveauVehiculePage() {
               />
               <FieldError message={errors.img} />
               {form.img.trim() && (
-                <img
+                <Image
                   src={form.img.trim()}
                   alt="Aperçu photo principale"
+                  width={360}
+                  height={160}
+                  unoptimized
                   style={{
                     marginTop: 10,
                     maxHeight: 160,
@@ -508,9 +512,6 @@ export default function NouveauVehiculePage() {
                     objectFit: "cover",
                     borderRadius: 8,
                     border: "1px solid #e5e7eb",
-                  }}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
                   }}
                 />
               )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 
@@ -487,9 +488,14 @@ function VehicleForm({
             placeholder="https://example.com/photo.jpg" style={inputStyle} />
           <FieldError message={errors.img} />
           {form.img.trim() && (
-            <img src={form.img.trim()} alt="Aperçu"
+            <Image
+              src={form.img.trim()}
+              alt="Aperçu"
+              width={320}
+              height={120}
+              unoptimized
               style={{ marginTop: 8, maxHeight: 120, maxWidth: "100%", objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb" }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            />
           )}
         </div>
       </fieldset>
@@ -744,7 +750,7 @@ function PhotoModal({ vehicle, onClose }: { vehicle: VehicleBoItem; onClose: () 
 
   const tabBtn = (tab: typeof activeTab, label: string) => (
     <button key={tab} type="button"
-      aria-selected={activeTab === tab}
+      aria-pressed={activeTab === tab}
       onClick={() => setActiveTab(tab)}
       style={{
         padding: "7px 18px", border: 0, borderRadius: "7px 7px 0 0",
@@ -769,14 +775,20 @@ function PhotoModal({ vehicle, onClose }: { vehicle: VehicleBoItem; onClose: () 
         galleryLoading ? <p style={{ color: "#6b7280" }}>Chargement…</p> : (
           <>
             {photos.length === 0 ? (
-              <p style={{ color: "#6b7280", marginBottom: "1rem" }}>Aucune photo. Utilisez l'onglet <strong>Uploader</strong>.</p>
+              <p style={{ color: "#6b7280", marginBottom: "1rem" }}>Aucune photo. Utilisez l&apos;onglet <strong>Uploader</strong>.</p>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: ".8rem", marginBottom: "1.2rem" }}>
                 {photos.map((p) => (
                   <div key={p.id} style={{ border: p.is_main ? "2px solid #0e7490" : "1px solid #e5e7eb", borderRadius: 9, overflow: "hidden", background: "#f9fafb" }}>
-                    <img src={p.url} alt={`Photo ${p.id}`} aria-label={`Photo ${p.id}`}
+                    <Image
+                      src={p.url}
+                      alt={`Photo ${p.id}`}
+                      aria-label={`Photo ${p.id}`}
+                      width={320}
+                      height={80}
+                      unoptimized
                       style={{ width: "100%", height: 80, objectFit: "cover", display: "block" }}
-                      onError={(e) => { (e.target as HTMLImageElement).style.opacity = ".3"; }} />
+                    />
                     <div style={{ padding: "5px 7px" }}>
                       {p.is_main && <span style={{ display: "block", fontSize: ".68rem", fontWeight: 700, color: "#0e7490", marginBottom: 3 }}>Principale</span>}
                       <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 3 }}>
@@ -880,7 +892,7 @@ function PhotoModal({ vehicle, onClose }: { vehicle: VehicleBoItem; onClose: () 
         ) : (
           <div>
             <p style={{ fontSize: ".85rem", color: "#6b7280", marginBottom: "1rem" }}>
-              Cliquez sur une photo pour l'ajouter à la galerie de ce véhicule.
+              Cliquez sur une photo pour l&apos;ajouter à la galerie de ce véhicule.
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: ".8rem" }}>
               {library.map((p) => (
@@ -891,9 +903,14 @@ function PhotoModal({ vehicle, onClose }: { vehicle: VehicleBoItem; onClose: () 
                   onClick={() => handleAddFromLibrary(p.id)}
                   style={{ border: "1px solid #e5e7eb", borderRadius: 9, overflow: "hidden", background: "#f9fafb", cursor: "pointer", padding: 0, textAlign: "left" }}
                 >
-                  <img src={p.url} alt={`${p.vehicle_make} ${p.vehicle_model}`}
+                  <Image
+                    src={p.url}
+                    alt={`${p.vehicle_make} ${p.vehicle_model}`}
+                    width={320}
+                    height={80}
+                    unoptimized
                     style={{ width: "100%", height: 80, objectFit: "cover", display: "block" }}
-                    onError={(e) => { (e.target as HTMLImageElement).style.opacity = ".3"; }} />
+                  />
                   <div style={{ padding: "4px 6px" }}>
                     <span style={{ fontSize: ".7rem", color: "#374151", fontWeight: 600 }}>
                       {p.vehicle_make} {p.vehicle_model}
@@ -1293,13 +1310,13 @@ export default function GestionVehiculesPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
                     <td style={tdStyle}>
-                      <img
+                      <Image
                         src={v.img}
                         alt={`${v.make} ${v.model}`}
+                        width={64}
+                        height={44}
+                        unoptimized
                         style={{ width: 64, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb" }}
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.visibility = "hidden";
-                        }}
                       />
                     </td>
                     <td style={tdStyle}>
