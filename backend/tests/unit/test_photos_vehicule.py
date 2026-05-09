@@ -140,10 +140,13 @@ def test_set_main_photo_updates_vehicle_img(client: TestClient, db: Session) -> 
     assert resp.status_code == 200
     db.expire_all()
     updated = db.query(Vehicle).filter(Vehicle.id == v.id).first()
+    assert updated is not None
     assert updated.img == "https://example.com/new_main.jpg"
     old_main = db.query(VehiclePhoto).filter(VehiclePhoto.id == p1.id).first()
+    assert old_main is not None
     assert old_main.is_main is False
     new_main = db.query(VehiclePhoto).filter(VehiclePhoto.id == p2.id).first()
+    assert new_main is not None
     assert new_main.is_main is True
 
 
@@ -166,6 +169,8 @@ def test_reorder_photos(client: TestClient, db: Session) -> None:
     db.expire_all()
     updated_p1 = db.query(VehiclePhoto).filter(VehiclePhoto.id == p1.id).first()
     updated_p2 = db.query(VehiclePhoto).filter(VehiclePhoto.id == p2.id).first()
+    assert updated_p1 is not None
+    assert updated_p2 is not None
     assert updated_p1.order == 10
     assert updated_p2.order == 5
 
@@ -201,8 +206,10 @@ def test_delete_main_photo_promotes_next(client: TestClient, db: Session) -> Non
     assert resp.status_code == 204
     db.expire_all()
     promoted = db.query(VehiclePhoto).filter(VehiclePhoto.id == p2.id).first()
+    assert promoted is not None
     assert promoted.is_main is True
     updated_v = db.query(Vehicle).filter(Vehicle.id == v.id).first()
+    assert updated_v is not None
     assert updated_v.img == "https://example.com/next.jpg"
 
 

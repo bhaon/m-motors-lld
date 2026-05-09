@@ -65,6 +65,8 @@ def test_archive_generates_audit_entry(client: TestClient, db: Session) -> None:
     db.expire_all()
     entry = db.query(AuditTrail).filter(AuditTrail.action == "VEHICLE_ARCHIVED").first()
     assert entry is not None
+    assert entry.before_state is not None
+    assert entry.after_state is not None
     assert entry.entity_id == v.id
     assert entry.before_state["archived"] is False
     assert entry.after_state["archived"] is True
@@ -161,6 +163,8 @@ def test_restore_generates_audit_entry(client: TestClient, db: Session) -> None:
     db.expire_all()
     entry = db.query(AuditTrail).filter(AuditTrail.action == "VEHICLE_RESTORED").first()
     assert entry is not None
+    assert entry.before_state is not None
+    assert entry.after_state is not None
     assert entry.entity_id == v.id
     assert entry.before_state["archived"] is True
     assert entry.after_state["archived"] is False
