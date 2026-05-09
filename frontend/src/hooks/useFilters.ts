@@ -13,11 +13,17 @@ const DEFAULT_FILTERS: Filters = {
 };
 
 /**
- * Filtre une liste de véhicules fournie par le parent (données API).
+ * Gère les filtres du catalogue véhicules côté client.
+ *
+ * Tous les filtrages sont réalisés en mémoire sur la liste fournie par le serveur,
+ * ce qui évite un aller-retour API à chaque changement de filtre.
+ *
+ * @param sourceVehicles - Liste complète venue de l'API (non filtrée).
  */
 export function useFilters(sourceVehicles: Vehicle[]) {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
 
+  /** Liste dédupliquée et triée des marques disponibles dans le catalogue courant. */
   const marques = useMemo(
     () =>
       [...new Set(sourceVehicles.map((v) => v.make))].sort((a, b) =>
@@ -26,6 +32,10 @@ export function useFilters(sourceVehicles: Vehicle[]) {
     [sourceVehicles],
   );
 
+  /**
+   * Modèles disponibles pour la marque sélectionnée (ou tous si aucune marque).
+   * Recalculé à chaque changement de `filters.marque` pour rester cohérent.
+   */
   const modeles = useMemo(
     () =>
       [
@@ -35,10 +45,10 @@ export function useFilters(sourceVehicles: Vehicle[]) {
             .map((v) => v.model),
         ),
       ].sort((a, b) => a.localeCompare(b)),
-
     [filters.marque, sourceVehicles],
   );
 
+  /** Sous-ensemble de véhicules correspondant à tous les critères actifs. */
   const filtered = useMemo(() => {
     return sourceVehicles.filter((v) => {
       if (filters.marque && v.make !== filters.marque) return false;
@@ -54,6 +64,11 @@ export function useFilters(sourceVehicles: Vehicle[]) {
 
   const setType = (type: ContratType) => setFilters((f) => ({ ...f, type }));
 
+  /**
+   * Met à jour un champ de filtre.
+   * Si le champ est `marque`, réinitialise `modele` pour éviter une valeur orpheline
+   * (ex : "Clio" n'existe pas chez Peugeot).
+   */
   const setField = (field: keyof Filters, value: string | number | null) =>
     setFilters((f) => ({
       ...f,

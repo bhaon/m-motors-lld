@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
+import { isPasswordStrong } from "@/lib/validation";
 
 type RegisterPayload = {
   email: string;
@@ -22,12 +23,6 @@ function resolveRegisterUrl(): string {
   return `${pub.replace(/\/$/, "")}/api/v1/auth/register`;
 }
 
-/**
- * Vérifie la conformité du mot de passe avec la politique US-02-01.
- */
-function isPasswordStrong(password: string): boolean {
-  return /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/.test(password);
-}
 
 /**
  * Lit la reponse HTTP en JSON si possible, sinon en texte.

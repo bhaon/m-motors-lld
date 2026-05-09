@@ -6,8 +6,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { DossierStatus } from "@/types";
-
-type PieceType = "cni" | "permis" | "revenus" | "domicile" | "rib";
+import { apiUrl } from "@/lib/api";
+import { useFileUpload, PieceType } from "@/hooks/useFileUpload";
 
 interface ChecklistItem {
   type_piece: PieceType;
@@ -50,27 +50,11 @@ const PIECE_LABELS: Record<PieceType, string> = {
   domicile: "Justificatif de domicile",
   rib: "RIB",
 };
-const ACCEPTED_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-function resolveDossierUrl(id: string): string {
-  const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
-  const base = pub ? pub.replace(/\/$/, "") : "";
-  return base ? `${base}/api/v1/dossiers/${id}` : `/api/v1/dossiers/${id}`;
-}
-
-function resolveDossierSubmitUrl(id: string): string {
-  const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
-  const base = pub ? pub.replace(/\/$/, "") : "";
-  return base ? `${base}/api/v1/dossiers/${id}/submit` : `/api/v1/dossiers/${id}/submit`;
-}
-
-function resolveDownloadUrl(dossierId: string, typePiece: PieceType): string {
-  const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
-  const base = pub ? pub.replace(/\/$/, "") : "";
-  const path = `/api/v1/dossiers/${dossierId}/pieces/${typePiece}/download-url`;
-  return base ? `${base}${path}` : path;
-}
+const dossierUrl = (id: string) => apiUrl(`/api/v1/dossiers/${id}`);
+const dossierSubmitUrl = (id: string) => apiUrl(`/api/v1/dossiers/${id}/submit`);
+const pieceDownloadUrl = (dossierId: string, typePiece: PieceType) =>
+  apiUrl(`/api/v1/dossiers/${dossierId}/pieces/${typePiece}/download-url`);
 
 function formatDate(value?: string | null): string {
   if (!value) return "—";
@@ -85,24 +69,6 @@ function formatDate(value?: string | null): string {
   }).format(date);
 }
 
-async function computeFileSha256Hex(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", buffer);
-  const bytes = new Uint8Array(digest);
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function sha256HexToBase64(hex: string): string {
-  const pairs = hex.match(/.{1,2}/g) || [];
-  const bytes = new Uint8Array(pairs.map((pair) => parseInt(pair, 16)));
-  let binary = "";
-  bytes.forEach((value) => {
-    binary += String.fromCharCode(value);
-  });
-  return btoa(binary);
-}
 
 export default function DossierDetailPage() {
   const params = useParams<{ id: string }>();
@@ -113,8 +79,10 @@ export default function DossierDetailPage() {
   const [showSummary, setShowSummary] = useState(false);
   const [submitMessage, setSubmitMessage] = useState("");
   const [uploadMessage, setUploadMessage] = useState("");
-  const [uploadingType, setUploadingType] = useState<PieceType | null>(null);
   const [downloadingType, setDownloadingType] = useState<PieceType | null>(null);
+
+  // Délègue la logique d'upload (init→PUT→complete) au hook partagé
+  const { uploadingType, error: uploadError, uploadPiece } = useFileUpload(params.id ?? "");
 
   const missingLabels = useMemo(
     () => (detail?.missing_pieces || []).map((piece) => PIECE_LABELS[piece]),
@@ -125,7 +93,7 @@ export default function DossierDetailPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(resolveDossierUrl(params.id || ""), {
+      const response = await fetch(dossierUrl(params.id || ""), {
         method: "GET",
         credentials: "include",
         cache: "no-store",
@@ -147,7 +115,7 @@ export default function DossierDetailPage() {
     setSubmitMessage("");
     setError("");
     try {
-      const response = await fetch(resolveDossierSubmitUrl(params.id), {
+      const response = await fetch(dossierSubmitUrl(params.id), {
         method: "POST",
         credentials: "include",
       });
@@ -169,7 +137,7 @@ export default function DossierDetailPage() {
     setError("");
     setDownloadingType(type);
     try {
-      const response = await fetch(resolveDownloadUrl(params.id, type), {
+      const response = await fetch(pieceDownloadUrl(params.id, type), {
         method: "GET",
         credentials: "include",
       });
@@ -185,72 +153,12 @@ export default function DossierDetailPage() {
     }
   }
 
-  async function uploadPiece(type: PieceType, file: File) {
-    setError("");
+  function handleUploadPiece(type: PieceType, file: File) {
     setUploadMessage("");
-    if (!ACCEPTED_TYPES.has(file.type)) {
-      setError("Format invalide: utilisez PDF, JPG ou PNG.");
-      return;
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      setError("Fichier trop volumineux: 10 Mo maximum.");
-      return;
-    }
-    setUploadingType(type);
-    try {
-      const checksumHex = await computeFileSha256Hex(file);
-      const checksumBase64 = sha256HexToBase64(checksumHex);
-      const initResponse = await fetch(`${resolveDossierUrl(params.id || "")}/pieces/upload-init`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type_piece: type,
-          filename: file.name,
-          content_type: file.type,
-          size_bytes: file.size,
-          checksum_sha256: checksumBase64,
-        }),
-      });
-      const initPayload = (await initResponse.json().catch(() => ({}))) as {
-        upload_url?: string;
-        s3_key?: string;
-        headers?: Record<string, string>;
-        detail?: string;
-      };
-      if (!initResponse.ok || !initPayload.upload_url || !initPayload.s3_key || !initPayload.headers) {
-        throw new Error(initPayload.detail || "Pré-signature impossible.");
-      }
-      const uploadResponse = await fetch(initPayload.upload_url, {
-        method: "PUT",
-        headers: initPayload.headers,
-        body: file,
-      });
-      if (!uploadResponse.ok) {
-        throw new Error("Upload du document échoué.");
-      }
-      const completeResponse = await fetch(`${resolveDossierUrl(params.id || "")}/pieces/upload-complete`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type_piece: type,
-          filename: file.name,
-          s3_key: initPayload.s3_key,
-          checksum_sha256: checksumHex,
-        }),
-      });
-      const completePayload = (await completeResponse.json().catch(() => ({}))) as { detail?: string };
-      if (!completeResponse.ok) {
-        throw new Error(completePayload.detail || "Validation du document impossible.");
-      }
-      setUploadMessage(`${PIECE_LABELS[type]} uploadée avec succès.`);
+    uploadPiece(type, file, async (done) => {
+      setUploadMessage(`${PIECE_LABELS[done]} uploadée avec succès.`);
       await loadDetail();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur d'upload.");
-    } finally {
-      setUploadingType(null);
-    }
+    });
   }
 
   useEffect(() => {
@@ -282,19 +190,12 @@ export default function DossierDetailPage() {
 
         {loading && <p style={{ color: "var(--muted)" }}>Chargement du dossier…</p>}
 
-        {error && (
+        {(error || uploadError) && (
           <p
             role="alert"
-            style={{
-              color: "#b91c1c",
-              background: "#fee2e2",
-              border: "1px solid #fecaca",
-              borderRadius: 8,
-              padding: ".75rem 1rem",
-              marginBottom: "1rem",
-            }}
+            style={{ color: "#b91c1c", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: 8, padding: ".75rem 1rem", marginBottom: "1rem" }}
           >
-            {error}
+            {error || uploadError}
           </p>
         )}
 
@@ -481,7 +382,7 @@ export default function DossierDetailPage() {
                       onChange={(event) => {
                         const file = event.target.files?.[0];
                         if (!file) return;
-                        uploadPiece(item.type_piece, file);
+                        handleUploadPiece(item.type_piece, file);
                       }}
                     />
                   </div>
