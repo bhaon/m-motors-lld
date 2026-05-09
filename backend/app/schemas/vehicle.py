@@ -179,7 +179,7 @@ class VehiclePhotoOut(BaseModel):
 
 
 class VehiclePhotoAddIn(BaseModel):
-    """Ajout de une ou plusieurs photos par URL (formats JPG/PNG)."""
+    """Ajout de une ou plusieurs photos par URL (formats JPG/PNG) — API / tests."""
 
     urls: List[str]
 
@@ -194,6 +194,61 @@ class VehiclePhotoAddIn(BaseModel):
                     f"Format non supporté : '{url}'. Utilisez une URL pointant vers un fichier JPG ou PNG."
                 )
         return values
+
+
+class PhotoUploadInitIn(BaseModel):
+    """Demande d'initialisation d'un upload photo vers MinIO."""
+
+    filename: str
+    content_type: str  # "image/jpeg" | "image/png"
+    file_size: int  # octets
+
+    @field_validator("content_type")
+    @classmethod
+    def validate_content_type(cls, v: str) -> str:
+        allowed = {"image/jpeg", "image/jpg", "image/png"}
+        if v.lower() not in allowed:
+            raise ValueError("Type de fichier non supporté. Utilisez JPG ou PNG.")
+        return v.lower()
+
+    @field_validator("file_size")
+    @classmethod
+    def validate_file_size(cls, v: int) -> int:
+        if v <= 0 or v > 5 * 1024 * 1024:
+            raise ValueError("Fichier trop volumineux (5 Mo max).")
+        return v
+
+
+class PhotoUploadInitOut(BaseModel):
+    """URL pré-signée pour l'upload direct vers MinIO + clé objet."""
+
+    upload_url: str
+    object_key: str
+    expires_in: int = 600
+
+
+class PhotoUploadCompleteIn(BaseModel):
+    """Confirmation d'upload : clé objet de la photo uploadée dans MinIO."""
+
+    object_key: str
+
+
+class PhotoLibraryItemOut(BaseModel):
+    """Photo existante en bibliothèque (tous véhicules)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    url: str
+    vehicle_id: int
+    vehicle_make: str
+    vehicle_model: str
+
+
+class PhotoFromLibraryIn(BaseModel):
+    """Réutilisation d'une photo de la bibliothèque pour un véhicule."""
+
+    source_photo_id: int
 
 
 class PhotoOrderItem(BaseModel):

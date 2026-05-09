@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -131,6 +132,60 @@ def generate_download_url(client: BaseClient, *, object_key: str, filename: str)
             "Bucket": settings.S3_BUCKET,
             "Key": object_key,
             "ResponseContentDisposition": f'attachment; filename="{safe_name}"',
+        },
+        ExpiresIn=settings.S3_PRESIGN_EXPIRES_SECONDS,
+    )
+
+
+# ── Photos véhicules (US-05-05) ───────────────────────────────────────────────
+
+MAX_PHOTO_SIZE_BYTES = 5 * 1024 * 1024  # 5 Mo
+ALLOWED_PHOTO_CONTENT_TYPES = frozenset({"image/jpeg", "image/jpg", "image/png"})
+
+
+def build_photo_object_key(vehicle_id: int, filename: str) -> str:
+    """Construit la clé objet pour une photo de véhicule dans le bucket photos."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    safe_filename = filename.replace("/", "_").replace("\\", "_")
+    return f"vehicules/{vehicle_id}/{timestamp}-{safe_filename}"
+
+
+def build_photo_public_url(object_key: str) -> str:
+    """Construit l'URL publique permanente d'une photo (bucket public-read)."""
+    endpoint = (settings.S3_PUBLIC_ENDPOINT_URL or settings.S3_ENDPOINT_URL).rstrip("/")
+    return f"{endpoint}/{settings.S3_PHOTOS_BUCKET}/{object_key}"
+
+
+def ensure_photos_bucket(client: BaseClient) -> None:
+    """Crée le bucket photos s'il n'existe pas et lui applique une politique public-read."""
+    try:
+        client.head_bucket(Bucket=settings.S3_PHOTOS_BUCKET)
+    except Exception:
+        client.create_bucket(Bucket=settings.S3_PHOTOS_BUCKET)
+    try:
+        public_policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:GetObject",
+                "Resource": f"arn:aws:s3:::{settings.S3_PHOTOS_BUCKET}/*",
+            }],
+        })
+        client.put_bucket_policy(Bucket=settings.S3_PHOTOS_BUCKET, Policy=public_policy)
+    except Exception:
+        pass  # Certains endpoints MinIO / fakes ne supportent pas put_bucket_policy
+
+
+def generate_photo_upload_url(client: BaseClient, *, object_key: str, content_type: str) -> str:
+    """Génère une URL pré-signée PUT pour uploader une photo directement dans MinIO."""
+    presign_client = get_s3_presign_client() if settings.s3_public_endpoint_url else client
+    return presign_client.generate_presigned_url(
+        ClientMethod="put_object",
+        Params={
+            "Bucket": settings.S3_PHOTOS_BUCKET,
+            "Key": object_key,
+            "ContentType": content_type,
         },
         ExpiresIn=settings.S3_PRESIGN_EXPIRES_SECONDS,
     )

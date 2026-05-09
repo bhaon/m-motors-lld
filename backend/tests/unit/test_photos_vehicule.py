@@ -224,3 +224,130 @@ def test_delete_photo_not_found_returns_404(client: TestClient, db: Session) -> 
     headers = _gest(db, "gest.del404@example.com")
     resp = client.delete(f"/api/v1/vehicules/{v.id}/photos/99999", headers=headers)
     assert resp.status_code == 404
+
+
+# ── Upload MinIO (US-05-05) ───────────────────────────────────────────────────
+
+def test_upload_init_returns_presigned_url(client: TestClient, db: Session) -> None:
+    """POST /photos/upload-init retourne une URL pré-signée et un object_key."""
+    from unittest.mock import MagicMock, patch
+
+    v = create_vehicle(db)
+    headers = _gest(db, "gest.uploadi@example.com")
+
+    with patch("app.api.v1.endpoints.vehicles.get_s3_client") as mock_s3, \
+         patch("app.api.v1.endpoints.vehicles.ensure_photos_bucket"), \
+         patch("app.api.v1.endpoints.vehicles.generate_photo_upload_url") as mock_url:
+        mock_s3.return_value = MagicMock()
+        mock_url.return_value = "https://minio.example.com/mmotors-photos/vehicules/1/presigned"
+
+        resp = client.post(
+            f"/api/v1/vehicules/{v.id}/photos/upload-init",
+            json={"filename": "photo.jpg", "content_type": "image/jpeg", "file_size": 1024},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "upload_url" in body
+    assert "object_key" in body
+    assert "vehicules" in body["object_key"]
+
+
+def test_upload_init_rejects_large_file(client: TestClient, db: Session) -> None:
+    """upload-init retourne 422 si le fichier dépasse 5 Mo."""
+    v = create_vehicle(db)
+    headers = _gest(db, "gest.uploadbig@example.com")
+
+    resp = client.post(
+        f"/api/v1/vehicules/{v.id}/photos/upload-init",
+        json={"filename": "big.jpg", "content_type": "image/jpeg", "file_size": 6 * 1024 * 1024},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+def test_upload_init_rejects_unsupported_content_type(client: TestClient, db: Session) -> None:
+    """upload-init retourne 422 pour un content-type non supporté."""
+    v = create_vehicle(db)
+    headers = _gest(db, "gest.uploadtype@example.com")
+
+    resp = client.post(
+        f"/api/v1/vehicules/{v.id}/photos/upload-init",
+        json={"filename": "anim.gif", "content_type": "image/gif", "file_size": 512},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+def test_upload_complete_creates_vehicle_photo(client: TestClient, db: Session) -> None:
+    """POST /photos/upload-complete crée un enregistrement VehiclePhoto."""
+    from app.models.vehicle import VehiclePhoto
+    from unittest.mock import patch
+
+    v = create_vehicle(db)
+    headers = _gest(db, "gest.uploadc@example.com")
+    object_key = f"vehicules/{v.id}/20260101-photo.jpg"
+
+    with patch("app.api.v1.endpoints.vehicles.build_photo_public_url") as mock_url:
+        mock_url.return_value = f"https://minio.example.com/mmotors-photos/{object_key}"
+        resp = client.post(
+            f"/api/v1/vehicules/{v.id}/photos/upload-complete",
+            json={"object_key": object_key},
+            headers=headers,
+        )
+
+    assert resp.status_code == 201
+    db.expire_all()
+    photos = db.query(VehiclePhoto).filter(VehiclePhoto.vehicle_id == v.id).all()
+    assert len(photos) == 1
+    assert "mmotors-photos" in photos[0].url
+
+
+# ── Bibliothèque et réutilisation ─────────────────────────────────────────────
+
+def test_bibliotheque_lists_photos_across_vehicles(client: TestClient, db: Session) -> None:
+    """GET /photos/bibliotheque retourne les photos de tous les véhicules."""
+    v1 = create_vehicle(db, make="VehA")
+    v2 = create_vehicle(db, make="VehB")
+    _add_photo(db, v1.id, "https://example.com/vehA.jpg")
+    _add_photo(db, v2.id, "https://example.com/vehB.jpg")
+    headers = _gest(db, "gest.biblio@example.com")
+
+    resp = client.get("/api/v1/vehicules/photos/bibliotheque", headers=headers)
+
+    assert resp.status_code == 200
+    urls = [p["url"] for p in resp.json()]
+    assert "https://example.com/vehA.jpg" in urls
+    assert "https://example.com/vehB.jpg" in urls
+
+
+def test_depuis_bibliotheque_adds_photo(client: TestClient, db: Session) -> None:
+    """POST /photos/depuis-bibliotheque ajoute une photo existante au véhicule cible."""
+    v_source = create_vehicle(db, make="Source")
+    v_target = create_vehicle(db, make="Target")
+    source_photo = _add_photo(db, v_source.id, "https://example.com/shared.jpg")
+    headers = _gest(db, "gest.library@example.com")
+
+    resp = client.post(
+        f"/api/v1/vehicules/{v_target.id}/photos/depuis-bibliotheque",
+        json={"source_photo_id": source_photo.id},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    urls = [p["url"] for p in resp.json()]
+    assert "https://example.com/shared.jpg" in urls
+
+
+def test_depuis_bibliotheque_source_not_found_returns_404(client: TestClient, db: Session) -> None:
+    """depuis-bibliotheque avec un id source inexistant → 404."""
+    v = create_vehicle(db)
+    headers = _gest(db, "gest.libnotfound@example.com")
+
+    resp = client.post(
+        f"/api/v1/vehicules/{v.id}/photos/depuis-bibliotheque",
+        json={"source_photo_id": 99999},
+        headers=headers,
+    )
+    assert resp.status_code == 404

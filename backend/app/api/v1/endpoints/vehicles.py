@@ -7,6 +7,11 @@ from app.core.deps import DbSession, GestionnaireMultiAuth, GestionnaireUser, en
 from app.models.user import RoleEnum
 from app.models.vehicle import MoteurEnum, Vehicle, VehiclePhoto
 from app.schemas.vehicle import (
+    PhotoFromLibraryIn,
+    PhotoLibraryItemOut,
+    PhotoUploadCompleteIn,
+    PhotoUploadInitIn,
+    PhotoUploadInitOut,
     ToggleLldOut,
     VehicleBoOut,
     VehicleCreate,
@@ -19,6 +24,13 @@ from app.schemas.vehicle import (
     VehicleUpdate,
 )
 from app.services import audit as audit_service
+from app.services.object_storage import (
+    build_photo_object_key,
+    build_photo_public_url,
+    ensure_photos_bucket,
+    generate_photo_upload_url,
+    get_s3_client,
+)
 
 router = APIRouter(prefix="/vehicules", tags=["Véhicules"])
 
@@ -432,6 +444,38 @@ def archive_vehicle(
 
 
 @router.get(
+    "/photos/bibliotheque",
+    response_model=list[PhotoLibraryItemOut],
+    summary="US-05-05 — Bibliothèque de photos (tous véhicules)",
+    responses={**_R403_BO},
+)
+def list_photo_library(
+    db: DbSession,
+    current_user: GestionnaireMultiAuth,
+    limit: int = Query(default=200, ge=1, le=500),
+) -> list[PhotoLibraryItemOut]:
+    """Retourne les photos de tous les véhicules non archivés pour réutilisation."""
+    photos = (
+        db.query(VehiclePhoto)
+        .join(Vehicle, VehiclePhoto.vehicle_id == Vehicle.id)
+        .filter(Vehicle.archived == False)
+        .order_by(VehiclePhoto.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        PhotoLibraryItemOut(
+            id=p.id,
+            url=p.url,
+            vehicle_id=p.vehicle_id,
+            vehicle_make=p.vehicle.make,
+            vehicle_model=p.vehicle.model,
+        )
+        for p in photos
+    ]
+
+
+@router.get(
     "/{vehicle_id}/photos",
     response_model=list[VehiclePhotoOut],
     summary="US-05-05 — Lister les photos d'un véhicule",
@@ -446,6 +490,85 @@ def list_photos(
     v = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
     if not v:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
+    return v.photos
+
+
+@router.post(
+    "/{vehicle_id}/photos/upload-init",
+    response_model=PhotoUploadInitOut,
+    summary="US-05-05 — Initialiser l'upload d'une photo vers MinIO",
+    responses={**_R403_BO, **_R404_VEHICULE},
+)
+def init_photo_upload(
+    vehicle_id: int,
+    payload: PhotoUploadInitIn,
+    db: DbSession,
+    current_user: GestionnaireMultiAuth,
+) -> PhotoUploadInitOut:
+    """Génère une URL pré-signée PUT pour uploader une photo directement dans MinIO."""
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
+    if not v:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
+    object_key = build_photo_object_key(vehicle_id, payload.filename)
+    s3 = get_s3_client()
+    ensure_photos_bucket(s3)
+    upload_url = generate_photo_upload_url(s3, object_key=object_key, content_type=payload.content_type)
+    return PhotoUploadInitOut(
+        upload_url=upload_url,
+        object_key=object_key,
+        expires_in=600,
+    )
+
+
+@router.post(
+    "/{vehicle_id}/photos/upload-complete",
+    response_model=list[VehiclePhotoOut],
+    status_code=status.HTTP_201_CREATED,
+    summary="US-05-05 — Confirmer l'upload et enregistrer la photo",
+    responses={**_R403_BO, **_R404_VEHICULE},
+)
+def complete_photo_upload(
+    vehicle_id: int,
+    payload: PhotoUploadCompleteIn,
+    db: DbSession,
+    current_user: GestionnaireMultiAuth,
+) -> list[VehiclePhotoOut]:
+    """Enregistre la photo uploadée dans MinIO en base et retourne la galerie mise à jour."""
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
+    if not v:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
+    public_url = build_photo_public_url(payload.object_key)
+    max_order = max((p.order for p in v.photos), default=0)
+    db.add(VehiclePhoto(vehicle_id=vehicle_id, url=public_url, is_main=False, order=max_order + 1))
+    db.commit()
+    db.refresh(v)
+    return v.photos
+
+
+@router.post(
+    "/{vehicle_id}/photos/depuis-bibliotheque",
+    response_model=list[VehiclePhotoOut],
+    status_code=status.HTTP_201_CREATED,
+    summary="US-05-05 — Réutiliser une photo de la bibliothèque",
+    responses={**_R403_BO, **_R404_VEHICULE},
+)
+def add_photo_from_library(
+    vehicle_id: int,
+    payload: PhotoFromLibraryIn,
+    db: DbSession,
+    current_user: GestionnaireMultiAuth,
+) -> list[VehiclePhotoOut]:
+    """Ajoute une photo existante (d'un autre véhicule) à la galerie du véhicule courant."""
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
+    if not v:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
+    source = db.query(VehiclePhoto).filter(VehiclePhoto.id == payload.source_photo_id).first()
+    if not source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo source introuvable.")
+    max_order = max((p.order for p in v.photos), default=0)
+    db.add(VehiclePhoto(vehicle_id=vehicle_id, url=source.url, is_main=False, order=max_order + 1))
+    db.commit()
+    db.refresh(v)
     return v.photos
 
 

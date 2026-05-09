@@ -554,7 +554,7 @@ describe("GestionVehiculesPage", () => {
     });
   });
 
-  it("ouvre le modal photos au clic sur le bouton Photos", async () => {
+  it("ouvre le modal photos avec les onglets Galerie/Uploader/Bibliothèque", async () => {
     jest
       .spyOn(global, "fetch")
       .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
@@ -566,7 +566,9 @@ describe("GestionVehiculesPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/photos — renault clio/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/urls des photos à ajouter/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /galerie/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /uploader/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /bibliothèque/i })).toBeInTheDocument();
     });
   });
 
@@ -587,30 +589,103 @@ describe("GestionVehiculesPage", () => {
     });
   });
 
-  it("ajouter une URL valide appelle POST /photos", async () => {
-    const fetchSpy = jest
+  it("onglet Uploader affiche un input de fichier", async () => {
+    jest
       .spyOn(global, "fetch")
       .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
-      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response) // GET photos
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        json: async () => [{ id: 11, url: "https://example.com/new.jpg", is_main: false, order: 1 }],
-      } as Response);
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response);
 
     render(<GestionVehiculesPage />);
     await waitFor(() => screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
     fireEvent.click(screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
-    await waitFor(() => screen.getByLabelText(/urls des photos à ajouter/i));
+    await waitFor(() => screen.getByRole("button", { name: /uploader/i }));
+    fireEvent.click(screen.getByRole("button", { name: /uploader/i }));
 
-    fireEvent.change(screen.getByLabelText(/urls des photos à ajouter/i), {
-      target: { value: "https://example.com/new.jpg" },
+    await waitFor(() => {
+      expect(screen.getByLabelText(/sélectionner des photos/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /uploader les photos/i })).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: /^ajouter$/i }));
+  });
+
+  it("uploader un fichier appelle upload-init, PUT MinIO puis upload-complete", async () => {
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response) // GET photos
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ upload_url: "https://minio.example.com/presigned", object_key: "vehicules/2/photo.jpg" }) } as Response) // upload-init
+      .mockResolvedValueOnce({ ok: true } as Response) // PUT MinIO
+      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => [{ id: 20, url: "https://minio.example.com/mmotors-photos/vehicules/2/photo.jpg", is_main: false, order: 1 }] } as Response); // upload-complete
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    await waitFor(() => screen.getByRole("button", { name: /uploader/i }));
+    fireEvent.click(screen.getByRole("button", { name: /uploader/i }));
+    await waitFor(() => screen.getByLabelText(/sélectionner des photos/i));
+
+    const file = new File(["(binary)"], "photo.jpg", { type: "image/jpeg" });
+    Object.defineProperty(screen.getByLabelText(/sélectionner des photos/i), "files", {
+      value: [file],
+    });
+    fireEvent.change(screen.getByLabelText(/sélectionner des photos/i));
+    await waitFor(() => screen.getByRole("button", { name: /uploader les photos/i }));
+    fireEvent.click(screen.getByRole("button", { name: /uploader les photos/i }));
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`/api/v1/vehicules/${VEHICLE_ACHAT.id}/photos`),
+        expect.stringContaining("upload-init"),
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining("minio.example.com"),
+        expect.objectContaining({ method: "PUT" }),
+      );
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining("upload-complete"),
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("onglet Bibliothèque charge les photos depuis l'API", async () => {
+    const libraryPhoto = { id: 99, url: "https://example.com/lib.jpg", vehicle_id: 1, vehicle_make: "Peugeot", vehicle_model: "308" };
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response) // GET photos
+      .mockResolvedValueOnce({ ok: true, json: async () => [libraryPhoto] } as Response); // bibliotheque
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    await waitFor(() => screen.getByRole("button", { name: /bibliothèque/i }));
+    fireEvent.click(screen.getByRole("button", { name: /bibliothèque/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /ajouter la photo 99/i })).toBeInTheDocument();
+    });
+  });
+
+  it("ajouter depuis la bibliothèque appelle POST depuis-bibliotheque", async () => {
+    const libraryPhoto = { id: 99, url: "https://example.com/lib.jpg", vehicle_id: 1, vehicle_make: "Peugeot", vehicle_model: "308" };
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response) // GET photos
+      .mockResolvedValueOnce({ ok: true, json: async () => [libraryPhoto] } as Response) // bibliotheque
+      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => [{ id: 100, url: libraryPhoto.url, is_main: false, order: 1 }] } as Response); // depuis-bibliotheque
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    await waitFor(() => screen.getByRole("button", { name: /bibliothèque/i }));
+    fireEvent.click(screen.getByRole("button", { name: /bibliothèque/i }));
+    await waitFor(() => screen.getByRole("button", { name: /ajouter la photo 99/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ajouter la photo 99/i }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`/api/v1/vehicules/${VEHICLE_ACHAT.id}/photos/depuis-bibliotheque`),
         expect.objectContaining({ method: "POST", credentials: "include" }),
       );
     });
