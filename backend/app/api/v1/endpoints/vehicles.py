@@ -7,7 +7,6 @@ from app.core.deps import DbSession, GestionnaireMultiAuth, GestionnaireUser, en
 from app.models.user import RoleEnum
 from app.models.vehicle import MoteurEnum, Vehicle, VehiclePhoto
 from app.schemas.vehicle import (
-    PhotoOrderItem,
     ToggleLldOut,
     VehicleBoOut,
     VehicleCreate,
