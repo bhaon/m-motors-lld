@@ -144,6 +144,15 @@ class DossierBoListOut(BaseModel):
     items: list[DossierBoItemOut]
 
 
+class DossierPrendreEnChargeOut(BaseModel):
+    """Réponse après prise en charge d'un dossier (US-06-02)."""
+
+    id: int
+    reference: str
+    status: str
+    gestionnaire_id: int
+
+
 # ── US-04-04 : Contrats LLD ───────────────────────────────────────────────────
 
 class ContratVehicleOut(BaseModel):

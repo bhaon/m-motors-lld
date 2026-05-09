@@ -250,3 +250,99 @@ describe("BackofficeDossiersPage — pagination", () => {
     });
   });
 });
+
+// ── US-06-02 — Prise en charge ────────────────────────────────────────────────
+
+describe("BackofficeDossiersPage — prise en charge (US-06-02)", () => {
+  it("affiche le bouton 'Prendre en charge' pour un dossier 'depose'", async () => {
+    mockFetch(makeList([makeItem({ status: "depose" })]));
+    render(<BackofficeDossiersPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /prendre en charge le dossier dos-2026-00001/i }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("n'affiche pas le bouton pour un dossier 'en_instruction'", async () => {
+    mockFetch(makeList([makeItem({ status: "en_instruction" })]));
+    render(<BackofficeDossiersPage />);
+    await waitFor(() => expect(screen.getByText("DOS-2026-00001")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /prendre en charge/i })).not.toBeInTheDocument();
+  });
+
+  it("appelle PATCH /dossiers/{id}/prendre-en-charge au clic", async () => {
+    const patchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 1, reference: "DOS-2026-00001", status: "en_instruction", gestionnaire_id: 5 }),
+    });
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([makeItem()]) })
+      .mockImplementation(patchMock);
+
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /prendre en charge le dossier dos-2026-00001/i }),
+    );
+
+    await waitFor(() =>
+      expect(patchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/dossiers/1/prendre-en-charge"),
+        expect.objectContaining({ method: "PATCH", credentials: "include" }),
+      ),
+    );
+  });
+
+  it("met à jour le statut dans la liste après prise en charge", async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([makeItem({ status: "depose" })]) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 1, reference: "DOS-2026-00001", status: "en_instruction", gestionnaire_id: 5 }),
+      });
+
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /prendre en charge le dossier dos-2026-00001/i }),
+    );
+
+    await waitFor(() => expect(screen.getByText("En instruction")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /prendre en charge/i })).not.toBeInTheDocument();
+  });
+
+  it("affiche un toast de confirmation après prise en charge", async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([makeItem()]) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 1, reference: "DOS-2026-00001", status: "en_instruction", gestionnaire_id: 5 }),
+      });
+
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /prendre en charge le dossier dos-2026-00001/i }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(/dos-2026-00001 pris en charge/i),
+    );
+  });
+
+  it("affiche une erreur si la prise en charge échoue (409)", async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([makeItem()]) })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ detail: "Impossible de prendre en charge un dossier au statut 'brouillon'." }),
+      });
+
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /prendre en charge le dossier dos-2026-00001/i }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/impossible de prendre en charge/i),
+    );
+  });
+});

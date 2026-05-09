@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, status
 
 from app.core.deps import DbSession, enforce_role, get_user_from_cookie
-from app.models.dossier import Dossier, DossierStatusEnum, DossierTypeEnum, PieceJustificative
+from app.models.dossier import Dossier, DossierHistorique, DossierStatusEnum, DossierTypeEnum, PieceJustificative
 from app.models.user import RoleEnum, User
 from app.models.vehicle import Vehicle
 from sqlalchemy.orm import joinedload
@@ -25,6 +25,7 @@ from app.schemas.dossier import (
     DossierDetailOut,
     DossierListItemOut,
     DossierPieceChecklistItemOut,
+    DossierPrendreEnChargeOut,
     HistoriqueItemOut,
     PieceDownloadUrlOut,
     PieceType,
@@ -304,6 +305,89 @@ def list_all_dossiers_backoffice(
     ]
 
     return DossierBoListOut(total=total, page=page, page_size=page_size, items=items)
+
+
+# ── US-06-02 — Prise en charge d'un dossier ──────────────────────────────────
+
+@router.patch(
+    "/{dossier_id}/prendre-en-charge",
+    response_model=DossierPrendreEnChargeOut,
+    summary="US-06-02 — Prise en charge d'un dossier par le gestionnaire",
+)
+def prendre_en_charge(
+    dossier_id: int,
+    db: DbSession,
+    request: Request,
+    access_token: str | None = Cookie(default=None),
+) -> DossierPrendreEnChargeOut:
+    """Affecte le dossier au gestionnaire connecté et passe son statut à 'en_instruction'.
+
+    Règles :
+    - Le dossier doit être au statut ``depose``.
+    - Le gestionnaire déjà assigné peut ré-exécuter l'action (idempotent).
+    - Toute tentative sur un dossier dans un autre statut lève 409.
+    """
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = db.query(Dossier).filter(Dossier.id == dossier_id).first()
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    if dossier.status not in (DossierStatusEnum.depose, DossierStatusEnum.en_instruction):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Impossible de prendre en charge un dossier au statut '{dossier.status.value}'. "
+                "Seuls les dossiers 'depose' ou déjà 'en_instruction' sont acceptés."
+            ),
+        )
+
+    # Idempotence : déjà en instruction et même gestionnaire → pas de doublon en base
+    already_taken = (
+        dossier.status == DossierStatusEnum.en_instruction
+        and dossier.gestionnaire_id == user.id
+    )
+
+    old_status = dossier.status.value
+    dossier.status = DossierStatusEnum.en_instruction
+    dossier.gestionnaire_id = user.id
+
+    if not already_taken:
+        # Entrée dans l'historique du dossier
+        db.add(DossierHistorique(
+            dossier_id=dossier.id,
+            ancien_status=old_status,
+            nouveau_status=DossierStatusEnum.en_instruction.value,
+            commentaire=f"Pris en charge par {user.first_name} {user.last_name} ({user.email})",
+            operateur_id=user.id,
+        ))
+
+        # Audit trail
+        audit_service.record(
+            db,
+            action=audit_service.DOSSIER_PRIS_EN_CHARGE,
+            entity_type="dossier",
+            entity_id=dossier.id,
+            operator=user,
+            ip_address=request.client.host if request.client else None,
+            before_state={"status": old_status, "gestionnaire_id": dossier.gestionnaire_id},
+            after_state={
+                "status": DossierStatusEnum.en_instruction.value,
+                "gestionnaire_id": user.id,
+                "gestionnaire_email": user.email,
+            },
+        )
+
+    db.commit()
+    db.refresh(dossier)
+
+    return DossierPrendreEnChargeOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        status=dossier.status.value,
+        gestionnaire_id=dossier.gestionnaire_id,
+    )
 
 
 @router.get("/contrats", response_model=list[ContratListItemOut])

@@ -1,11 +1,10 @@
 "use client";
 
 /**
- * US-06-01 — Tableau de bord gestionnaire : liste des dossiers en attente.
+ * US-06-01 / US-06-02 — Tableau de bord gestionnaire : dossiers en attente.
  *
- * Filtres : statut (multiselect), type de contrat, plage de dates.
- * Tri par date de dépôt (plus anciens en premier par défaut).
- * Pagination côté serveur.
+ * US-06-01 : filtres (statut, type, dates), tri, pagination.
+ * US-06-02 : bouton "Prendre en charge" sur les dossiers au statut "Déposé".
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -113,6 +112,9 @@ export default function BackofficeDossiersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
+  // US-06-02 — prise en charge
+  const [takingId, setTakingId] = useState<number | null>(null);
+  const [toast, setToast] = useState("");
 
   const fetchDossiers = useCallback(async (f: FilterState, p: number) => {
     setLoading(true);
@@ -134,6 +136,40 @@ export default function BackofficeDossiersPage() {
   useEffect(() => {
     fetchDossiers(filters, page);
   }, [fetchDossiers, filters, page]);
+
+  /** US-06-02 — Prend en charge un dossier et met à jour son statut dans la liste. */
+  async function handlePrendreEnCharge(dossier: DossierBoItem) {
+    setTakingId(dossier.id);
+    try {
+      const res = await fetch(
+        `${apiBase()}/api/v1/dossiers/${dossier.id}/prendre-en-charge`,
+        { method: "PATCH", credentials: "include" },
+      );
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(payload.detail ?? "Erreur lors de la prise en charge.");
+      }
+      // Mise à jour optimiste du statut dans la liste
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((item) =>
+                item.id === dossier.id
+                  ? { ...item, status: "en_instruction" as DossierStatus }
+                  : item,
+              ),
+            }
+          : prev,
+      );
+      setToast(`Dossier ${dossier.reference} pris en charge.`);
+      setTimeout(() => setToast(""), 3500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur inattendue.");
+    } finally {
+      setTakingId(null);
+    }
+  }
 
   function applyFilters() {
     setFilters(pendingFilters);
@@ -334,7 +370,7 @@ export default function BackofficeDossiersPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".88rem" }}>
                 <thead>
                   <tr style={{ background: "var(--off)", borderBottom: "2px solid var(--border)" }}>
-                    {["Référence", "Client", "Véhicule", "Type", "Statut", "Pièces", "Déposé le", "Ancienneté"].map((h) => (
+                    {["Référence", "Client", "Véhicule", "Type", "Statut", "Pièces", "Déposé le", "Ancienneté", "Action"].map((h) => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: ".78rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".06em", whiteSpace: "nowrap" }}>
                         {h}
                       </th>
@@ -393,6 +429,32 @@ export default function BackofficeDossiersPage() {
                             </span>
                           ) : "—"}
                         </td>
+                        {/* US-06-02 — Bouton prise en charge */}
+                        <td style={{ padding: "10px 14px" }}>
+                          {d.status === "depose" ? (
+                            <button
+                              type="button"
+                              aria-label={`Prendre en charge le dossier ${d.reference}`}
+                              disabled={takingId === d.id}
+                              onClick={() => handlePrendreEnCharge(d)}
+                              style={{
+                                padding: "5px 12px",
+                                background: takingId === d.id ? "#94a3b8" : "#0e7490",
+                                color: "#fff",
+                                border: 0,
+                                borderRadius: 6,
+                                fontSize: ".78rem",
+                                fontWeight: 700,
+                                cursor: takingId === d.id ? "not-allowed" : "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {takingId === d.id ? "…" : "Prendre en charge"}
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: ".78rem", color: "var(--muted)" }}>—</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -431,6 +493,29 @@ export default function BackofficeDossiersPage() {
           </>
         )}
       </main>
+
+      {/* Toast US-06-02 */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            bottom: "1.5rem",
+            right: "1.5rem",
+            background: "#0e7490",
+            color: "#fff",
+            padding: ".75rem 1.25rem",
+            borderRadius: 10,
+            fontWeight: 600,
+            fontSize: ".88rem",
+            boxShadow: "0 4px 20px rgba(0,0,0,.25)",
+            zIndex: 500,
+          }}
+        >
+          ✓ {toast}
+        </div>
+      )}
     </>
   );
 }
