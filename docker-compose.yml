@@ -1,0 +1,142 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  M-Motors LLD — Environnement de développement local
+#
+#  Usage rapide :
+#    docker compose up -d          # démarre tout
+#    docker compose logs -f        # suit les logs
+#    docker compose down           # arrête (volumes conservés)
+#    docker compose down -v        # arrête + supprime les données
+#
+#  Accès :
+#    Frontend  →  http://localhost:3000
+#    API docs  →  http://localhost:8000/api/docs
+#    MinIO UI  →  http://localhost:9001  (minioadmin / minioadmin)
+#    PostgreSQL→  localhost:5432  (mmotors / mmotors_dev)
+#
+#  Surcharges locales → créer un fichier docker-compose.override.yml (gitignored)
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL 16 ────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mmotors
+      POSTGRES_USER: mmotors
+      POSTGRES_PASSWORD: mmotors_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mmotors -d mmotors"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # ── MinIO (S3-compatible) ────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"  # API S3 — utilisé par le backend et les URLs pré-signées navigateur
+      - "9001:9001"  # Console MinIO — http://localhost:9001
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  # ── Backend FastAPI ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    # On court-circuite l'entrypoint Gunicorn/Kubernetes pour uvicorn avec hot-reload
+    entrypoint: ["/bin/sh", "-c"]
+    command: "alembic upgrade head && exec uvicorn app.main:application --host 0.0.0.0 --port 8000 --reload --log-level info"
+    environment:
+      # ── Obligatoires ────────────────────────────────────────────────────────
+      # Clé JWT dev (ne jamais réutiliser en staging/prod)
+      SECRET_KEY: dev-secret-not-for-production-please-change-32chars!
+
+      # Base de données
+      POSTGRES_DB: mmotors
+      POSTGRES_USER: mmotors
+      POSTGRES_PASSWORD: mmotors_dev
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+
+      # MinIO
+      S3_ENDPOINT_URL: http://minio:9000
+      # Les URLs pré-signées sont ouvertes par le navigateur → utiliser localhost
+      S3_PUBLIC_ENDPOINT_URL: http://localhost:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+
+      # CORS + liens emails
+      ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+      FRONTEND_BASE_URL: http://localhost:3000
+      DEBUG: "true"
+
+      # ── Optionnels (décommenter pour activer) ───────────────────────────────
+      # RESEND_API_KEY: re_xxxxxxxxxxxxxxxxxxxx
+      # RESEND_FROM_EMAIL: "M-Motors <no-reply@mmotors.dev>"
+    volumes:
+      # Montage du code source → uvicorn --reload recharge à chaque modification
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    # Override du healthcheck Dockerfile pour un intervalle plus court en dev
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 25s  # laisse le temps aux migrations de tourner
+
+  # ── Frontend Next.js ─────────────────────────────────────────────────────────
+  frontend:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /app
+    # npm install au démarrage (rapide si node_modules est déjà dans le volume)
+    command: ["sh", "-c", "npm install --prefer-offline && exec npm run dev"]
+    environment:
+      # Next.js proxie /api/* → backend via le rewrite de next.config.js
+      API_INTERNAL_URL: http://backend:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+      NODE_ENV: development
+      # NEXT_PUBLIC_API_URL non défini → les appels navigateur utilisent des
+      # URLs relatives (/api/...) proxiées par le serveur Next.js
+    volumes:
+      # Code source avec HMR (Hot Module Replacement)
+      - ./frontend:/app
+      # node_modules dans un volume isolé : évite les conflits binaires hôte/conteneur
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  minio_data:
+  # Volume dédié aux dépendances Node pour isoler les binaires natifs du conteneur
+  frontend_node_modules:
