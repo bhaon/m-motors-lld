@@ -44,7 +44,7 @@ export interface FormState {
   make: string;
   model: string;
   year: string;
-  moteur: string;
+  moteur: VehicleMoteur;
   km: string;
   prix: string;
   lld: boolean;
@@ -142,7 +142,7 @@ export function VehicleForm({
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState("");
 
-  function set(field: keyof FormState, value: string | boolean) {
+  function setField<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: undefined }));
   }
@@ -288,49 +288,49 @@ export function VehicleForm({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 1rem" }}>
           <div style={groupStyle}>
             <label htmlFor="vf-make" style={labelStyle}>Marque *</label>
-            <input id="vf-make" type="text" value={form.make} onChange={(e) => set("make", e.target.value)} placeholder="ex : Renault" style={inputStyle} />
+            <input id="vf-make" type="text" value={form.make} onChange={(e) => setField("make", e.target.value)} placeholder="ex : Renault" style={inputStyle} />
             <FieldError message={errors.make} />
           </div>
           <div style={groupStyle}>
             <label htmlFor="vf-model" style={labelStyle}>Modèle *</label>
-            <input id="vf-model" type="text" value={form.model} onChange={(e) => set("model", e.target.value)} placeholder="ex : Clio" style={inputStyle} />
+            <input id="vf-model" type="text" value={form.model} onChange={(e) => setField("model", e.target.value)} placeholder="ex : Clio" style={inputStyle} />
             <FieldError message={errors.model} />
           </div>
           <div style={groupStyle}>
             <label htmlFor="vf-year" style={labelStyle}>Année *</label>
-            <input id="vf-year" type="number" min={2000} max={2030} value={form.year} onChange={(e) => set("year", e.target.value)} placeholder="ex : 2024" style={inputStyle} />
+            <input id="vf-year" type="number" min={2000} max={2030} value={form.year} onChange={(e) => setField("year", e.target.value)} placeholder="ex : 2024" style={inputStyle} />
             <FieldError message={errors.year} />
           </div>
           <div style={groupStyle}>
             <label htmlFor="vf-moteur" style={labelStyle}>Motorisation *</label>
-            <select id="vf-moteur" value={form.moteur} onChange={(e) => set("moteur", e.target.value)} style={inputStyle}>
+            <select id="vf-moteur" value={form.moteur} onChange={(e) => setField("moteur", e.target.value as VehicleMoteur)} style={inputStyle}>
               {MOTEURS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div style={groupStyle}>
             <label htmlFor="vf-km" style={labelStyle}>Kilométrage *</label>
-            <input id="vf-km" type="number" min={0} value={form.km} onChange={(e) => set("km", e.target.value)} placeholder="ex : 12000" style={inputStyle} />
+            <input id="vf-km" type="number" min={0} value={form.km} onChange={(e) => setField("km", e.target.value)} placeholder="ex : 12000" style={inputStyle} />
             <FieldError message={errors.km} />
           </div>
           <div style={groupStyle}>
             <label htmlFor="vf-couleur" style={labelStyle}>Couleur *</label>
-            <input id="vf-couleur" type="text" value={form.spec_couleur} onChange={(e) => set("spec_couleur", e.target.value)} placeholder="ex : Blanc nacré" style={inputStyle} />
+            <input id="vf-couleur" type="text" value={form.spec_couleur} onChange={(e) => setField("spec_couleur", e.target.value)} placeholder="ex : Blanc nacré" style={inputStyle} />
             <FieldError message={errors.spec_couleur} />
           </div>
           <div style={groupStyle}>
             <label htmlFor="vf-boite" style={labelStyle}>Boîte de vitesses *</label>
-            <select id="vf-boite" value={form.spec_boite} onChange={(e) => set("spec_boite", e.target.value)} style={inputStyle}>
+            <select id="vf-boite" value={form.spec_boite} onChange={(e) => setField("spec_boite", e.target.value)} style={inputStyle}>
               {BOITES.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
           <div style={groupStyle}>
             <label htmlFor="vf-puissance" style={labelStyle}>Puissance *</label>
-            <input id="vf-puissance" type="text" value={form.spec_puissance} onChange={(e) => set("spec_puissance", e.target.value)} placeholder="ex : 130 ch" style={inputStyle} />
+            <input id="vf-puissance" type="text" value={form.spec_puissance} onChange={(e) => setField("spec_puissance", e.target.value)} placeholder="ex : 130 ch" style={inputStyle} />
             <FieldError message={errors.spec_puissance} />
           </div>
           <div style={groupStyle}>
             <label htmlFor="vf-places" style={labelStyle}>Nombre de places</label>
-            <input id="vf-places" type="number" min={1} max={9} value={form.spec_places} onChange={(e) => set("spec_places", e.target.value)} style={inputStyle} />
+            <input id="vf-places" type="number" min={1} max={9} value={form.spec_places} onChange={(e) => setField("spec_places", e.target.value)} style={inputStyle} />
           </div>
         </div>
       </fieldset>
@@ -343,18 +343,18 @@ export function VehicleForm({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 1rem" }}>
           <div style={groupStyle}>
             <label htmlFor="vf-prix" style={labelStyle}>Prix de vente HT * (€)</label>
-            <input id="vf-prix" type="number" min={0} step={0.01} value={form.prix} onChange={(e) => set("prix", e.target.value)} placeholder="ex : 19990" style={inputStyle} />
+            <input id="vf-prix" type="number" min={0} step={0.01} value={form.prix} onChange={(e) => setField("prix", e.target.value)} placeholder="ex : 19990" style={inputStyle} />
             <FieldError message={errors.prix} />
           </div>
           <div style={groupStyle}>
             <label style={labelStyle}>Type de contrat *</label>
             <div style={{ display: "flex", gap: "1.2rem", alignItems: "center", height: 40 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                <input type="radio" name="vf-lld" value="achat" checked={!form.lld} onChange={() => set("lld", false)} />
+                <input type="radio" name="vf-lld" value="achat" checked={!form.lld} onChange={() => setField("lld", false)} />
                 <span style={{ fontSize: ".9rem" }}>Achat</span>
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                <input type="radio" name="vf-lld" value="lld" checked={form.lld} onChange={() => set("lld", true)} />
+                <input type="radio" name="vf-lld" value="lld" checked={form.lld} onChange={() => setField("lld", true)} />
                 <span style={{ fontSize: ".9rem" }}>LLD</span>
               </label>
             </div>
@@ -362,7 +362,7 @@ export function VehicleForm({
           {form.lld && (
             <div style={groupStyle}>
               <label htmlFor="vf-mensualite" style={labelStyle}>Mensualité LLD HT * (€/mois)</label>
-              <input id="vf-mensualite" type="number" min={0} step={0.01} value={form.mensualite} onChange={(e) => set("mensualite", e.target.value)} placeholder="ex : 299" style={inputStyle} />
+              <input id="vf-mensualite" type="number" min={0} step={0.01} value={form.mensualite} onChange={(e) => setField("mensualite", e.target.value)} placeholder="ex : 299" style={inputStyle} />
               <FieldError message={errors.mensualite} />
             </div>
           )}
@@ -374,7 +374,7 @@ export function VehicleForm({
         <legend style={{ fontWeight: 700, fontSize: ".9rem", color: "var(--navy)", padding: "0 6px" }}>Photo</legend>
         <div style={groupStyle}>
           <label htmlFor="vf-img" style={labelStyle}>URL photo principale *</label>
-          <input id="vf-img" type="url" value={form.img} onChange={(e) => set("img", e.target.value)} placeholder="https://example.com/photo.jpg" style={inputStyle} />
+          <input id="vf-img" type="url" value={form.img} onChange={(e) => setField("img", e.target.value)} placeholder="https://example.com/photo.jpg" style={inputStyle} />
           <FieldError message={errors.img} />
           {form.img.trim() && (
             <Image src={form.img.trim()} alt="Aperçu" width={320} height={120} unoptimized
@@ -386,7 +386,7 @@ export function VehicleForm({
       {/* ── Publication ───────────────────────────────────────────────────── */}
       <div style={{ marginBottom: "1.4rem" }}>
         <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-          <input type="checkbox" checked={form.visible_catalogue} onChange={(e) => set("visible_catalogue", e.target.checked)} style={{ width: 16, height: 16 }} />
+          <input type="checkbox" checked={form.visible_catalogue} onChange={(e) => setField("visible_catalogue", e.target.checked)} style={{ width: 16, height: 16 }} />
           <span style={{ fontSize: ".9rem", color: "#374151" }}>Visible dans le catalogue</span>
         </label>
       </div>

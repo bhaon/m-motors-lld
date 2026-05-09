@@ -21,7 +21,7 @@ k8s/
 ```
 
 ## Principe de fonctionnement
-
+ 
 - `base/` definit les ressources applicatives communes.
 - `overlays/<env>/` ajoute et modifie la base pour chaque environnement:
   - `configmap.yaml`
