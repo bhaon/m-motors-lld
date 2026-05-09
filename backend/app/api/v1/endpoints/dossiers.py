@@ -18,6 +18,7 @@ from app.schemas.dossier import (
     ClientSummaryOut,
     ContratListItemOut,
     ContratVehicleOut,
+    DossierBoDetailOut,
     DossierBoItemOut,
     DossierBoListOut,
     DossierCreateIn,
@@ -27,6 +28,7 @@ from app.schemas.dossier import (
     DossierPieceChecklistItemOut,
     DossierPrendreEnChargeOut,
     HistoriqueItemOut,
+    PieceBoOut,
     PieceDownloadUrlOut,
     PieceType,
     PieceUploadCompleteIn,
@@ -328,6 +330,122 @@ def list_all_dossiers_backoffice(
     ]
 
     return DossierBoListOut(total=total, page=page, page_size=page_size, items=items)
+
+
+# ── US-06-03 — Détail dossier gestionnaire ───────────────────────────────────
+
+@router.get(
+    "/backoffice/{dossier_id}",
+    response_model=DossierBoDetailOut,
+    summary="US-06-03 — Détail complet d'un dossier pour le gestionnaire",
+)
+def get_dossier_bo_detail(
+    dossier_id: int,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> DossierBoDetailOut:
+    """Retourne le détail complet d'un dossier : client, véhicule, pièces, historique.
+
+    Accessible aux gestionnaires, superviseurs et admins uniquement.
+    """
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = (
+        db.query(Dossier)
+        .options(
+            joinedload(Dossier.client),
+            joinedload(Dossier.vehicle),
+            joinedload(Dossier.pieces),
+            joinedload(Dossier.historique),
+        )
+        .filter(Dossier.id == dossier_id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    uploaded_map: dict[str, PieceJustificative] = {
+        p.type_piece: p for p in dossier.pieces if p.type_piece in REQUIRED_PIECE_TYPES
+    }
+    pieces = [
+        PieceBoOut(
+            type_piece=cast(PieceType, t),
+            uploaded=t in uploaded_map,
+            filename=uploaded_map[t].filename if t in uploaded_map else None,
+            uploaded_at=uploaded_map[t].uploaded_at if t in uploaded_map else None,
+        )
+        for t in REQUIRED_PIECE_TYPES
+    ]
+
+    historique_out = [
+        HistoriqueItemOut(
+            ancien_status=h.ancien_status,
+            nouveau_status=h.nouveau_status,
+            commentaire=h.commentaire,
+            created_at=h.created_at,
+        )
+        for h in dossier.historique
+    ]
+
+    return DossierBoDetailOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        type=dossier.type,
+        status=dossier.status.value,
+        submitted_at=dossier.submitted_at,
+        created_at=dossier.created_at,
+        motif_rejet=dossier.motif_rejet,
+        notes_internes=dossier.notes_internes,
+        vehicle=VehicleSummaryOut(
+            make=dossier.vehicle.make if dossier.vehicle else "—",
+            model=dossier.vehicle.model if dossier.vehicle else "",
+            year=dossier.vehicle.year if dossier.vehicle else 0,
+        ),
+        client=ClientSummaryOut(
+            id=dossier.client.id,
+            email=dossier.client.email,
+            first_name=dossier.client.first_name,
+            last_name=dossier.client.last_name,
+        ),
+        pieces=pieces,
+        historique=historique_out,
+    )
+
+
+@router.get(
+    "/backoffice/{dossier_id}/pieces/{type_piece}/download-url",
+    response_model=PieceDownloadUrlOut,
+    summary="US-06-03 — URL pré-signée pour consulter une pièce (gestionnaire)",
+)
+def get_piece_download_url_bo(
+    dossier_id: int,
+    type_piece: PieceType,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> PieceDownloadUrlOut:
+    """Génère une URL pré-signée GET (10 min) pour qu'un gestionnaire consulte une pièce."""
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = db.query(Dossier).filter(Dossier.id == dossier_id).first()
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    piece = (
+        db.query(PieceJustificative)
+        .filter(
+            PieceJustificative.dossier_id == dossier_id,
+            PieceJustificative.type_piece == type_piece,
+        )
+        .first()
+    )
+    if not piece:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document non trouvé.")
+
+    s3_client = get_s3_client()
+    download_url = generate_download_url(s3_client, object_key=piece.s3_key, filename=piece.filename)
+    return PieceDownloadUrlOut(download_url=download_url, filename=piece.filename)
 
 
 # ── US-06-02 — Prise en charge d'un dossier ──────────────────────────────────

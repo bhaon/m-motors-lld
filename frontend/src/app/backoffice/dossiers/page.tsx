@@ -386,8 +386,14 @@ export default function BackofficeDossiersPage() {
                         key={d.id}
                         style={{ borderBottom: "1px solid var(--border)", background: i % 2 === 0 ? "#fff" : "var(--off)" }}
                       >
-                        <td style={{ padding: "10px 14px", fontFamily: "monospace", fontWeight: 700, color: "var(--navy)", whiteSpace: "nowrap" }}>
-                          {d.reference}
+                        <td style={{ padding: "10px 14px", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>
+                          <Link
+                            href={`/backoffice/dossiers/${d.id}`}
+                            aria-label={`Consulter le dossier ${d.reference}`}
+                            style={{ color: "var(--navy)", textDecoration: "none" }}
+                          >
+                            {d.reference}
+                          </Link>
                         </td>
                         <td style={{ padding: "10px 14px" }}>
                           <div style={{ fontWeight: 600, color: "#1f2937" }}>

@@ -153,6 +153,34 @@ class DossierPrendreEnChargeOut(BaseModel):
     gestionnaire_id: int
 
 
+# ── US-06-03 : Détail dossier gestionnaire ────────────────────────────────────
+
+class PieceBoOut(BaseModel):
+    """Pièce justificative vue du gestionnaire (uploaded ou manquante)."""
+
+    type_piece: PieceType
+    uploaded: bool
+    filename: str | None = None
+    uploaded_at: datetime | None = None
+
+
+class DossierBoDetailOut(BaseModel):
+    """Détail complet d'un dossier pour le gestionnaire (US-06-03)."""
+
+    id: int
+    reference: str
+    type: DossierTypeEnum
+    status: str
+    submitted_at: datetime | None = None
+    created_at: datetime | None = None
+    motif_rejet: str | None = None
+    notes_internes: str | None = None
+    vehicle: VehicleSummaryOut
+    client: ClientSummaryOut
+    pieces: list[PieceBoOut]
+    historique: list[HistoriqueItemOut] = []
+
+
 # ── US-04-04 : Contrats LLD ───────────────────────────────────────────────────
 
 class ContratVehicleOut(BaseModel):

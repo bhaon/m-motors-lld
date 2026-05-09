@@ -15,7 +15,7 @@ Le projet est compose de :
 - [Prerequis](#prerequis)
  
 ## Architecture
-
+ 
 ### Frontend
 - Framework: `Next.js 15`
 - Langage: `TypeScript`
