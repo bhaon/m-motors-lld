@@ -440,6 +440,27 @@ def archive_vehicle(
     db.commit()
 
 
+# ── US-05-05 — Galerie publique ───────────────────────────────────────────────
+
+
+@router.get(
+    "/{vehicle_id}/galerie",
+    response_model=list[VehiclePhotoOut],
+    summary="US-05-05 — Galerie publique d'un véhicule (sans auth)",
+    responses={**_R404_VEHICULE},
+)
+def get_galerie(vehicle_id: int, db: DbSession) -> list[VehiclePhotoOut]:
+    """Retourne les photos du véhicule triées par ordre, accessible sans authentification."""
+    v = (
+        db.query(Vehicle)
+        .filter(Vehicle.id == vehicle_id, Vehicle.archived == False)
+        .first()
+    )
+    if not v:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
+    return sorted(v.photos, key=lambda p: p.order)
+
+
 # ── US-05-05 — Gestion des photos ─────────────────────────────────────────────
 
 

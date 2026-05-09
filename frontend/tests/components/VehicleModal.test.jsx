@@ -1,6 +1,21 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import VehicleModal from "@/components/VehicleModal";
 import { SAMPLE_VEHICLES } from "../fixtures/vehicles";
+
+const SAMPLE_PHOTOS = [
+  { id: 1, url: "https://example.com/photo1.jpg", is_main: true, order: 1 },
+  { id: 2, url: "https://example.com/photo2.jpg", is_main: false, order: 2 },
+];
+
+function mockFetch(photos = []) {
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => photos,
+  });
+}
+
+beforeEach(() => mockFetch([]));
+afterEach(() => jest.restoreAllMocks());
 
 describe("VehicleModal", () => {
   it("n'affiche rien si aucun véhicule n'est sélectionné", () => {
@@ -11,7 +26,7 @@ describe("VehicleModal", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("gère fermeture clavier et actions dossier", () => {
+  it("gère fermeture clavier et actions dossier", async () => {
     const onClose = jest.fn();
     const onDossier = jest.fn();
     const vehicle = SAMPLE_VEHICLES.find((v) => v.lld) || SAMPLE_VEHICLES[0];
@@ -108,5 +123,62 @@ describe("VehicleModal", () => {
       screen.getByRole("button", { name: "Déposer un dossier Achat" }),
     );
     expect(onDossier).toHaveBeenCalledWith(vehicle, "achat");
+  });
+
+  it("n'affiche pas l'accordéon galerie quand il n'y a aucune photo", async () => {
+    mockFetch([]);
+    const vehicle = SAMPLE_VEHICLES[0];
+
+    await act(async () => {
+      render(<VehicleModal vehicle={vehicle} onClose={jest.fn()} onDossier={jest.fn()} />);
+    });
+
+    expect(screen.queryByText(/galerie photos/i)).not.toBeInTheDocument();
+  });
+
+  it("affiche l'accordéon galerie quand des photos sont disponibles", async () => {
+    mockFetch(SAMPLE_PHOTOS);
+    const vehicle = SAMPLE_VEHICLES[0];
+
+    await act(async () => {
+      render(<VehicleModal vehicle={vehicle} onClose={jest.fn()} onDossier={jest.fn()} />);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /galerie photos/i })).toBeInTheDocument()
+    );
+    expect(screen.getByText(`Galerie photos (${SAMPLE_PHOTOS.length})`)).toBeInTheDocument();
+  });
+
+  it("l'accordéon galerie se déploie au clic et affiche les miniatures", async () => {
+    mockFetch(SAMPLE_PHOTOS);
+    const vehicle = SAMPLE_VEHICLES[0];
+
+    await act(async () => {
+      render(<VehicleModal vehicle={vehicle} onClose={jest.fn()} onDossier={jest.fn()} />);
+    });
+
+    const toggle = await screen.findByRole("button", { name: /galerie photos/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByAltText("").length).toBeGreaterThan(0);
+    expect(screen.getByText("Principale")).toBeInTheDocument();
+  });
+
+  it("cliquer sur une miniature change la photo d'en-tête", async () => {
+    mockFetch(SAMPLE_PHOTOS);
+    const vehicle = SAMPLE_VEHICLES[0];
+
+    await act(async () => {
+      render(<VehicleModal vehicle={vehicle} onClose={jest.fn()} onDossier={jest.fn()} />);
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: /galerie photos/i }));
+    fireEvent.click(screen.getByRole("button", { name: /afficher photo 2/i }));
+
+    const headerImg = document.querySelector("img[src='https://example.com/photo2.jpg']");
+    expect(headerImg).not.toBeNull();
   });
 });

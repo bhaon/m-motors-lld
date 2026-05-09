@@ -716,7 +716,11 @@ function PhotoModal({ vehicle, onClose }: { vehicle: VehicleBoItem; onClose: () 
       }
     }
     setSelectedFiles([]);
-    setUploadState((s) => s.error ? s : { ...s, current: "", total: 0, done: 0 });
+    setUploadState((s) => {
+      if (s.error) return s;
+      setActiveTab("galerie");
+      return { ...s, current: "", total: 0, done: 0 };
+    });
   }
 
   // ── Bibliothèque ────────────────────────────────────────────────────────────
