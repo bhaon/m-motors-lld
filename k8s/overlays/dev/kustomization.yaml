@@ -13,6 +13,7 @@ patches:
   - path: patches/replicas.yaml
   - path: patches/resources.yaml
   - path: patches/storage.yaml
+  - path: patches/minio-server-url.yaml
 
 images:
   - name: ghcr.io/bhaon/m-motors-lld-frontend

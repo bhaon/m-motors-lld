@@ -106,6 +106,7 @@ def test_prendre_en_charge_sets_gestionnaire_id(client: TestClient, db: Session)
 
     db.expire_all()
     updated = db.query(Dossier).filter(Dossier.id == d.id).first()
+    assert updated is not None
     assert updated.status == DossierStatusEnum.en_instruction
     assert updated.gestionnaire_id is not None
 
@@ -210,6 +211,8 @@ def test_second_gestionnaire_can_take_en_instruction_dossier(client: TestClient,
     db.expire_all()
     updated = db.query(Dossier).filter(Dossier.id == d.id).first()
     g2 = db.query(create_user.__globals__["User"]).filter_by(email="g2@ex.com").first()
+    assert updated is not None
+    assert g2 is not None
     assert updated.gestionnaire_id == g2.id
 
 

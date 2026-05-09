@@ -20,6 +20,7 @@ patchesStrategicMerge:
   - patches/resources.yaml
   - patches/storage.yaml
   - patches/security.yaml
+  - patches/minio-server-url.yaml
 
 images:
   - name: ghcr.io/bhaon/m-motors-lld-frontend

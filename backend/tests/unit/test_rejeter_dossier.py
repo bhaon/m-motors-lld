@@ -98,6 +98,7 @@ def test_rejeter_depose_ok(client: TestClient, db: Session) -> None:
 
     db.expire_all()
     row = db.query(Dossier).filter(Dossier.id == d.id).first()
+    assert row is not None
     assert row.status == DossierStatusEnum.rejete
     assert row.motif_rejet == MOTIF_OK
     assert row.rejected_at is not None
