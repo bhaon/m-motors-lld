@@ -127,6 +127,7 @@ export default function Navbar() {
 
   const isGestionnaire = role !== null && GESTIONNAIRE_ROLES.has(role);
   const isAdmin = role === "admin";
+  const isSuperviseurReporting = role === "superviseur" || role === "admin";
 
   /**
    * Vérifie si l'utilisateur est connecté afin d'afficher la pastille profil.
@@ -420,6 +421,25 @@ export default function Navbar() {
                       <DossierIcon />
                       Dossiers en attente
                     </Link>
+                    {isSuperviseurReporting ? (
+                      <Link
+                        href="/backoffice/reporting"
+                        role="menuitem"
+                        onClick={() => setIsMenuOpen(false)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "12px 14px",
+                          textDecoration: "none",
+                          color: "#6d28d9",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <ListIcon />
+                        Reporting dossiers
+                      </Link>
+                    ) : null}
                   </>
                 )}
 
