@@ -177,14 +177,16 @@ def test_delete_non_main_photo(client: TestClient, db: Session) -> None:
     v = create_vehicle(db)
     p1 = _add_photo(db, v.id, "https://example.com/keep.jpg", is_main=True, order=1)
     p2 = _add_photo(db, v.id, "https://example.com/remove.jpg", is_main=False, order=2)
+    p1_id = p1.id
+    p2_id = p2.id
     headers = _gest(db, "gest.del@example.com")
 
-    resp = client.delete(f"/api/v1/vehicules/{v.id}/photos/{p2.id}", headers=headers)
+    resp = client.delete(f"/api/v1/vehicules/{v.id}/photos/{p2_id}", headers=headers)
 
     assert resp.status_code == 204
     db.expire_all()
-    assert db.query(VehiclePhoto).filter(VehiclePhoto.id == p2.id).first() is None
-    assert db.query(VehiclePhoto).filter(VehiclePhoto.id == p1.id).first() is not None
+    assert db.query(VehiclePhoto).filter(VehiclePhoto.id == p2_id).first() is None
+    assert db.query(VehiclePhoto).filter(VehiclePhoto.id == p1_id).first() is not None
 
 
 def test_delete_main_photo_promotes_next(client: TestClient, db: Session) -> None:
