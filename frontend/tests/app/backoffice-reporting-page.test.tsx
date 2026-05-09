@@ -98,4 +98,67 @@ describe("BackofficeReportingPage", () => {
 
     clickSpy.mockRestore();
   });
+
+  it("affiche — pour taux et délai lorsque l’API renvoie null", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...mockReportingPayload(),
+        validation_rate: null,
+        avg_processing_days: null,
+      }),
+    });
+
+    render(<BackofficeReportingPage />);
+    await waitFor(() => {
+      const dashes = screen.getAllByText("—");
+      expect(dashes.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("affiche une erreur si l’export CSV renvoie un corps JSON d’erreur", async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockReportingPayload(),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({ detail: "Export interdit." }),
+      });
+
+    render(<BackofficeReportingPage />);
+    await waitFor(() => expect(screen.getByText("12")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /exporter csv/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/export interdit/i),
+    );
+  });
+
+  it("affiche une erreur si l’export CSV renvoie du texte non JSON", async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockReportingPayload(),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        text: async () => "Bad Gateway upstream",
+      });
+
+    render(<BackofficeReportingPage />);
+    await waitFor(() => expect(screen.getByText("12")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /exporter csv/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/Bad Gateway/i),
+    );
+  });
 });
