@@ -5,7 +5,8 @@ from datetime import date, datetime, timezone
 import logging
 from typing import cast
 
-from fastapi import APIRouter, Cookie, HTTPException, Request, status
+from typing import Annotated
+from fastapi import APIRouter, Cookie, HTTPException, Query, Request, status
 
 from app.core.deps import DbSession, enforce_role, get_user_from_cookie
 from app.models.dossier import Dossier, DossierStatusEnum, DossierTypeEnum, PieceJustificative
@@ -14,8 +15,11 @@ from app.models.vehicle import Vehicle
 from sqlalchemy.orm import joinedload
 
 from app.schemas.dossier import (
+    ClientSummaryOut,
     ContratListItemOut,
     ContratVehicleOut,
+    DossierBoItemOut,
+    DossierBoListOut,
     DossierCreateIn,
     DossierCreateOut,
     DossierDetailOut,
@@ -200,37 +204,106 @@ def list_my_dossiers(
     ]
 
 
-@router.get("/backoffice", response_model=list[DossierListItemOut])
+@router.get("/backoffice", response_model=DossierBoListOut, summary="US-06-01 — Tableau de bord gestionnaire")
 def list_all_dossiers_backoffice(
     db: DbSession,
     access_token: str | None = Cookie(default=None),
-) -> list[DossierListItemOut]:
-    """Liste tous les dossiers (tous clients) — réservé gestionnaire, superviseur, admin."""
+    # Filtres — Query() obligatoire pour list[str], sinon FastAPI lit le corps JSON
+    statuts: Annotated[list[str] | None, Query()] = None,
+    type_contrat: Annotated[str | None, Query()] = None,
+    date_from: Annotated[datetime | None, Query()] = None,
+    date_to: Annotated[datetime | None, Query()] = None,
+    # Tri
+    sort: Annotated[str, Query()] = "submitted_asc",
+    # Pagination
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> DossierBoListOut:
+    """Liste paginée et filtrée des dossiers pour le tableau de bord gestionnaire.
+
+    Filtres disponibles :
+    - ``statuts`` (répétable) : ex. depose,en_instruction. Défaut = depose + en_instruction.
+    - ``type_contrat`` : achat | lld.
+    - ``date_from`` / ``date_to`` : plage sur submitted_at.
+
+    Tri : submitted_asc (défaut, plus anciens en premier), submitted_desc, created_desc.
+    Pagination : page (≥ 1) + page_size (1–100, défaut 20).
+    """
     user = _resolve_user_from_cookie(access_token, db)
     enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
-    dossiers = (
+
+    # Valeurs par défaut des statuts (dossiers en attente de traitement)
+    active_statuts = statuts if statuts else ["depose", "en_instruction"]
+
+    # Validation des valeurs de statut
+    valid_statuts = {s.value for s in DossierStatusEnum}
+    for s in active_statuts:
+        if s not in valid_statuts:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Statut inconnu : '{s}'. Valeurs acceptées : {sorted(valid_statuts)}",
+            )
+
+    q = (
         db.query(Dossier)
-        .options(joinedload(Dossier.vehicle))
-        .order_by(Dossier.created_at.desc(), Dossier.id.desc())
-        .all()
+        .options(joinedload(Dossier.vehicle), joinedload(Dossier.client), joinedload(Dossier.pieces))
+        .filter(Dossier.status.in_(active_statuts))
     )
-    return [
-        DossierListItemOut(
+
+    if type_contrat:
+        if type_contrat not in {t.value for t in DossierTypeEnum}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Type inconnu : '{type_contrat}'. Valeurs acceptées : achat, lld",
+            )
+        q = q.filter(Dossier.type == type_contrat)
+
+    if date_from:
+        q = q.filter(Dossier.submitted_at >= date_from)
+    if date_to:
+        q = q.filter(Dossier.submitted_at <= date_to)
+
+    # Tri
+    if sort == "submitted_asc":
+        q = q.order_by(Dossier.submitted_at.asc().nulls_last(), Dossier.id.asc())
+    elif sort == "submitted_desc":
+        q = q.order_by(Dossier.submitted_at.desc().nulls_first(), Dossier.id.desc())
+    else:
+        # created_desc — tri de création décroissant (brouillons inclus)
+        q = q.order_by(Dossier.created_at.desc(), Dossier.id.desc())
+
+    total = q.count()
+
+    page = max(1, page)
+    page_size = min(100, max(1, page_size))
+    offset = (page - 1) * page_size
+    dossiers = q.offset(offset).limit(page_size).all()
+
+    items = [
+        DossierBoItemOut(
             id=d.id,
             reference=d.reference,
             type=d.type,
             status=d.status.value,
-            vehicle_id=d.vehicle_id,
-            client_id=d.client_id,
+            submitted_at=d.submitted_at,
             created_at=d.created_at,
             vehicle=VehicleSummaryOut(
                 make=d.vehicle.make if d.vehicle else "—",
                 model=d.vehicle.model if d.vehicle else "",
                 year=d.vehicle.year if d.vehicle else 0,
             ),
+            client=ClientSummaryOut(
+                id=d.client.id,
+                email=d.client.email,
+                first_name=d.client.first_name,
+                last_name=d.client.last_name,
+            ),
+            pieces_count=len(d.pieces),
         )
         for d in dossiers
     ]
+
+    return DossierBoListOut(total=total, page=page, page_size=page_size, items=items)
 
 
 @router.get("/contrats", response_model=list[ContratListItemOut])

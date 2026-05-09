@@ -110,6 +110,40 @@ class DossierDetailOut(BaseModel):
     historique: list[HistoriqueItemOut] = []
 
 
+# ── US-06-01 : Tableau de bord gestionnaire ───────────────────────────────────
+
+class ClientSummaryOut(BaseModel):
+    """Résumé client pour la vue back-office d'un dossier."""
+
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+
+
+class DossierBoItemOut(BaseModel):
+    """Dossier enrichi pour le tableau de bord gestionnaire (US-06-01)."""
+
+    id: int
+    reference: str
+    type: DossierTypeEnum
+    status: str
+    submitted_at: datetime | None = None
+    created_at: datetime | None = None
+    vehicle: VehicleSummaryOut
+    client: ClientSummaryOut
+    pieces_count: int
+
+
+class DossierBoListOut(BaseModel):
+    """Réponse paginée du tableau de bord gestionnaire."""
+
+    total: int
+    page: int
+    page_size: int
+    items: list[DossierBoItemOut]
+
+
 # ── US-04-04 : Contrats LLD ───────────────────────────────────────────────────
 
 class ContratVehicleOut(BaseModel):
