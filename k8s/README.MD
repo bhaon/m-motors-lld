@@ -21,10 +21,10 @@ k8s/
 ```
 
 ## Principe de fonctionnement
-
+ 
 - `base/` definit les ressources applicatives communes.
 - `overlays/<env>/` ajoute et modifie la base pour chaque environnement:
-  - `configmap.yaml`
+  - `configmap.yaml` 
   - `ingress.yaml`
   - `patches/*` (replicas, ressources, securite, stockage)
 - `infra/<env>/` definit l'infrastructure Kubernetes de l'environnement (namespace, politiques reseau, RBAC, etc.).

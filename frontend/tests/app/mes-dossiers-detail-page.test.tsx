@@ -596,7 +596,7 @@ describe("DossierDetailPage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/upload du document échoué/i)).toBeInTheDocument();
+      expect(screen.getByText(/upload minio échoué/i)).toBeInTheDocument();
     });
   });
 

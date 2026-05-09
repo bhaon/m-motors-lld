@@ -1,8 +1,12 @@
+/** Option LLD d'un véhicule (nom court `n`, prix formaté `p`). */
 export interface VehicleOption {
+  /** Nom de l'option (ex : "GPS intégré"). */
   n: string;
+  /** Prix mensuel formaté (ex : "+30€/mois"). */
   p: string;
 }
 
+/** Caractéristiques techniques affichées dans la fiche véhicule. */
 export interface VehicleSpecs {
   carburant: string;
   boite: string;
@@ -11,6 +15,11 @@ export interface VehicleSpecs {
   puissance: string;
 }
 
+/**
+ * Représentation d'un véhicule telle que retournée par l'API publique (`VehicleOut`).
+ * `img` contient l'URL de la photo principale — mise à jour côté back-office
+ * dès qu'une nouvelle photo principale est définie.
+ */
 export interface Vehicle {
   id: number;
   make: string;
@@ -20,14 +29,20 @@ export interface Vehicle {
   moteur: "Essence" | "Diesel" | "Hybride" | "Électrique";
   prix: number;
   lld: boolean;
+  /** null si le véhicule n'est pas en LLD. */
   mensualite: number | null;
   options: VehicleOption[];
   img: string;
   specs: VehicleSpecs;
 }
 
+/** Filtre actif sur le catalogue — "all" désactive le filtre type de contrat. */
 export type ContratType = "all" | "achat" | "lld";
 
+/**
+ * Cycle de vie d'un dossier client :
+ * brouillon → depose → en_instruction → valide | rejete | annule
+ */
 export type DossierStatus =
   | "brouillon"
   | "depose"

@@ -66,6 +66,7 @@ export default function VehicleCard({
             src={v.img}
             alt={`${v.make} ${v.model}`}
             fill
+            unoptimized
             style={{ objectFit: "cover" }}
             sizes="(max-width: 768px) 100vw, 33vw"
           />

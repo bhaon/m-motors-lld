@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
+import { apiUrl } from "@/lib/api";
+import { validateAdminPassword } from "@/lib/validation";
 
 type Role = "client" | "gestionnaire" | "superviseur" | "admin";
 
@@ -41,11 +43,6 @@ const ROLE_CONFIG: Record<Role, { label: string; color: string; bg: string }> = 
 
 const ALL_ROLES: Role[] = ["client", "gestionnaire", "superviseur", "admin"];
 
-function api(path: string): string {
-  const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
-  const base = pub ? pub.replace(/\/$/, "") : "";
-  return base ? `${base}${path}` : path;
-}
 
 function RoleBadge({ role }: { role: Role }) {
   const cfg = ROLE_CONFIG[role] ?? ROLE_CONFIG.client;
@@ -89,16 +86,18 @@ export default function AdminUtilisateursPage() {
   const [pendingRole, setPendingRole] = useState<Record<number, Role>>({});
   const [savingRole, setSavingRole] = useState<number | null>(null);
   const [roleSuccess, setRoleSuccess] = useState<Record<number, string>>({});
+  const [roleError, setRoleError] = useState("");
 
   // Suppression
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   async function loadUsers() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(api("/api/v1/admin/users"), {
+      const res = await fetch(apiUrl("/api/v1/admin/users"), {
         credentials: "include",
         cache: "no-store",
       });
@@ -123,10 +122,8 @@ export default function AdminUtilisateursPage() {
     if (!form.email.trim() || !form.email.includes("@")) errs.email = "Email invalide.";
     if (!form.first_name.trim()) errs.first_name = "Prénom obligatoire.";
     if (!form.last_name.trim()) errs.last_name = "Nom obligatoire.";
-    if (form.password.length < 8) errs.password = "8 caractères minimum.";
-    else if (!/[A-Z]/.test(form.password)) errs.password = "Au moins 1 majuscule requise.";
-    else if (!/\d/.test(form.password)) errs.password = "Au moins 1 chiffre requis.";
-    else if (!/[!@#$%^&*\-_+=?]/.test(form.password)) errs.password = "Au moins 1 caractère spécial requis.";
+    const pwdError = validateAdminPassword(form.password);
+    if (pwdError) errs.password = pwdError;
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -138,7 +135,7 @@ export default function AdminUtilisateursPage() {
     if (!validateForm()) return;
     setCreating(true);
     try {
-      const res = await fetch(api("/api/v1/admin/users"), {
+      const res = await fetch(apiUrl("/api/v1/admin/users"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -167,7 +164,7 @@ export default function AdminUtilisateursPage() {
     if (!newRole) return;
     setSavingRole(userId);
     try {
-      const res = await fetch(api(`/api/v1/admin/users/${userId}/role`), {
+      const res = await fetch(apiUrl(`/api/v1/admin/users/${userId}/role`), {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -182,7 +179,7 @@ export default function AdminUtilisateursPage() {
       setRoleSuccess((prev) => ({ ...prev, [userId]: "Rôle mis à jour." }));
       setTimeout(() => setRoleSuccess((prev) => { const n = { ...prev }; delete n[userId]; return n; }), 2500);
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Erreur inattendue.");
+      setRoleError(e instanceof Error ? e.message : "Erreur inattendue.");
     } finally {
       setSavingRole(null);
     }
@@ -193,7 +190,7 @@ export default function AdminUtilisateursPage() {
   async function handleDelete(userId: number) {
     setDeleting(userId);
     try {
-      const res = await fetch(api(`/api/v1/admin/users/${userId}`), {
+      const res = await fetch(apiUrl(`/api/v1/admin/users/${userId}`), {
         method: "DELETE",
         credentials: "include",
       });
@@ -204,7 +201,7 @@ export default function AdminUtilisateursPage() {
       setUsers((prev) => prev.filter((u) => u.id !== userId));
       setConfirmDeleteId(null);
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Erreur inattendue.");
+      setDeleteError(e instanceof Error ? e.message : "Erreur inattendue.");
     } finally {
       setDeleting(null);
     }
@@ -451,6 +448,18 @@ export default function AdminUtilisateursPage() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* Erreurs inline à la place des alert() */}
+        {roleError && (
+          <p role="alert" style={{ color: "#b91c1c", fontWeight: 600, marginTop: "1rem" }}>
+            Erreur rôle : {roleError}
+          </p>
+        )}
+        {deleteError && (
+          <p role="alert" style={{ color: "#b91c1c", fontWeight: 600, marginTop: "1rem" }}>
+            Erreur suppression : {deleteError}
+          </p>
         )}
       </main>
     </>
