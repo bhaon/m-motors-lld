@@ -92,6 +92,22 @@ function urlRestaurer(id: number): string {
   return `${apiBase()}/api/v1/vehicules/${id}/restaurer`;
 }
 
+function urlPhotos(vehicleId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos`;
+}
+
+function urlPhotoDelete(vehicleId: number, photoId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos/${photoId}`;
+}
+
+function urlPhotoMain(vehicleId: number, photoId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos/${photoId}/principal`;
+}
+
+function urlPhotoReorder(vehicleId: number): string {
+  return `${apiBase()}/api/v1/vehicules/${vehicleId}/photos/reordonner`;
+}
+
 function urlCreer(): string {
   return `${apiBase()}/api/v1/vehicules/creer`;
 }
@@ -555,6 +571,210 @@ function Modal({
   );
 }
 
+// ── Gestion des photos ────────────────────────────────────────────────────────
+
+interface PhotoItem {
+  id: number;
+  url: string;
+  is_main: boolean;
+  order: number;
+}
+
+function PhotoModal({ vehicle, onClose }: { vehicle: VehicleBoItem; onClose: () => void }) {
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newUrls, setNewUrls] = useState("");
+  const [addError, setAddError] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [orderEdits, setOrderEdits] = useState<Record<number, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(urlPhotos(vehicle.id), { credentials: "include" })
+      .then((r) => r.json())
+      .then((data: PhotoItem[]) => { setPhotos(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [vehicle.id]);
+
+  async function handleAdd() {
+    setAddError("");
+    const urls = newUrls.split("\n").map((u) => u.trim()).filter(Boolean);
+    if (!urls.length) return;
+    setSaving(true);
+    try {
+      const res = await fetch(urlPhotos(vehicle.id), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls }),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(payload.detail || "Erreur lors de l'ajout.");
+      }
+      const data = (await res.json()) as PhotoItem[];
+      setPhotos(data);
+      setNewUrls("");
+    } catch (err: unknown) {
+      setAddError(err instanceof Error ? err.message : "Erreur inattendue.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSetMain(photoId: number) {
+    const res = await fetch(urlPhotoMain(vehicle.id, photoId), {
+      method: "PATCH",
+      credentials: "include",
+    });
+    if (res.ok) setPhotos(await res.json());
+  }
+
+  async function handleDelete(photoId: number) {
+    const res = await fetch(urlPhotoDelete(vehicle.id, photoId), {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (res.ok || res.status === 204) {
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+      setDeleteConfirm(null);
+    }
+  }
+
+  async function handleReorder() {
+    const payload = photos
+      .filter((p) => orderEdits[p.id] !== undefined)
+      .map((p) => ({ id: p.id, order: parseInt(orderEdits[p.id] ?? String(p.order), 10) }));
+    if (!payload.length) return;
+    const res = await fetch(urlPhotoReorder(vehicle.id), {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photos: payload }),
+    });
+    if (res.ok) { setPhotos(await res.json()); setOrderEdits({}); }
+  }
+
+  const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: ".88rem", boxSizing: "border-box" };
+
+  return (
+    <Modal title={`Photos — ${vehicle.make} ${vehicle.model}`} onClose={onClose}>
+      {loading ? (
+        <p style={{ color: "#6b7280" }}>Chargement…</p>
+      ) : (
+        <>
+          {/* Galerie */}
+          {photos.length === 0 ? (
+            <p style={{ color: "#6b7280", marginBottom: "1.2rem" }}>Aucune photo dans la galerie.</p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "1rem", marginBottom: "1.4rem" }}>
+              {photos.map((p) => (
+                <div key={p.id} style={{ border: p.is_main ? "2px solid #0e7490" : "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden", background: "#f9fafb" }}>
+                  <img
+                    src={p.url}
+                    alt={`Photo ${p.id}`}
+                    aria-label={`Photo ${p.id}`}
+                    style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }}
+                    onError={(e) => { (e.target as HTMLImageElement).style.opacity = ".3"; }}
+                  />
+                  <div style={{ padding: "6px 8px" }}>
+                    {p.is_main && (
+                      <span style={{ display: "block", fontSize: ".7rem", fontWeight: 700, color: "#0e7490", marginBottom: 4 }}>Principale</span>
+                    )}
+                    <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: ".72rem", color: "#6b7280" }}>Ordre :</span>
+                      <input
+                        type="number"
+                        aria-label={`Ordre photo ${p.id}`}
+                        value={orderEdits[p.id] ?? String(p.order)}
+                        onChange={(e) => setOrderEdits((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                        style={{ width: 46, padding: "2px 4px", border: "1px solid #d1d5db", borderRadius: 4, fontSize: ".78rem" }}
+                      />
+                    </div>
+                    {!p.is_main && (
+                      <button
+                        type="button"
+                        aria-label={`Définir photo ${p.id} comme principale`}
+                        onClick={() => handleSetMain(p.id)}
+                        style={{ width: "100%", padding: "3px 0", background: "#ecfeff", color: "#0e7490", border: "1px solid #bae6fd", borderRadius: 5, fontSize: ".72rem", fontWeight: 600, cursor: "pointer", marginBottom: 4 }}
+                      >
+                        Définir principale
+                      </button>
+                    )}
+                    {deleteConfirm === p.id ? (
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button
+                          type="button"
+                          aria-label={`Confirmer suppression photo ${p.id}`}
+                          onClick={() => handleDelete(p.id)}
+                          style={{ flex: 1, padding: "3px 0", background: "#b91c1c", color: "#fff", border: 0, borderRadius: 5, fontSize: ".72rem", fontWeight: 700, cursor: "pointer" }}
+                        >Oui</button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirm(null)}
+                          style={{ flex: 1, padding: "3px 0", background: "#f3f4f6", color: "#374151", border: 0, borderRadius: 5, fontSize: ".72rem", cursor: "pointer" }}
+                        >Non</button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-label={`Supprimer photo ${p.id}`}
+                        onClick={() => setDeleteConfirm(p.id)}
+                        style={{ width: "100%", padding: "3px 0", background: "#fee2e2", color: "#b91c1c", border: 0, borderRadius: 5, fontSize: ".72rem", fontWeight: 600, cursor: "pointer" }}
+                      >
+                        Supprimer
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Réordonnancement */}
+          {Object.keys(orderEdits).length > 0 && (
+            <div style={{ marginBottom: "1.2rem" }}>
+              <button
+                type="button"
+                onClick={handleReorder}
+                style={{ padding: "7px 16px", background: "var(--navy)", color: "#fff", border: 0, borderRadius: 7, fontWeight: 700, fontSize: ".85rem", cursor: "pointer" }}
+              >
+                Appliquer le nouvel ordre
+              </button>
+            </div>
+          )}
+
+          {/* Ajouter des photos */}
+          <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "1.2rem" }}>
+            <label style={{ display: "block", fontWeight: 600, fontSize: ".85rem", color: "#374151", marginBottom: 6 }}>
+              Ajouter des photos (une URL par ligne, JPG ou PNG)
+            </label>
+            <textarea
+              aria-label="URLs des photos à ajouter"
+              value={newUrls}
+              onChange={(e) => setNewUrls(e.target.value)}
+              rows={3}
+              placeholder={"https://example.com/photo1.jpg\nhttps://example.com/photo2.png"}
+              style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace" }}
+            />
+            {addError && (
+              <p role="alert" style={{ color: "#b91c1c", fontSize: ".82rem", marginTop: 4 }}>{addError}</p>
+            )}
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={saving || !newUrls.trim()}
+              style={{ marginTop: 8, padding: "8px 20px", background: saving || !newUrls.trim() ? "#94a3b8" : "var(--navy)", color: "#fff", border: 0, borderRadius: 7, fontWeight: 700, fontSize: ".88rem", cursor: saving || !newUrls.trim() ? "not-allowed" : "pointer" }}
+            >
+              {saving ? "Ajout…" : "Ajouter"}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 // ── Page principale ──────────────────────────────────────────────────────────
 
 export default function GestionVehiculesPage() {
@@ -572,6 +792,9 @@ export default function GestionVehiculesPage() {
 
   // Filtre Actifs / Archivés
   const [activeFilter, setActiveFilter] = useState<"actifs" | "archives">("actifs");
+
+  // Gestion des photos
+  const [photoTarget, setPhotoTarget] = useState<VehicleBoItem | null>(null);
 
   // Toggle LLD warning: véhicule en attente de confirmation
   const [toggleWarning, setToggleWarning] = useState<{
@@ -734,6 +957,11 @@ export default function GestionVehiculesPage() {
       <Navbar />
 
       {/* Modal add/edit */}
+      {/* Modal photos */}
+      {photoTarget && (
+        <PhotoModal vehicle={photoTarget} onClose={() => setPhotoTarget(null)} />
+      )}
+
       {modalMode !== "closed" && (
         <Modal
           title={modalMode === "add" ? "Ajouter un véhicule" : `Modifier — ${editTarget?.make} ${editTarget?.model}`}
@@ -1039,6 +1267,14 @@ export default function GestionVehiculesPage() {
                             style={{ padding: "5px 14px", background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 6, fontWeight: 600, fontSize: ".82rem", cursor: "pointer" }}
                           >
                             → {v.lld ? "Vente" : "LLD"}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Gérer les photos de ${v.make} ${v.model}`}
+                            onClick={() => setPhotoTarget(v)}
+                            style={{ padding: "5px 14px", background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", borderRadius: 6, fontWeight: 600, fontSize: ".82rem", cursor: "pointer" }}
+                          >
+                            Photos
                           </button>
                           <button
                             type="button"

@@ -1,7 +1,10 @@
+import re
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from app.models.vehicle import MoteurEnum
+
+_IMG_EXT_RE = re.compile(r"\.(jpe?g|png)", re.IGNORECASE)
 
 
 class VehicleOptionOut(BaseModel):
@@ -162,6 +165,46 @@ class ToggleLldOut(BaseModel):
     toggled: bool
     warning: Optional[str] = None
     active_dossiers_count: int = 0
+
+
+# ── Gestion des photos (US-05-05) ─────────────────────────────────────────────
+
+class VehiclePhotoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    url: str
+    is_main: bool
+    order: int
+
+
+class VehiclePhotoAddIn(BaseModel):
+    """Ajout de une ou plusieurs photos par URL (formats JPG/PNG)."""
+
+    urls: List[str]
+
+    @field_validator("urls")
+    @classmethod
+    def validate_image_urls(cls, values: List[str]) -> List[str]:
+        for url in values:
+            if not url.strip():
+                raise ValueError("L'URL ne peut pas être vide.")
+            if not _IMG_EXT_RE.search(url):
+                raise ValueError(
+                    f"Format non supporté : '{url}'. Utilisez une URL pointant vers un fichier JPG ou PNG."
+                )
+        return values
+
+
+class PhotoOrderItem(BaseModel):
+    id: int
+    order: int
+
+
+class VehiclePhotoReorderIn(BaseModel):
+    """Réordonnancement des photos d'un véhicule."""
+
+    photos: List[PhotoOrderItem]
 
 
 class VehicleUpdate(BaseModel):

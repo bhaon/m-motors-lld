@@ -543,4 +543,101 @@ describe("GestionVehiculesPage", () => {
       expect(screen.queryByRole("button", { name: /restaurer renault clio/i })).not.toBeInTheDocument();
     });
   });
+
+  // ── Gestion des photos ────────────────────────────────────────────────────────
+
+  it("affiche un bouton Photos par véhicule actif", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response);
+    render(<GestionVehiculesPage />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /gérer les photos de renault clio/i })).toBeInTheDocument();
+    });
+  });
+
+  it("ouvre le modal photos au clic sur le bouton Photos", async () => {
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response); // GET photos
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/photos — renault clio/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/urls des photos à ajouter/i)).toBeInTheDocument();
+    });
+  });
+
+  it("affiche les photos existantes avec leur miniature dans le modal", async () => {
+    const photo = { id: 10, url: "https://example.com/photo.jpg", is_main: true, order: 1 };
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [photo] } as Response); // GET photos
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: /photo 10/i })).toBeInTheDocument();
+      expect(screen.getByText("Principale")).toBeInTheDocument();
+    });
+  });
+
+  it("ajouter une URL valide appelle POST /photos", async () => {
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response) // GET photos
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => [{ id: 11, url: "https://example.com/new.jpg", is_main: false, order: 1 }],
+      } as Response);
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    await waitFor(() => screen.getByLabelText(/urls des photos à ajouter/i));
+
+    fireEvent.change(screen.getByLabelText(/urls des photos à ajouter/i), {
+      target: { value: "https://example.com/new.jpg" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^ajouter$/i }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`/api/v1/vehicules/${VEHICLE_ACHAT.id}/photos`),
+        expect.objectContaining({ method: "POST", credentials: "include" }),
+      );
+    });
+  });
+
+  it("supprimer une photo demande confirmation puis appelle DELETE", async () => {
+    const photo = { id: 12, url: "https://example.com/del.jpg", is_main: false, order: 1 };
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [VEHICLE_ACHAT] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [photo] } as Response) // GET photos
+      .mockResolvedValueOnce({ ok: true, status: 204, json: async () => ({}) } as Response); // DELETE
+
+    render(<GestionVehiculesPage />);
+    await waitFor(() => screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gérer les photos de renault clio/i }));
+    await waitFor(() => screen.getByRole("button", { name: /supprimer photo 12/i }));
+    fireEvent.click(screen.getByRole("button", { name: /supprimer photo 12/i }));
+
+    await waitFor(() => screen.getByRole("button", { name: /confirmer suppression photo 12/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirmer suppression photo 12/i }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`/api/v1/vehicules/${VEHICLE_ACHAT.id}/photos/${photo.id}`),
+        expect.objectContaining({ method: "DELETE", credentials: "include" }),
+      );
+    });
+  });
 });

@@ -6,7 +6,19 @@ from app.api.v1.openapi_responses import openapi_http_error
 from app.core.deps import DbSession, GestionnaireMultiAuth, GestionnaireUser, enforce_role, get_user_from_cookie
 from app.models.user import RoleEnum
 from app.models.vehicle import MoteurEnum, Vehicle, VehiclePhoto
-from app.schemas.vehicle import ToggleLldOut, VehicleBoOut, VehicleCreate, VehicleCreateOut, VehicleListOut, VehicleOut, VehicleUpdate
+from app.schemas.vehicle import (
+    PhotoOrderItem,
+    ToggleLldOut,
+    VehicleBoOut,
+    VehicleCreate,
+    VehicleCreateOut,
+    VehicleListOut,
+    VehicleOut,
+    VehiclePhotoAddIn,
+    VehiclePhotoOut,
+    VehiclePhotoReorderIn,
+    VehicleUpdate,
+)
 from app.services import audit as audit_service
 
 router = APIRouter(prefix="/vehicules", tags=["Véhicules"])
@@ -414,4 +426,144 @@ def archive_vehicle(
         before_state=before_state,
         after_state={"archived": True, "archived_at": v.archived_at.isoformat(), "visible_catalogue": False},
     )
+    db.commit()
+
+
+# ── US-05-05 — Gestion des photos ─────────────────────────────────────────────
+
+
+@router.get(
+    "/{vehicle_id}/photos",
+    response_model=list[VehiclePhotoOut],
+    summary="US-05-05 — Lister les photos d'un véhicule",
+    responses={**_R403_BO, **_R404_VEHICULE},
+)
+def list_photos(
+    vehicle_id: int,
+    db: DbSession,
+    current_user: GestionnaireMultiAuth,
+) -> list[VehiclePhotoOut]:
+    """Retourne les photos du véhicule triées par ordre croissant."""
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    if not v:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
+    return v.photos
+
+
+@router.post(
+    "/{vehicle_id}/photos",
+    response_model=list[VehiclePhotoOut],
+    status_code=status.HTTP_201_CREATED,
+    summary="US-05-05 — Ajouter des photos (JPG/PNG par URL)",
+    responses={**_R403_BO, **_R404_VEHICULE},
+)
+def add_photos(
+    vehicle_id: int,
+    payload: VehiclePhotoAddIn,
+    db: DbSession,
+    current_user: GestionnaireMultiAuth,
+) -> list[VehiclePhotoOut]:
+    """Ajoute une ou plusieurs photos par URL (formats JPG/PNG uniquement)."""
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
+    if not v:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
+    max_order = max((p.order for p in v.photos), default=0)
+    for i, url in enumerate(payload.urls):
+        db.add(VehiclePhoto(vehicle_id=vehicle_id, url=url.strip(), is_main=False, order=max_order + i + 1))
+    db.commit()
+    db.refresh(v)
+    return v.photos
+
+
+@router.post(
+    "/{vehicle_id}/photos/reordonner",
+    response_model=list[VehiclePhotoOut],
+    summary="US-05-05 — Réordonner les photos",
+    responses={**_R403_BO, **_R404_VEHICULE},
+)
+def reorder_photos(
+    vehicle_id: int,
+    payload: VehiclePhotoReorderIn,
+    db: DbSession,
+    current_user: GestionnaireMultiAuth,
+) -> list[VehiclePhotoOut]:
+    """Applique de nouveaux numéros d'ordre aux photos du véhicule."""
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
+    if not v:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
+    photo_map = {p.id: p for p in v.photos}
+    for item in payload.photos:
+        if item.id in photo_map:
+            photo_map[item.id].order = item.order
+    db.commit()
+    db.refresh(v)
+    return sorted(v.photos, key=lambda p: p.order)
+
+
+@router.patch(
+    "/{vehicle_id}/photos/{photo_id}/principal",
+    response_model=list[VehiclePhotoOut],
+    summary="US-05-05 — Désigner la photo principale",
+    responses={**_R403_BO, **_R404_VEHICULE},
+)
+def set_main_photo(
+    vehicle_id: int,
+    photo_id: int,
+    db: DbSession,
+    current_user: GestionnaireMultiAuth,
+) -> list[VehiclePhotoOut]:
+    """Définit une photo comme principale (met à jour vehicle.img et is_main)."""
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
+    if not v:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
+    target = db.query(VehiclePhoto).filter(
+        VehiclePhoto.id == photo_id, VehiclePhoto.vehicle_id == vehicle_id
+    ).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo introuvable.")
+    for p in v.photos:
+        p.is_main = p.id == target.id
+    v.img = target.url
+    db.commit()
+    db.refresh(v)
+    return v.photos
+
+
+@router.delete(
+    "/{vehicle_id}/photos/{photo_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="US-05-05 — Supprimer une photo",
+    responses={**_R403_BO, **_R404_VEHICULE},
+)
+def delete_photo(
+    vehicle_id: int,
+    photo_id: int,
+    db: DbSession,
+    current_user: GestionnaireMultiAuth,
+) -> None:
+    """Supprime une photo de la galerie.
+
+    Si c'est la photo principale et qu'il en reste d'autres, la suivante devient principale.
+    Impossible de supprimer la dernière photo de la galerie si elle est principale.
+    """
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.archived == False).first()
+    if not v:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VEHICULE_INTROUVABLE_DETAIL)
+    target = db.query(VehiclePhoto).filter(
+        VehiclePhoto.id == photo_id, VehiclePhoto.vehicle_id == vehicle_id
+    ).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo introuvable.")
+    if target.is_main and len(v.photos) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Impossible de supprimer la seule photo principale. Ajoutez une autre photo d'abord.",
+        )
+    if target.is_main:
+        for p in v.photos:
+            if p.id != target.id:
+                p.is_main = True
+                v.img = p.url
+                break
+    db.delete(target)
     db.commit()
