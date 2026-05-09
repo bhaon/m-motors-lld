@@ -23,6 +23,7 @@ const customJestConfig = {
     "src/app/**/*.{ts,tsx}",
     "src/components/**/*.{ts,tsx}",
     "src/hooks/**/*.ts",
+    "src/lib/**/*.ts",
     "src/data/**/*.ts",
     "src/types/**/*.ts",
     "!src/**/*.d.ts",

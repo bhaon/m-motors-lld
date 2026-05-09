@@ -28,6 +28,7 @@ export default function VehicleModal({
   onDossier,
 }: Readonly<VehicleModalProps>) {
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [activePhoto, setActivePhoto] = useState<string | null>(null);
 
@@ -51,10 +52,12 @@ export default function VehicleModal({
       return;
     }
     const base = resolveApiBase();
+    setGalleryLoading(true);
     fetch(`${base}/api/v1/vehicules/${v.id}/galerie`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data: PhotoItem[]) => setPhotos(data))
-      .catch(() => setPhotos([]));
+      .catch(() => setPhotos([]))
+      .finally(() => setGalleryLoading(false));
   }, [v]);
 
   if (!v) return null;
@@ -125,6 +128,7 @@ export default function VehicleModal({
             src={displayImg}
             alt={`${v.make} ${v.model}`}
             fill
+            unoptimized
             style={{ objectFit: "cover", opacity: 0.85 }}
             sizes="820px"
           />
@@ -234,7 +238,12 @@ export default function VehicleModal({
         </div>
 
         {/* ── Galerie accordéon ───────────────────────────────────────── */}
-        {photos.length > 0 && (
+        {galleryLoading && (
+          <div style={{ padding: ".6rem 1.5rem", fontSize: ".82rem", color: "var(--muted)", background: "var(--off)", borderBottom: "1px solid var(--border)" }}>
+            Chargement des photos…
+          </div>
+        )}
+        {!galleryLoading && photos.length > 0 && (
           <div style={{ borderBottom: "1px solid var(--border)" }}>
             <button
               type="button"

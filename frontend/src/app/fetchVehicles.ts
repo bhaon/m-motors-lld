@@ -14,16 +14,16 @@ export class VehiclesApiError extends Error {
 }
 
 /**
- * Résout l’URL de l’API catalogue (alignée sur les rewrites Next.js pour `/api/*`).
+ * Résout l’URL de l’API catalogue selon l’environnement d’exécution.
  *
- * - **Navigateur** : `NEXT_PUBLIC_API_URL` si défini, sinon chemin relatif `/api/v1/vehicules`.
- * - **SSR (Node)** : `API_INTERNAL_URL` en premier (K8s / Docker : `http://backend`), puis
- *   `NEXT_PUBLIC_API_URL` pour un `next dev` sur la machine hôte. Sinon défaut prod / local.
+ * - **Navigateur** : utilise `NEXT_PUBLIC_API_URL` (injecté au build), ou chemin relatif
+ *   `/api/v1/vehicules` proxié par Next.js vers le backend via `rewrites` dans next.config.js.
+ * - **SSR (Node.js)** : préfère `API_INTERNAL_URL` (résolution interne Docker/K8s, ex: `http://backend`).
+ *   Tombe sur `NEXT_PUBLIC_API_URL` en `next dev`. Sinon, défaut prod ou localhost.
  *
- * En conteneur, `NEXT_PUBLIC_API_URL=http://localhost:8000` ne doit pas primer : pour le serveur
- * Node, localhost est le conteneur frontend, pas l’API.
- *
- * @returns {string} URL absolue ou chemin relatif pour fetch.
+ * Pourquoi ne pas toujours utiliser `NEXT_PUBLIC_API_URL` en SSR ?
+ * En conteneur, `localhost` désigne le frontend lui-même, pas le backend.
+ * `API_INTERNAL_URL` pointe sur le nom de service Docker/K8s (`http://backend`).
  */
 function resolveVehiclesApiUrl(): string {
   if (globalThis.window !== undefined) {
