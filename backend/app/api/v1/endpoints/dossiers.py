@@ -130,6 +130,29 @@ def _add_months(d: date, months: int) -> date:
     return date(year, month, day)
 
 
+def _notify_status_change(
+    dossier: Dossier,
+    client_email: str,
+    *,
+    motif_rejet: str | None = None,
+) -> None:
+    """Envoie la notification de changement de statut au client. Non-bloquant."""
+    try:
+        send_status_change_email(
+            to_email=client_email,
+            dossier_reference=dossier.reference,
+            nouveau_status=dossier.status.value,
+            dossier_url=f"{settings.FRONTEND_BASE_URL}/mes-dossiers/{dossier.id}",
+            motif_rejet=motif_rejet,
+        )
+    except Exception:
+        logger.exception(
+            "Echec notification statut '%s' pour dossier %s",
+            dossier.status.value,
+            dossier.reference,
+        )
+
+
 @router.post("", response_model=DossierCreateOut, status_code=status.HTTP_201_CREATED)
 def create_dossier(
     payload: DossierCreateIn,
@@ -330,7 +353,12 @@ def prendre_en_charge(
     user = _resolve_user_from_cookie(access_token, db)
     enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
 
-    dossier = db.query(Dossier).filter(Dossier.id == dossier_id).first()
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.client))
+        .filter(Dossier.id == dossier_id)
+        .first()
+    )
     if not dossier:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
 
@@ -381,6 +409,9 @@ def prendre_en_charge(
 
     db.commit()
     db.refresh(dossier)
+
+    if not already_taken:
+        _notify_status_change(dossier, dossier.client.email)
 
     return DossierPrendreEnChargeOut(
         id=dossier.id,
@@ -563,16 +594,7 @@ def submit_dossier(
     )
     db.commit()
     db.refresh(dossier)
-    try:
-        send_status_change_email(
-            to_email=user.email,
-            dossier_reference=dossier.reference,
-            nouveau_status=dossier.status.value,
-            dossier_url=f"{settings.FRONTEND_BASE_URL}/mes-dossiers/{dossier.id}",
-        )
-    except Exception:
-        # L'échec email ne doit pas annuler une soumission validée en base.
-        logger.exception("Echec envoi notification statut pour le dossier %s", dossier.reference)
+    _notify_status_change(dossier, user.email)
     checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
     return DossierDetailOut(
         id=dossier.id,

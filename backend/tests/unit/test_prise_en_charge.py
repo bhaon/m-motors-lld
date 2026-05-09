@@ -211,3 +211,45 @@ def test_second_gestionnaire_can_take_en_instruction_dossier(client: TestClient,
     updated = db.query(Dossier).filter(Dossier.id == d.id).first()
     g2 = db.query(create_user.__globals__["User"]).filter_by(email="g2@ex.com").first()
     assert updated.gestionnaire_id == g2.id
+
+
+# ── Notifications email ───────────────────────────────────────────────────────
+
+def test_prendre_en_charge_sends_email(client: TestClient, db: Session, monkeypatch) -> None:
+    """La prise en charge envoie une notification email au client."""
+    sent: list[dict] = []
+
+    def _fake_send(**kwargs):
+        sent.append(kwargs)
+
+    monkeypatch.setattr("app.api.v1.endpoints.dossiers.send_status_change_email", _fake_send)
+
+    d = _make_dossier(db, client_email="c.mail@ex.com", ref="MAIL-001")
+    headers = _gest_headers(client, db, "gest.mail@ex.com")
+
+    resp = client.patch(f"/api/v1/dossiers/{d.id}/prendre-en-charge", headers=headers)
+    assert resp.status_code == 200
+
+    assert len(sent) == 1
+    assert sent[0]["to_email"] == "c.mail@ex.com"
+    assert sent[0]["nouveau_status"] == "en_instruction"
+    assert "MAIL-001" in sent[0]["dossier_reference"]
+
+
+def test_idempotent_retake_does_not_send_email(client: TestClient, db: Session, monkeypatch) -> None:
+    """Re-prendre un dossier par le même gestionnaire n'envoie pas de doublon email."""
+    sent: list[dict] = []
+
+    def _fake_send(**kwargs):
+        sent.append(kwargs)
+
+    monkeypatch.setattr("app.api.v1.endpoints.dossiers.send_status_change_email", _fake_send)
+
+    create_user(db, role=RoleEnum.gestionnaire, email="gest.idem2@ex.com", password=PASSWORD)
+    headers = _cookie(client, "gest.idem2@ex.com")
+    d = _make_dossier(db, client_email="c.idem2@ex.com", ref="IDEM2-001")
+
+    client.patch(f"/api/v1/dossiers/{d.id}/prendre-en-charge", headers=headers)
+    client.patch(f"/api/v1/dossiers/{d.id}/prendre-en-charge", headers=headers)
+
+    assert len(sent) == 1  # un seul email malgré deux appels
