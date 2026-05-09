@@ -25,6 +25,8 @@ from app.schemas.dossier import (
     DossierCreateOut,
     DossierDetailOut,
     DossierListItemOut,
+    DossierRejeterIn,
+    DossierRejeterOut,
     DossierValiderOut,
     DossierPieceChecklistItemOut,
     DossierPrendreEnChargeOut,
@@ -397,6 +399,7 @@ def get_dossier_bo_detail(
         validated_at=dossier.validated_at,
         submitted_at=dossier.submitted_at,
         created_at=dossier.created_at,
+        rejected_at=dossier.rejected_at,
         motif_rejet=dossier.motif_rejet,
         notes_internes=dossier.notes_internes,
         vehicle=VehicleSummaryOut(
@@ -636,6 +639,112 @@ def valider_dossier(
         reference=dossier.reference,
         status=dossier.status.value,
         validated_at=dossier.validated_at,
+    )
+
+
+# ── US-06-05 — Rejet d'un dossier avec motif obligatoire ─────────────────────
+
+_STATUTS_REJETABLES_GESTIONNAIRE = frozenset(
+    {DossierStatusEnum.depose, DossierStatusEnum.en_instruction}
+)
+
+
+@router.patch(
+    "/{dossier_id}/rejeter",
+    response_model=DossierRejeterOut,
+    summary="US-06-05 — Rejet d'un dossier par le gestionnaire (motif obligatoire)",
+)
+def rejeter_dossier(
+    dossier_id: int,
+    payload: DossierRejeterIn,
+    db: DbSession,
+    request: Request,
+    access_token: str | None = Cookie(default=None),
+) -> DossierRejeterOut:
+    """Passe le dossier au statut « rejete », enregistre le motif, ``rejected_at``, notifie le client.
+
+    Règles :
+    - Le dossier doit être ``depose`` ou ``en_instruction``.
+    - Le motif (trim) fait au moins 20 caractères (voir schéma).
+    - Si déjà ``rejete``, l'appel est idempotent (pas de doublon historique / audit / email).
+    """
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.client))
+        .filter(Dossier.id == dossier_id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    if dossier.status == DossierStatusEnum.rejete:
+        return DossierRejeterOut(
+            id=dossier.id,
+            reference=dossier.reference,
+            status=dossier.status.value,
+            motif_rejet=dossier.motif_rejet or "",
+            rejected_at=dossier.rejected_at,
+        )
+
+    if dossier.status not in _STATUTS_REJETABLES_GESTIONNAIRE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Impossible de rejeter un dossier au statut '{dossier.status.value}'. "
+                "Seuls les dossiers « depose » ou « en_instruction » peuvent être rejetés."
+            ),
+        )
+
+    old_status = dossier.status.value
+    motif = payload.motif
+    now = datetime.now(timezone.utc)
+    dossier.status = DossierStatusEnum.rejete
+    dossier.motif_rejet = motif
+    dossier.rejected_at = now
+
+    db.add(
+        DossierHistorique(
+            dossier_id=dossier.id,
+            ancien_status=old_status,
+            nouveau_status=DossierStatusEnum.rejete.value,
+            commentaire=(
+                f"Dossier rejeté par {user.first_name} {user.last_name} ({user.email}). "
+                f"Motif : {motif}"
+            ),
+            operateur_id=user.id,
+        )
+    )
+
+    audit_service.record(
+        db,
+        action=audit_service.DOSSIER_REJETE,
+        entity_type="dossier",
+        entity_id=dossier.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state={"status": old_status, "motif_rejet": None},
+        after_state={
+            "status": DossierStatusEnum.rejete.value,
+            "motif_rejet": motif,
+            "rejected_at": dossier.rejected_at.isoformat(),
+            "gestionnaire_email": user.email,
+        },
+    )
+
+    db.commit()
+    db.refresh(dossier)
+
+    _notify_status_change(dossier, dossier.client.email, motif_rejet=motif)
+
+    return DossierRejeterOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        status=dossier.status.value,
+        motif_rejet=motif,
+        rejected_at=dossier.rejected_at,
     )
 
 

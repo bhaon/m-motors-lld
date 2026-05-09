@@ -3,6 +3,7 @@
 /**
  * US-06-03 — Détail complet d'un dossier pour le gestionnaire.
  * US-06-04 — Validation du dossier (bouton, statut validé, validated_at).
+ * US-06-05 — Rejet avec motif obligatoire (modal, email, espace client).
  *
  * Affiche : client, véhicule, type de contrat, pièces justificatives consultables
  * dans le navigateur (visionneuse intégrée), historique des actions.
@@ -12,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import DossierRejectModal from "@/components/DossierRejectModal";
 import StatusBadge from "@/components/StatusBadge";
 import { apiBase } from "@/lib/api";
 import type { DossierStatus } from "@/types";
@@ -42,6 +44,7 @@ interface DossierBoDetail {
   validated_at: string | null;
   submitted_at: string | null;
   created_at: string | null;
+  rejected_at: string | null;
   motif_rejet: string | null;
   notes_internes: string | null;
   vehicle: { make: string; model: string; year: number };
@@ -95,6 +98,8 @@ export default function BackofficeDossierDetailPage() {
   const [error, setError] = useState("");
   const [takingCharge, setTakingCharge] = useState(false);
   const [validating, setValidating] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectSubmitting, setRejectSubmitting] = useState(false);
   const [toast, setToast] = useState("");
   const [viewer, setViewer] = useState<ViewerState | null>(null);
   const [loadingPiece, setLoadingPiece] = useState<PieceType | null>(null);
@@ -152,6 +157,52 @@ export default function BackofficeDossierDetailPage() {
       setError(e instanceof Error ? e.message : "Erreur inattendue.");
     } finally {
       setValidating(false);
+    }
+  }
+
+  /**
+   * Envoie le rejet avec motif (US-06-05) puis met à jour l'état local.
+   */
+  async function handleConfirmReject(motif: string) {
+    if (!detail) return;
+    setRejectSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch(`${apiBase()}/api/v1/dossiers/${detail.id}/rejeter`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motif }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        detail?: unknown;
+        motif_rejet?: string;
+        rejected_at?: string | null;
+      };
+      if (!res.ok) {
+        const msg =
+          typeof payload.detail === "string"
+            ? payload.detail
+            : "Erreur lors du rejet du dossier.";
+        throw new Error(msg);
+      }
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "rejete",
+              motif_rejet: payload.motif_rejet ?? motif,
+              rejected_at: payload.rejected_at ?? prev.rejected_at,
+            }
+          : prev,
+      );
+      setShowRejectModal(false);
+      setToast(`Dossier ${detail.reference} rejeté.`);
+      setTimeout(() => setToast(""), 3500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur inattendue.");
+    } finally {
+      setRejectSubmitting(false);
     }
   }
 
@@ -276,6 +327,24 @@ export default function BackofficeDossierDetailPage() {
                       {validating ? "…" : "Valider le dossier"}
                     </button>
                   )}
+                  {(detail.status === "depose" || detail.status === "en_instruction") && (
+                    <button
+                      type="button"
+                      aria-label={`Rejeter le dossier ${detail.reference}`}
+                      onClick={() => setShowRejectModal(true)}
+                      style={{
+                        padding: "8px 20px",
+                        background: "#fff",
+                        color: "#b91c1c",
+                        border: "2px solid #b91c1c",
+                        borderRadius: 8,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Rejeter le dossier
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -286,6 +355,9 @@ export default function BackofficeDossierDetailPage() {
                 )}
                 {detail.validated_at && (
                   <span>Validé le : <strong style={{ color: "var(--navy)" }}>{formatDate(detail.validated_at)}</strong></span>
+                )}
+                {detail.rejected_at && (
+                  <span>Rejeté le : <strong style={{ color: "var(--navy)" }}>{formatDate(detail.rejected_at)}</strong></span>
                 )}
               </div>
 
@@ -519,6 +591,17 @@ export default function BackofficeDossierDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showRejectModal && detail && (
+        <DossierRejectModal
+          dossierReference={detail.reference}
+          submitting={rejectSubmitting}
+          onCancel={() => {
+            if (!rejectSubmitting) setShowRejectModal(false);
+          }}
+          onConfirm={handleConfirmReject}
+        />
       )}
     </>
   );

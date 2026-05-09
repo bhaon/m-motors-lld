@@ -18,6 +18,7 @@ function makeDetail(overrides: Partial<Record<string, unknown>> = {}) {
     type: "achat",
     status: "depose",
     validated_at: null,
+    rejected_at: null,
     submitted_at: "2026-03-15T10:00:00Z",
     created_at: "2026-03-14T08:00:00Z",
     motif_rejet: null,
@@ -366,6 +367,99 @@ describe("BackofficeDossierDetailPage — validation dossier", () => {
     );
     render(<BackofficeDossierDetailPage />);
     await waitFor(() => expect(screen.getByText(/validé le/i)).toBeInTheDocument());
+  });
+});
+
+// ── Rejet dossier (US-06-05) ────────────────────────────────────────────────────
+
+const MOTIF_20 = "abcdefghijklmnopqrst"; // 20 caractères exactement
+
+describe("BackofficeDossierDetailPage — rejet dossier", () => {
+  it("affiche « Rejeter le dossier » pour un dossier déposé", async () => {
+    render(<BackofficeDossierDetailPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /rejeter le dossier det-2026-00042/i }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("affiche « Rejeter le dossier » pour un dossier en_instruction", async () => {
+    mockFetch(makeDetail({ status: "en_instruction" }));
+    render(<BackofficeDossierDetailPage />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /rejeter le dossier/i })).toBeInTheDocument(),
+    );
+  });
+
+  it("n'affiche pas le bouton de rejet pour un dossier validé", async () => {
+    mockFetch(makeDetail({ status: "valide", validated_at: "2026-03-20T12:00:00Z" }));
+    render(<BackofficeDossierDetailPage />);
+    await waitFor(() => expect(screen.getByText("DET-2026-00042")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /rejeter le dossier/i })).not.toBeInTheDocument();
+  });
+
+  it("ouvre la modale avec champ motif au clic sur Rejeter", async () => {
+    render(<BackofficeDossierDetailPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /rejeter le dossier det-2026-00042/i }),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText(/motif de rejet/i)).toBeInTheDocument();
+  });
+
+  it("désactive la confirmation tant que le motif a moins de 20 caractères", async () => {
+    render(<BackofficeDossierDetailPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /rejeter le dossier det-2026-00042/i }),
+    );
+    const confirm = screen.getByRole("button", { name: /confirmer le rejet du dossier/i });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/motif de rejet/i), {
+      target: { value: "court" },
+    });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/motif de rejet/i), {
+      target: { value: MOTIF_20 },
+    });
+    expect(confirm).not.toBeDisabled();
+  });
+
+  it("envoie PATCH /rejeter avec le motif puis affiche un toast", async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeDetail() })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 42,
+          reference: "DET-2026-00042",
+          status: "rejete",
+          motif_rejet: `${MOTIF_20} suite du texte`,
+          rejected_at: "2026-03-21T10:00:00Z",
+        }),
+      });
+
+    render(<BackofficeDossierDetailPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /rejeter le dossier det-2026-00042/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/motif de rejet/i), {
+      target: { value: `${MOTIF_20} suite du texte` },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /confirmer le rejet du dossier/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/dossier det-2026-00042 rejeté/i)).toBeInTheDocument(),
+    );
+    expect(global.fetch).toHaveBeenLastCalledWith(
+      expect.stringContaining("/api/v1/dossiers/42/rejeter"),
+      expect.objectContaining({
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motif: `${MOTIF_20} suite du texte` }),
+      }),
+    );
   });
 });
 
