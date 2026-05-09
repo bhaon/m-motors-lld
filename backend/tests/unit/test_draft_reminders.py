@@ -18,11 +18,17 @@ def _make_stale_brouillon(
     days_old: int,
     reminder_sent: bool = False,
     status: DossierStatusEnum = DossierStatusEnum.brouillon,
+    reference_now: datetime | None = None,
 ) -> tuple[Dossier, str]:
-    """Crée un dossier avec une date de création contrôlée et retourne (dossier, email_client)."""
+    """Crée un dossier avec une date de création contrôlée et retourne (dossier, email_client).
+
+    Si ``reference_now`` est fourni, il sert d'« instant présent » pour calculer ``created_at``
+    (à utiliser quand ``process_stale_draft_reminders`` est appelé avec un ``now`` figé :
+    sinon l'écart entre l'horloge réelle et ``now`` peut rendre le dossier non éligible).
+    """
     user = create_user(db, email="client.reminder@example.com")
     vehicle = create_vehicle(db, lld=True)
-    now = datetime.now(timezone.utc)
+    now = reference_now if reference_now is not None else datetime.now(timezone.utc)
     created = now - timedelta(days=days_old)
     d = Dossier(
         reference=f"DOS-STALE-{days_old}-{user.id}",
@@ -62,7 +68,8 @@ def test_no_reminder_when_draft_younger_than_threshold(db: Session, monkeypatch)
 def test_reminder_sent_and_persisted_for_stale_brouillon(db: Session, monkeypatch) -> None:
     """À J+30, envoie un rappel et persiste draft_reminder_sent_at."""
     captured: dict[str, str] = {}
-    dossier, email = _make_stale_brouillon(db, days_old=31)
+    frozen_now = datetime(2026, 5, 8, 12, 0, tzinfo=timezone.utc)
+    dossier, email = _make_stale_brouillon(db, days_old=31, reference_now=frozen_now)
 
     def _capture_send(*, to_email: str, dossier_reference: str, mes_dossiers_url: str) -> bool:
         """Enregistre les paramètres d'email pour assertions et simule un envoi réussi."""
@@ -72,7 +79,6 @@ def test_reminder_sent_and_persisted_for_stale_brouillon(db: Session, monkeypatc
         return True
 
     monkeypatch.setattr(draft_reminders_service, "send_draft_reminder_email", _capture_send)
-    frozen_now = datetime(2026, 5, 8, 12, 0, tzinfo=timezone.utc)
     sent = draft_reminders_service.process_stale_draft_reminders(
         db, now=frozen_now, stale_after_days=30
     )
