@@ -128,6 +128,7 @@ export default function VehicleModal({
             src={displayImg}
             alt={`${v.make} ${v.model}`}
             fill
+            unoptimized
             style={{ objectFit: "cover", opacity: 0.85 }}
             sizes="820px"
           />
