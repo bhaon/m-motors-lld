@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Mapping, cast
+from typing import Any, Mapping, cast
 
 from sqlalchemy.orm import Session
 
@@ -182,7 +182,7 @@ def build_contract_placeholder_map(db: Session, dossier: Dossier, *, contract_re
             item = pool[idx - 1]
             m[f"OPT_CODE_{idx}"] = str(item.get("code", "—"))
             m[f"OPT_LABEL_{idx}"] = str(item.get("label", "—"))
-            m[f"OPT_PRIX_{idx}"] = _fmt_money(cast(float | int | str, item.get("surcout_mensuel_ht", 0)))
+            m[f"OPT_PRIX_{idx}"] = _fmt_money(float(cast(Any, item.get("surcout_mensuel_ht", 0))))
         else:
             m[f"OPT_CODE_{idx}"] = "—"
             m[f"OPT_LABEL_{idx}"] = "—"
@@ -191,7 +191,7 @@ def build_contract_placeholder_map(db: Session, dossier: Dossier, *, contract_re
         last = pool[-1]
         m["OPT_CODE_N"] = str(last.get("code", "—"))
         m["OPT_LABEL_N"] = str(last.get("label", "—"))
-        m["OPT_PRIX_N"] = _fmt_money(cast(float | int | str, last.get("surcout_mensuel_ht", 0)))
+        m["OPT_PRIX_N"] = _fmt_money(float(cast(Any, last.get("surcout_mensuel_ht", 0))))
     else:
         m["OPT_CODE_N"] = "—"
         m["OPT_LABEL_N"] = "—"
