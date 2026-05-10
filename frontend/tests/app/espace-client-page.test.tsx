@@ -10,6 +10,12 @@ jest.mock("next/headers", () => ({
 
 jest.mock("next/navigation", () => ({
   redirect: (path: string) => redirectMock(path),
+  useRouter: () => ({
+    push: jest.fn(),
+    replace: jest.fn(),
+    prefetch: jest.fn(),
+    back: jest.fn(),
+  }),
 }));
 
 jest.mock("@/app/espace-client/ProfileManagementClient", () => ({
@@ -53,7 +59,7 @@ describe("EspaceClientPage", () => {
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
-  it("redirige vers /connexion quand la session est invalide", async () => {
+  it("redirige vers l'accueil avec parametre connexion quand la session est invalide", async () => {
     headersMock.mockResolvedValue({
       get: () => "",
     });
@@ -61,7 +67,7 @@ describe("EspaceClientPage", () => {
 
     await EspaceClientPage();
 
-    expect(redirectMock).toHaveBeenCalledWith("/connexion");
+    expect(redirectMock).toHaveBeenCalledWith("/?connexion=1");
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/v1\/auth\/me$/),
       expect.objectContaining({

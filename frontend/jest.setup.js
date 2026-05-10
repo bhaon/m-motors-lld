@@ -16,3 +16,15 @@ jest.mock("next/link", () => ({
     return React.createElement("a", { href, ...props }, children);
   },
 }));
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: jest.fn(),
+    replace: jest.fn(),
+    prefetch: jest.fn(),
+    back: jest.fn(),
+  }),
+  useParams: () => ({}),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));

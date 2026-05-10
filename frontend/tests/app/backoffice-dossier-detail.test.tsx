@@ -3,6 +3,12 @@ import BackofficeDossierDetailPage from "@/app/backoffice/dossiers/[id]/page";
 
 jest.mock("next/navigation", () => ({
   useParams: () => ({ id: "42" }),
+  useRouter: () => ({
+    push: jest.fn(),
+    replace: jest.fn(),
+    prefetch: jest.fn(),
+    back: jest.fn(),
+  }),
 }));
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────

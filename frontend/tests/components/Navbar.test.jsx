@@ -23,6 +23,13 @@ describe("Navbar", () => {
     );
   });
 
+  it("affiche Connexion sans lien inscription lorsque la session est absente", () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({ ok: false });
+    render(<Navbar />);
+    expect(screen.getByRole("button", { name: /^Connexion$/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /inscription/i })).not.toBeInTheDocument();
+  });
+
   it("affiche la pastille utilisateur quand l'utilisateur est connecté", async () => {
     process.env.NODE_ENV = "production";
     jest.spyOn(global, "fetch").mockResolvedValue({

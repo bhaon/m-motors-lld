@@ -3,6 +3,12 @@ import DossierDetailPage from "@/app/mes-dossiers/[id]/page";
 
 jest.mock("next/navigation", () => ({
   useParams: () => ({ id: "13" }),
+  useRouter: () => ({
+    push: jest.fn(),
+    replace: jest.fn(),
+    prefetch: jest.fn(),
+    back: jest.fn(),
+  }),
 }));
 
 // Payload de base : dossier brouillon sans pièces
