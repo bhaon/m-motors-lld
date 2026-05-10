@@ -50,8 +50,8 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/service.passhostheader: "true"
-    # Référence Traefik CRD : <nom-middleware>-<namespace>@kubernetescrd (Middleware ci-dessous : s3-cors / staging)
-    traefik.ingress.kubernetes.io/router.middlewares: s3-cors-staging@kubernetescrd
+    # Format officiel : <namespace>-<nom-middleware>@kubernetescrd (cf. production-rate-limit, kube-system-redirect-to-https).
+    traefik.ingress.kubernetes.io/router.middlewares: staging-s3-cors@kubernetescrd
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: traefik
