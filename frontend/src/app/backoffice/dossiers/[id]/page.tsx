@@ -51,6 +51,7 @@ interface DossierBoDetail {
   client: { id: number; email: string; first_name: string; last_name: string };
   pieces: PieceBoItem[];
   historique: HistoriqueItem[];
+  livraison?: { prevue_at: string; lieu: string } | null;
 }
 
 interface ViewerState {
@@ -366,6 +367,21 @@ export default function BackofficeDossierDetailPage() {
                 <div role="note" aria-label="Motif de rejet" style={{ marginTop: "1rem", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: ".85rem 1rem" }}>
                   <p style={{ margin: "0 0 .25rem", fontWeight: 700, color: "#991b1b" }}>Motif de rejet</p>
                   <p style={{ margin: 0, color: "#7f1d1d" }}>{detail.motif_rejet}</p>
+                </div>
+              )}
+              {detail.livraison && (
+                <div
+                  role="region"
+                  aria-label="Livraison planifiée"
+                  style={{ marginTop: "1rem", background: "#ecfdf5", border: "1px solid #6ee7b7", borderRadius: 8, padding: ".85rem 1rem" }}
+                >
+                  <p style={{ margin: "0 0 .35rem", fontWeight: 700, color: "#166534" }}>Livraison</p>
+                  <p style={{ margin: "0 0 .25rem", color: "#14532d" }}>
+                    <strong>Date et heure :</strong> {formatDate(detail.livraison.prevue_at)}
+                  </p>
+                  <p style={{ margin: 0, color: "#14532d" }}>
+                    <strong>Lieu :</strong> {detail.livraison.lieu}
+                  </p>
                 </div>
               )}
             </div>

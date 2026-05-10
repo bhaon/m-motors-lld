@@ -803,4 +803,31 @@ describe("DossierDetailPage", () => {
     });
     expect(screen.queryByRole("button", { name: /^Signer le contrat$/i })).not.toBeInTheDocument();
   });
+
+  it("affiche la section livraison quand l'API expose livraison (US-06-10)", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...BASE_DOSSIER,
+        status: "livraison_planifiee",
+        lld_pricing: null,
+        contrat: null,
+        checklist: BASE_DOSSIER.checklist,
+        missing_pieces: BASE_DOSSIER.missing_pieces,
+        can_submit: false,
+        livraison: {
+          prevue_at: "2026-07-20T14:00:00Z",
+          lieu: "Garage Gaudin",
+        },
+      }),
+    } as Response);
+
+    render(<DossierDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: /rendez-vous de livraison/i })).toBeInTheDocument();
+    });
+    expect(screen.getByText(/garage gaudin/i)).toBeInTheDocument();
+    expect(screen.getByText(/date et heure/i)).toBeInTheDocument();
+  });
 });

@@ -21,6 +21,7 @@ class DossierStatusEnum(str, enum.Enum):
     valide = "valide"
     en_signature = "en_signature"
     attente_livraison = "attente_livraison"
+    livraison_planifiee = "livraison_planifiee"
     rejete = "rejete"
     annule = "annule"
 
@@ -55,6 +56,9 @@ class Dossier(Base):
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     validated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # US-06-10 — livraison planifiée par le gestionnaire après signature contrat
+    livraison_prevue_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

@@ -15,6 +15,7 @@ const STATUS_CONFIG: Record<DossierStatus, StatusConfig> = {
   valide:             { label: "Validé",               color: "#15803d", bg: "#dcfce7" },
   en_signature:       { label: "En signature",         color: "#0e7490", bg: "#cffafe" },
   attente_livraison:  { label: "Attente de livraison", color: "#0369a1", bg: "#dbeafe" },
+  livraison_planifiee:{ label: "Livraison planifiée",  color: "#15803d", bg: "#dcfce7" },
   rejete:             { label: "Rejeté",               color: "#b91c1c", bg: "#fee2e2" },
   annule:             { label: "Annulé",               color: "#374151", bg: "#e5e7eb" },
 };

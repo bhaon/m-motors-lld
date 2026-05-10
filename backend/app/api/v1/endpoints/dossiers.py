@@ -33,7 +33,10 @@ from app.schemas.dossier import (
     LldOptionRowOut,
     LldOptionsPatchIn,
     LldOptionsPricingOut,
+    DossierPlanifierLivraisonIn,
+    DossierPlanifierLivraisonOut,
     DossierListItemOut,
+    LivraisonInfoOut,
     DossierRejeterIn,
     DossierRejeterOut,
     DossierValiderOut,
@@ -62,6 +65,7 @@ from app.services.contract_fill import build_contract_reference, render_contract
 from app.services.emailing import (
     send_contract_ready_email,
     send_contract_signature_link_email,
+    send_livraison_planifiee_email,
     send_status_change_email,
 )
 from app.services import audit as audit_service
@@ -78,6 +82,9 @@ router = APIRouter(prefix="/dossiers", tags=["Dossiers"])
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 REQUIRED_PIECE_TYPES: tuple[PieceType, ...] = ("cni", "permis", "revenus", "domicile", "rib")
 logger = logging.getLogger(__name__)
+
+# US-06-10 — lieu de remise véhicule (fixe produit).
+LIEU_LIVRAISON_DEFAUT = "Garage Gaudin"
 
 
 def _resolve_user_from_cookie(access_token: str | None, db: DbSession) -> User:
@@ -152,6 +159,16 @@ def _utc_safe(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
+def _livraison_info_out(dossier: Dossier) -> LivraisonInfoOut | None:
+    """Expose créneau + lieu lorsqu'une livraison a été planifiée."""
+    if dossier.livraison_prevue_at is None:
+        return None
+    at = _utc_safe(dossier.livraison_prevue_at)
+    if at is None:
+        return None
+    return LivraisonInfoOut(prevue_at=at, lieu=LIEU_LIVRAISON_DEFAUT)
+
+
 def _contrat_summary_for_detail(dossier: Dossier) -> DossierContratSummaryOut | None:
     """Expose la présence du contrat et si le client peut encore initier / finaliser la signature."""
     if not dossier.contrat:
@@ -223,6 +240,7 @@ def _client_dossier_detail_out(db: DbSession, dossier: Dossier) -> DossierDetail
         historique=historique_out,
         lld_pricing=lld_pricing,
         contrat=_contrat_summary_for_detail(dossier),
+        livraison=_livraison_info_out(dossier),
     )
 
 
@@ -359,7 +377,7 @@ def list_all_dossiers_backoffice(
     """Liste paginée et filtrée des dossiers pour le tableau de bord gestionnaire.
 
     Filtres disponibles :
-    - ``statuts`` (répétable) : ex. depose,en_instruction,attente_livraison. Défaut = depose + en_instruction + attente_livraison.
+    - ``statuts`` (répétable) : ex. depose,en_instruction,attente_livraison,livraison_planifiee. Défaut = depose + en_instruction + attente_livraison + livraison_planifiee.
     - ``type_contrat`` : achat | lld.
     - ``date_from`` / ``date_to`` : plage sur submitted_at.
 
@@ -370,7 +388,11 @@ def list_all_dossiers_backoffice(
     enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
 
     # Valeurs par défaut des statuts (dossiers en attente + en attente de livraison)
-    active_statuts = statuts if statuts else ["depose", "en_instruction", "attente_livraison"]
+    active_statuts = (
+        statuts
+        if statuts
+        else ["depose", "en_instruction", "attente_livraison", "livraison_planifiee"]
+    )
 
     # Validation des valeurs de statut
     valid_statuts = {s.value for s in DossierStatusEnum}
@@ -523,6 +545,98 @@ def get_dossier_bo_detail(
         ),
         pieces=pieces,
         historique=historique_out,
+        livraison=_livraison_info_out(dossier),
+    )
+
+
+@router.post(
+    "/backoffice/{dossier_id}/planifier-livraison",
+    response_model=DossierPlanifierLivraisonOut,
+    summary="US-06-10 — Planifier la livraison (gestionnaire)",
+)
+def planifier_livraison(
+    dossier_id: int,
+    payload: DossierPlanifierLivraisonIn,
+    db: DbSession,
+    request: Request,
+    access_token: str | None = Cookie(default=None),
+) -> DossierPlanifierLivraisonOut:
+    """Passe un dossier de ``attente_livraison`` à ``livraison_planifiee`` et notifie le client par email."""
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.client))
+        .filter(Dossier.id == dossier_id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    if dossier.status != DossierStatusEnum.attente_livraison:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La livraison ne peut être planifiée que pour un dossier en attente de livraison.",
+        )
+
+    prevue = payload.livraison_prevue_at
+    if prevue.tzinfo is None:
+        prevue = prevue.replace(tzinfo=timezone.utc)
+    prevue_utc = prevue.astimezone(timezone.utc)
+
+    old_status = dossier.status.value
+    dossier.status = DossierStatusEnum.livraison_planifiee
+    dossier.livraison_prevue_at = prevue_utc
+
+    db.add(
+        DossierHistorique(
+            dossier_id=dossier.id,
+            ancien_status=old_status,
+            nouveau_status=DossierStatusEnum.livraison_planifiee.value,
+            commentaire=(
+                f"Livraison planifiée le {prevue_utc.isoformat()} (UTC), lieu {LIEU_LIVRAISON_DEFAUT} "
+                f"par {user.first_name} {user.last_name}"
+            ),
+            operateur_id=user.id,
+        )
+    )
+
+    audit_service.record(
+        db,
+        action=audit_service.DOSSIER_LIVRAISON_PLANIFIEE,
+        entity_type="dossier",
+        entity_id=dossier.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state={"status": old_status, "livraison_prevue_at": None},
+        after_state={
+            "status": DossierStatusEnum.livraison_planifiee.value,
+            "livraison_prevue_at": prevue_utc.isoformat(),
+            "livraison_lieu": LIEU_LIVRAISON_DEFAUT,
+        },
+    )
+
+    db.commit()
+    db.refresh(dossier)
+
+    send_livraison_planifiee_email(
+        to_email=dossier.client.email,
+        dossier_reference=dossier.reference,
+        livraison_prevue_at=prevue_utc,
+        lieu_livraison=LIEU_LIVRAISON_DEFAUT,
+        dossier_url=f"{settings.FRONTEND_BASE_URL}/mes-dossiers/{dossier.id}",
+    )
+
+    out_at = _utc_safe(dossier.livraison_prevue_at)
+    assert out_at is not None
+
+    return DossierPlanifierLivraisonOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        status=dossier.status.value,
+        livraison_prevue_at=out_at,
+        livraison_lieu=LIEU_LIVRAISON_DEFAUT,
     )
 
 
@@ -694,10 +808,10 @@ def valider_dossier(
     if not dossier:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
 
-    if dossier.status == DossierStatusEnum.attente_livraison:
+    if dossier.status in (DossierStatusEnum.attente_livraison, DossierStatusEnum.livraison_planifiee):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Le dossier est déjà signé : validation impossible.",
+            detail="Le dossier est déjà signé ou en livraison : validation impossible.",
         )
 
     if dossier.status == DossierStatusEnum.valide:
@@ -910,7 +1024,11 @@ def list_my_contrats(
             Dossier.client_id == user.id,
             Dossier.type == DossierTypeEnum.lld,
             Dossier.status.in_(
-                (DossierStatusEnum.valide, DossierStatusEnum.attente_livraison)
+                (
+                    DossierStatusEnum.valide,
+                    DossierStatusEnum.attente_livraison,
+                    DossierStatusEnum.livraison_planifiee,
+                )
             ),
         )
         .order_by(Dossier.created_at.desc())
@@ -963,7 +1081,12 @@ def patch_lld_options(
     if not dossier_allows_lld_option_edit(dossier):
         detail = "Les options ne sont pas modifiables pour ce dossier."
         if (
-            dossier.status in (DossierStatusEnum.valide, DossierStatusEnum.attente_livraison)
+            dossier.status
+            in (
+                DossierStatusEnum.valide,
+                DossierStatusEnum.attente_livraison,
+                DossierStatusEnum.livraison_planifiee,
+            )
             and dossier.type == DossierTypeEnum.lld
             and not contrat_lld_est_actif(dossier)
         ):
@@ -972,6 +1095,7 @@ def patch_lld_options(
             DossierStatusEnum.brouillon,
             DossierStatusEnum.valide,
             DossierStatusEnum.attente_livraison,
+            DossierStatusEnum.livraison_planifiee,
         ):
             detail = (
                 "Les options ne peuvent être modifiées qu'en brouillon ou sur un contrat LLD actif déjà validé."

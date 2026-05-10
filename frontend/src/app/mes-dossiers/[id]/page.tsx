@@ -35,6 +35,11 @@ interface DossierContratSummary {
   can_sign: boolean;
 }
 
+interface LivraisonInfo {
+  prevue_at: string;
+  lieu: string;
+}
+
 interface DossierDetail {
   id: number;
   reference: string;
@@ -50,6 +55,7 @@ interface DossierDetail {
   historique?: HistoriqueItem[];
   lld_pricing?: LldPricing | null;
   contrat?: DossierContratSummary | null;
+  livraison?: LivraisonInfo | null;
 }
 
 const PIECE_LABELS: Record<PieceType, string> = {
@@ -349,6 +355,31 @@ export default function DossierDetailPage() {
                     Motif de rejet
                   </p>
                   <p style={{ margin: 0, color: "#7f1d1d" }}>{detail.motif_rejet}</p>
+                </div>
+              )}
+
+              {/* US-06-10 — Livraison planifiée */}
+              {detail.livraison && (
+                <div
+                  role="region"
+                  aria-label="Rendez-vous de livraison"
+                  style={{
+                    marginTop: "1rem",
+                    background: "#ecfdf5",
+                    border: "1px solid #6ee7b7",
+                    borderRadius: 8,
+                    padding: ".85rem 1rem",
+                  }}
+                >
+                  <p style={{ margin: "0 0 .35rem", fontWeight: 700, color: "#166534" }}>
+                    Livraison de votre véhicule
+                  </p>
+                  <p style={{ margin: "0 0 .25rem", color: "#14532d" }}>
+                    <strong>Date et heure :</strong> {formatDate(detail.livraison.prevue_at)}
+                  </p>
+                  <p style={{ margin: 0, color: "#14532d" }}>
+                    <strong>Lieu :</strong> {detail.livraison.lieu}
+                  </p>
                 </div>
               )}
             </div>

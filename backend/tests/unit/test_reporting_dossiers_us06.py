@@ -63,6 +63,7 @@ def test_superviseur_get_dossiers_reporting(client: TestClient, db: Session) -> 
         "valide",
         "en_signature",
         "attente_livraison",
+        "livraison_planifiee",
         "rejete",
         "annule",
     ):

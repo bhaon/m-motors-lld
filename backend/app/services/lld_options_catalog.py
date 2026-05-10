@@ -40,6 +40,7 @@ def contrat_lld_est_actif(dossier: Dossier, *, today: date | None = None) -> boo
     if dossier.type != DossierTypeEnum.lld or dossier.status not in (
         DossierStatusEnum.valide,
         DossierStatusEnum.attente_livraison,
+        DossierStatusEnum.livraison_planifiee,
     ):
         return False
     t = today or date.today()
@@ -78,6 +79,7 @@ def dossier_allows_lld_option_edit(dossier: Dossier) -> bool:
     if dossier.status in (
         DossierStatusEnum.valide,
         DossierStatusEnum.attente_livraison,
+        DossierStatusEnum.livraison_planifiee,
     ) and contrat_lld_est_actif(dossier):
         return True
     return False

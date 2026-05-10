@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -142,6 +142,42 @@ class DossierContratSignatureRequestIn(BaseModel):
     accepte: bool = True
 
 
+class LivraisonInfoOut(BaseModel):
+    """Créneau et lieu communiqués au client après planification (US-06-10)."""
+
+    prevue_at: datetime
+    lieu: str
+
+
+class DossierPlanifierLivraisonIn(BaseModel):
+    """Payload BO : horodatage de rendez-vous de remise du véhicule."""
+
+    livraison_prevue_at: datetime = Field(..., description="Instant de livraison (ISO8601 avec fuseau).")
+
+    @field_validator("livraison_prevue_at")
+    @classmethod
+    def doit_etre_futur(cls, v: datetime) -> datetime:
+        """Compare en UTC aux limites équivalentes."""
+        vu = v
+        if vu.tzinfo is None:
+            vu = vu.replace(tzinfo=timezone.utc)
+        vu = vu.astimezone(timezone.utc)
+        now = datetime.now(timezone.utc)
+        if vu <= now:
+            raise ValueError("La date et l'heure de livraison doivent être dans le futur.")
+        return v
+
+
+class DossierPlanifierLivraisonOut(BaseModel):
+    """Réponse après planification (US-06-10)."""
+
+    id: int
+    reference: str
+    status: str
+    livraison_prevue_at: datetime
+    livraison_lieu: str
+
+
 class DossierDetailOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -161,6 +197,7 @@ class DossierDetailOut(BaseModel):
     historique: list[HistoriqueItemOut] = []
     lld_pricing: LldOptionsPricingOut | None = None
     contrat: DossierContratSummaryOut | None = None
+    livraison: LivraisonInfoOut | None = None
 
 
 # ── US-06-01 : Tableau de bord gestionnaire ───────────────────────────────────
@@ -269,6 +306,7 @@ class DossierBoDetailOut(BaseModel):
     client: ClientSummaryOut
     pieces: list[PieceBoOut]
     historique: list[HistoriqueItemOut] = []
+    livraison: LivraisonInfoOut | None = None
 
 
 # ── US-04-04 : Contrats LLD ───────────────────────────────────────────────────
