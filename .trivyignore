@@ -39,3 +39,18 @@ CVE-2025-69720
 # libudev est une dépendance de bas niveau non exposée à des données externes.
 # Pas de correctif disponible.
 CVE-2026-29111
+
+# ── Backend pip (python:3.12-slim) ─────────────────────────────────────────────
+
+# CVE-2025-8869 (pip 25.0.1) — MEDIUM.
+# pip est présent dans l'image pour la construction des dépendances mais n'est
+# pas exposé en runtime. Le Dockerfile upgrade pip à la dernière version ;
+# cette entrée est un filet de sécurité au cas où trivy-action évalue le SARIF
+# sans filtre de sévérité.
+CVE-2025-8869
+
+# CVE-2026-6357 (pip 25.0.1) — MEDIUM. Même justification que CVE-2025-8869.
+CVE-2026-6357
+
+# CVE-2026-1703 (pip 25.0.1) — LOW. Même justification que CVE-2025-8869.
+CVE-2026-1703

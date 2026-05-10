@@ -21,6 +21,9 @@ def get_current_user(
     credentials: BearerCredentials,
     db: DbSession,
 ) -> User:
+    """
+    Résout l'utilisateur courant à partir d'un JWT.
+    """
     token = credentials.credentials
     try:
         payload = decode_token(token)

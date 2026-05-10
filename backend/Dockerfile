@@ -15,9 +15,10 @@ RUN apt-get update \
         libpq-dev gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps
+# Python deps (pip upgraded first to eliminate pip's own CVEs)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 # App source
 COPY . .

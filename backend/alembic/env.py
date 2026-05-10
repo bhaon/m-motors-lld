@@ -18,7 +18,10 @@ import app.models.lld_avenant  # noqa: F401
 import app.models.user  # noqa: F401
 import app.models.vehicle  # noqa: F401
 
+# Configuration de Alembic
 config = context.config
+
+# Configuration de la journalisation
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 logger = logging.getLogger("alembic.env")
@@ -26,6 +29,7 @@ logger = logging.getLogger("alembic.env")
 # Alembic utilise ConfigParser : les '%' d'une URL encodée (ex: %2B) doivent être échappés.
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
+# Configuration des métadonnées de la base de données
 target_metadata = Base.metadata
 
 
@@ -58,7 +62,10 @@ def run_migrations_online() -> None:
             context.run_migrations()
 
 
+# Exécution des migrations
+# Si le mode offline est activé, exécute les migrations en mode offline
 if context.is_offline_mode():
     run_migrations_offline()
+# Sinon, exécute les migrations en mode online
 else:
     run_migrations_online()
