@@ -74,7 +74,9 @@ def test_valider_not_found(client: TestClient, db: Session) -> None:
 
 
 def test_valider_sets_status_and_validated_at(client: TestClient, db: Session) -> None:
-    """La validation passe le statut à « valide » et renseigne validated_at (UTC)."""
+    """La validation génère un contrat, passe en « en_signature » et renseigne validated_at (UTC)."""
+    from app.models.dossier_contract import DossierContrat
+
     d = _make_dossier(db, client_email="c.ok@ex.com", ref="VAL-OK-001")
     headers = _gest_headers(client, db, "gest.ok@ex.com")
 
@@ -82,18 +84,22 @@ def test_valider_sets_status_and_validated_at(client: TestClient, db: Session) -
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] == "valide"
+    assert body["status"] == "en_signature"
     assert body["validated_at"] is not None
 
     db.expire_all()
     updated = db.query(Dossier).filter(Dossier.id == d.id).first()
     assert updated is not None
-    assert updated.status == DossierStatusEnum.valide
+    assert updated.status == DossierStatusEnum.en_signature
     assert updated.validated_at is not None
+    row = db.query(DossierContrat).filter(DossierContrat.dossier_id == d.id).first()
+    assert row is not None
+    assert "CONTRAT" in row.reference or "CTR-" in row.reference
+    assert len(row.body_markdown) > 100
 
 
 def test_valider_creates_historique(client: TestClient, db: Session) -> None:
-    """Une entrée DossierHistorique relie en_instruction → valide."""
+    """Une entrée DossierHistorique relie en_instruction → en_signature."""
     d = _make_dossier(db, client_email="c.histv@ex.com", ref="VAL-HIST-001")
     headers = _gest_headers(client, db, "gest.histv@ex.com")
 
@@ -103,7 +109,7 @@ def test_valider_creates_historique(client: TestClient, db: Session) -> None:
     db.expire_all()
     hist = (
         db.query(DossierHistorique)
-        .filter(DossierHistorique.dossier_id == d.id, DossierHistorique.nouveau_status == "valide")
+        .filter(DossierHistorique.dossier_id == d.id, DossierHistorique.nouveau_status == "en_signature")
         .first()
     )
     assert hist is not None
@@ -130,7 +136,7 @@ def test_valider_creates_audit_trail(client: TestClient, db: Session) -> None:
         .first()
     )
     assert audit is not None
-    assert audit.after_state["status"] == "valide"
+    assert audit.after_state["status"] == "en_signature"
     assert "validated_at" in audit.after_state
     assert audit.operator_email == "gest.auditv@ex.com"
     assert audit.created_at is not None
@@ -146,13 +152,13 @@ def test_cannot_valider_depose(client: TestClient, db: Session) -> None:
 
 
 def test_valider_sends_email_to_client(client: TestClient, db: Session, monkeypatch) -> None:
-    """Une notification email est envoyée au client avec le statut « valide »."""
+    """Un email « contrat prêt » est envoyé au client avec le lien dossier."""
     sent: list[dict] = []
 
     def _fake_send(**kwargs):
         sent.append(kwargs)
 
-    monkeypatch.setattr("app.api.v1.endpoints.dossiers.send_status_change_email", _fake_send)
+    monkeypatch.setattr("app.api.v1.endpoints.dossiers.send_contract_ready_email", _fake_send)
 
     d = _make_dossier(db, client_email="c.mailv@ex.com", ref="MAILV-001")
     headers = _gest_headers(client, db, "gest.mailv@ex.com")
@@ -162,17 +168,18 @@ def test_valider_sends_email_to_client(client: TestClient, db: Session, monkeypa
 
     assert len(sent) == 1
     assert sent[0]["to_email"] == "c.mailv@ex.com"
-    assert sent[0]["nouveau_status"] == "valide"
+    assert sent[0]["dossier_reference"] == "MAILV-001"
+    assert str(d.id) in sent[0]["contrat_url"]
 
 
-def test_valider_idempotent_when_already_valide(client: TestClient, db: Session, monkeypatch) -> None:
-    """Deux appels sur un dossier déjà validé : pas de doublon historique ni email."""
+def test_valider_idempotent_when_already_en_signature(client: TestClient, db: Session, monkeypatch) -> None:
+    """Deux appels sur un dossier déjà « en_signature » : pas de doublon historique ni email."""
     sent: list[dict] = []
 
     def _fake_send(**kwargs):
         sent.append(kwargs)
 
-    monkeypatch.setattr("app.api.v1.endpoints.dossiers.send_status_change_email", _fake_send)
+    monkeypatch.setattr("app.api.v1.endpoints.dossiers.send_contract_ready_email", _fake_send)
 
     d = _make_dossier(db, client_email="c.idemv@ex.com", ref="IDEMV-001")
     headers = _gest_headers(client, db, "gest.idemv@ex.com")
@@ -185,7 +192,7 @@ def test_valider_idempotent_when_already_valide(client: TestClient, db: Session,
     db.expire_all()
     hist_count = (
         db.query(DossierHistorique)
-        .filter(DossierHistorique.dossier_id == d.id, DossierHistorique.nouveau_status == "valide")
+        .filter(DossierHistorique.dossier_id == d.id, DossierHistorique.nouveau_status == "en_signature")
         .count()
     )
     assert hist_count == 1

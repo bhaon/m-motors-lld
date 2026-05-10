@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -112,12 +112,83 @@ class LldOptionsPricingOut(BaseModel):
     editable: bool
     edit_context: LldEditContext = "readonly"
     items: list[LldOptionRowOut]
+    pending_avenant_signature: bool = False
+    proposed_total_mensualite_ht: float | None = None
+    avenant_reference: str | None = None
 
 
 class LldOptionsPatchIn(BaseModel):
     """Mise à jour partielle ou complète des cases à cocher LLD."""
 
     selections: dict[str, bool]
+
+
+class DossierContratSummaryOut(BaseModel):
+    """Résumé du contrat dans le détail dossier (US-06-07)."""
+
+    reference: str
+    signed_at: datetime | None = None
+    can_sign: bool = False
+
+
+class DossierContratContentOut(BaseModel):
+    """Markdown du contrat : réservé au client propriétaire du dossier."""
+
+    reference: str
+    markdown: str
+    signed_at: datetime | None = None
+
+
+class DossierContratSignatureRequestIn(BaseModel):
+    """Corps attendu après validation dans la modale « Signer le contrat »."""
+
+    accepte: bool = True
+
+
+class LivraisonInfoOut(BaseModel):
+    """Créneau et lieu communiqués au client après planification (US-06-10)."""
+
+    prevue_at: datetime
+    lieu: str
+
+
+class DossierPlanifierLivraisonIn(BaseModel):
+    """Payload BO : horodatage de rendez-vous de remise du véhicule."""
+
+    livraison_prevue_at: datetime = Field(..., description="Instant de livraison (ISO8601 avec fuseau).")
+
+    @field_validator("livraison_prevue_at")
+    @classmethod
+    def doit_etre_futur(cls, v: datetime) -> datetime:
+        """Compare en UTC aux limites équivalentes."""
+        vu = v
+        if vu.tzinfo is None:
+            vu = vu.replace(tzinfo=timezone.utc)
+        vu = vu.astimezone(timezone.utc)
+        now = datetime.now(timezone.utc)
+        if vu <= now:
+            raise ValueError("La date et l'heure de livraison doivent être dans le futur.")
+        return v
+
+
+class DossierPlanifierLivraisonOut(BaseModel):
+    """Réponse après planification (US-06-10)."""
+
+    id: int
+    reference: str
+    status: str
+    livraison_prevue_at: datetime
+    livraison_lieu: str
+
+
+class DossierEffectuerLivraisonOut(BaseModel):
+    """Réponse après confirmation de livraison effective (US-06-09) : statut clôturé, dates LLD."""
+
+    id: int
+    reference: str
+    status: str
+    date_debut_contrat: date | None = None
+    duree_mois: int | None = None
 
 
 class DossierDetailOut(BaseModel):
@@ -138,6 +209,8 @@ class DossierDetailOut(BaseModel):
     vehicle: VehicleSummaryOut | None = None
     historique: list[HistoriqueItemOut] = []
     lld_pricing: LldOptionsPricingOut | None = None
+    contrat: DossierContratSummaryOut | None = None
+    livraison: LivraisonInfoOut | None = None
 
 
 # ── US-06-01 : Tableau de bord gestionnaire ───────────────────────────────────
@@ -246,6 +319,7 @@ class DossierBoDetailOut(BaseModel):
     client: ClientSummaryOut
     pieces: list[PieceBoOut]
     historique: list[HistoriqueItemOut] = []
+    livraison: LivraisonInfoOut | None = None
 
 
 # ── US-04-04 : Contrats LLD ───────────────────────────────────────────────────
@@ -272,3 +346,4 @@ class ContratListItemOut(BaseModel):
     date_debut: date | None = None
     date_fin: date | None = None
     is_active: bool
+    total_mensualite_ht: float | None = None

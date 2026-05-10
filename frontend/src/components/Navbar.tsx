@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import AuthModal from "@/components/AuthModal";
+import ProfileModal from "@/components/ProfileModal";
 
 /**
  * Résout l'URL d'authentification courante côté navigateur.
@@ -67,7 +68,35 @@ function FolderIcon({ size = 16 }: { size?: number }) {
 }
 
 /**
- * Icône liste (SVG) pour le lien "Gestion véhicules" (gestionnaire+).
+ * Icône voiture (SVG) pour le lien « Gestion véhicules » (gestionnaire+).
+ */
+function CarIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Icône outils / services (SVG) pour le lien « Options LLD » (gestionnaire+).
+ */
+function ServicesToolsIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M22.61 18.99l-9.08-9.06c.86-2.18.55-4.85-1.08-6.47-1.89-1.88-4.84-2.19-7.06-.86l3.56 3.56 2.83-2.83-3.56-3.56c-1.33 2.22-1.02 5.17.86 7.06 1.62 1.63 4.29 1.94 6.47 1.08l9.06 9.08c.39.39 1.02.39 1.41 0l2.83-2.83c.39-.39.39-1.03 0-1.42z"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Icône liste (SVG) pour les entrées back-office type liste (ex. reporting).
  */
 function ListIcon({ size = 16 }: { size?: number }) {
   return (
@@ -129,11 +158,14 @@ export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalTab, setAuthModalTab] = useState<"login" | "register">("login");
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const isGestionnaire = role !== null && GESTIONNAIRE_ROLES.has(role);
   const isAdmin = role === "admin";
   const isSuperviseurReporting = role === "superviseur" || role === "admin";
+  /** Liens espace client masqués uniquement pour le rôle gestionnaire (staff terrain). */
+  const showClientPortfolioLinks = role !== "gestionnaire";
 
   /**
    * Vérifie si l'utilisateur est connecté afin d'afficher la pastille profil.
@@ -181,13 +213,14 @@ export default function Navbar() {
   }, [checkAuthStatus]);
 
   /**
-   * Ouvre la modale d’auth depuis une URL partagee (`/?connexion=1` ou `/?inscription=1`).
+   * Ouvre les modales depuis l’URL (`/?connexion=1`, `/?inscription=1`, `/?profil=1`).
    */
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const c = params.get("connexion");
     const i = params.get("inscription");
+    const p = params.get("profil");
     if (c === "1") {
       setAuthModalTab("login");
       setAuthModalOpen(true);
@@ -195,6 +228,9 @@ export default function Navbar() {
     } else if (i === "1") {
       setAuthModalTab("register");
       setAuthModalOpen(true);
+      router.replace("/", { scroll: false });
+    } else if (p === "1") {
+      setProfileModalOpen(true);
       router.replace("/", { scroll: false });
     }
   }, [router]);
@@ -252,6 +288,11 @@ export default function Navbar() {
         onClose={() => setAuthModalOpen(false)}
         defaultTab={authModalTab}
         onAuthenticated={checkAuthStatus}
+      />
+      <ProfileModal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        onProfileUpdated={checkAuthStatus}
       />
       {/* Barre principale persistante pour la navigation publique. */}
       <nav
@@ -368,11 +409,15 @@ export default function Navbar() {
                   overflow: "hidden",
                 }}
               >
-                <Link
-                  href="/espace-client"
+                <button
+                  type="button"
                   role="menuitem"
-                  onClick={() => setIsMenuOpen(false)}
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setProfileModalOpen(true);
+                  }}
                   style={{
+                    width: "100%",
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
@@ -380,51 +425,61 @@ export default function Navbar() {
                     textDecoration: "none",
                     color: "#0f172a",
                     fontWeight: 600,
+                    background: "#fff",
+                    border: 0,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    fontFamily: "inherit",
+                    fontSize: "inherit",
                   }}
                 >
                   <UserIcon />
                   Profile
-                </Link>
+                </button>
 
-                <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+                {showClientPortfolioLinks ? (
+                  <>
+                    <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
 
-                <Link
-                  href="/mes-dossiers"
-                  role="menuitem"
-                  onClick={() => setIsMenuOpen(false)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "12px 14px",
-                    textDecoration: "none",
-                    color: "#0f172a",
-                    fontWeight: 600,
-                  }}
-                >
-                  <FolderIcon />
-                  Mes dossiers
-                </Link>
+                    <Link
+                      href="/mes-dossiers"
+                      role="menuitem"
+                      onClick={() => setIsMenuOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "12px 14px",
+                        textDecoration: "none",
+                        color: "#0f172a",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <FolderIcon />
+                      Mes dossiers
+                    </Link>
 
-                <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+                    <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
 
-                <Link
-                  href="/mes-contrats"
-                  role="menuitem"
-                  onClick={() => setIsMenuOpen(false)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "12px 14px",
-                    textDecoration: "none",
-                    color: "#0f172a",
-                    fontWeight: 600,
-                  }}
-                >
-                  <ContractIcon />
-                  Mes contrats
-                </Link>
+                    <Link
+                      href="/mes-contrats"
+                      role="menuitem"
+                      onClick={() => setIsMenuOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "12px 14px",
+                        textDecoration: "none",
+                        color: "#0f172a",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <ContractIcon />
+                      Mes contrats
+                    </Link>
+                  </>
+                ) : null}
 
                 {isGestionnaire && (
                   <>
@@ -435,7 +490,7 @@ export default function Navbar() {
                       onClick={() => setIsMenuOpen(false)}
                       style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", textDecoration: "none", color: "#0e7490", fontWeight: 600 }}
                     >
-                      <ListIcon />
+                      <CarIcon />
                       Gestion véhicules
                     </Link>
                     <Link
@@ -444,7 +499,7 @@ export default function Navbar() {
                       onClick={() => setIsMenuOpen(false)}
                       style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", textDecoration: "none", color: "#0e7490", fontWeight: 600 }}
                     >
-                      <ListIcon />
+                      <ServicesToolsIcon />
                       Options LLD
                     </Link>
                     <Link

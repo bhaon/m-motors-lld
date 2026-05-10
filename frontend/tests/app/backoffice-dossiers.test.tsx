@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import BackofficeDossiersPage from "@/app/backoffice/dossiers/page";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -51,13 +51,17 @@ describe("BackofficeDossiersPage — rendu initial", () => {
     render(<BackofficeDossiersPage />);
     expect(screen.getByRole("button", { name: /déposé/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /en instruction/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /attente de livraison/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /livraison planifiée/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /validé/i })).toBeInTheDocument();
   });
 
-  it("les statuts Déposé et En instruction sont actifs par défaut", () => {
+  it("les statuts Déposé, En instruction, Attente de livraison et Livraison planifiée sont actifs par défaut", () => {
     render(<BackofficeDossiersPage />);
     expect(screen.getByRole("button", { name: /déposé/i })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /en instruction/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /attente de livraison/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /livraison planifiée/i })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /validé/i })).toHaveAttribute("aria-pressed", "false");
   });
 
@@ -71,6 +75,14 @@ describe("BackofficeDossiersPage — rendu initial", () => {
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("statuts=en_instruction"),
+      expect.anything(),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("statuts=attente_livraison"),
+      expect.anything(),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("statuts=livraison_planifiee"),
       expect.anything(),
     );
   });
@@ -120,6 +132,12 @@ describe("BackofficeDossiersPage — affichage des données", () => {
     mockFetch(makeList([makeItem()], 42));
     render(<BackofficeDossiersPage />);
     await waitFor(() => expect(screen.getByText(/42 dossiers trouvés/i)).toBeInTheDocument());
+  });
+
+  it("affiche le compteur au singulier lorsqu'un seul dossier correspond", async () => {
+    mockFetch(makeList([makeItem()], 1));
+    render(<BackofficeDossiersPage />);
+    await waitFor(() => expect(screen.getByText(/1 dossier trouvé/i)).toBeInTheDocument());
   });
 
   it("affiche un message vide quand aucun dossier", async () => {
@@ -201,6 +219,9 @@ describe("BackofficeDossiersPage — filtres", () => {
     fireEvent.click(screen.getByRole("button", { name: /réinitialiser/i }));
 
     expect(screen.getByRole("button", { name: /déposé/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /en instruction/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /attente de livraison/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /livraison planifiée/i })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /validé/i })).toHaveAttribute("aria-pressed", "false");
   });
 
@@ -247,6 +268,24 @@ describe("BackofficeDossiersPage — pagination", () => {
         expect.stringContaining("page=2"),
         expect.anything(),
       );
+    });
+  });
+
+  it("clique sur Précédent depuis la page 2 envoie page=1", async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ total: 45, page: 1, page_size: 20, items: [makeItem()] }) })
+      .mockResolvedValue({ ok: true, json: async () => ({ total: 45, page: 2, page_size: 20, items: [makeItem({ id: 2 })] }) });
+
+    render(<BackofficeDossiersPage />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /suivant/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /suivant/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /précédent/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: /précédent/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("page=1"), expect.anything());
     });
   });
 });
@@ -343,6 +382,191 @@ describe("BackofficeDossiersPage — prise en charge (US-06-02)", () => {
 
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(/impossible de prendre en charge/i),
+    );
+  });
+});
+
+// ── US-06-10 — Planifier une livraison ────────────────────────────────────────
+
+describe("BackofficeDossiersPage — planifier livraison (US-06-10)", () => {
+  it("affiche le bouton pour un dossier en attente de livraison", async () => {
+    mockFetch(makeList([makeItem({ status: "attente_livraison", reference: "DOS-LIV-WAIT" })]));
+    render(<BackofficeDossiersPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /planifier une livraison pour le dossier dos-liv-wait/i }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("ouvre la modale et envoie POST planifier-livraison avec la date choisie", async () => {
+    const item = makeItem({ status: "attente_livraison", id: 99, reference: "DOS-LIV-99" });
+    const postMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 99,
+        reference: "DOS-LIV-99",
+        status: "livraison_planifiee",
+        livraison_prevue_at: "2099-06-15T09:00:00.000Z",
+        livraison_lieu: "Garage Gaudin",
+      }),
+    });
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([item]) })
+      .mockImplementation(postMock);
+
+    render(<BackofficeDossiersPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-liv-99/i }),
+    );
+    expect(screen.getByRole("dialog", { name: /planifier une livraison/i })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/date et heure de livraison/i), {
+      target: { value: "2099-06-15T11:30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^confirmer$/i }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/dossiers/backoffice/99/planifier-livraison"),
+        expect.objectContaining({
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: expect.stringContaining("livraison_prevue_at"),
+        }),
+      ),
+    );
+  });
+
+  it("affiche le bouton Livraison pour un dossier en livraison planifiée (US-06-09)", async () => {
+    mockFetch(makeList([makeItem({ status: "livraison_planifiee", reference: "DOS-LIV-609" })]));
+    render(<BackofficeDossiersPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /enregistrer la livraison du dossier dos-liv-609/i }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("appelle POST effectuer-livraison au clic sur Livraison", async () => {
+    const item = makeItem({ status: "livraison_planifiee", id: 77, reference: "DOS-EFF-77" });
+    const postEff = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 77,
+        reference: "DOS-EFF-77",
+        status: "cloture",
+        date_debut_contrat: "2026-08-01",
+        duree_mois: 36,
+      }),
+    });
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([item]) })
+      .mockImplementation(postEff);
+
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /enregistrer la livraison du dossier dos-eff-77/i }),
+    );
+
+    await waitFor(() =>
+      expect(postEff).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/dossiers/backoffice/77/effectuer-livraison"),
+        expect.objectContaining({ method: "POST", credentials: "include" }),
+      ),
+    );
+  });
+
+  it("affiche un tiret en colonne Action pour un dossier clôturé", async () => {
+    mockFetch(makeList([makeItem({ status: "cloture", reference: "DOS-CLOT-1" })]));
+    render(<BackofficeDossiersPage />);
+    const link = await screen.findByRole("link", { name: /consulter le dossier dos-clot-1/i });
+    const row = link.closest("tr");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getAllByText("—").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ferme la modale au clic sur le fond ou à la touche Escape", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => makeList([makeItem({ status: "attente_livraison", reference: "DOS-ESC" })]),
+    });
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-esc/i }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /planifier une livraison/i });
+    const overlay = dialog.parentElement;
+    expect(overlay).toBeTruthy();
+
+    fireEvent.click(overlay as HTMLElement);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /planifier une livraison/i })).not.toBeInTheDocument());
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-esc/i }),
+    );
+    const dialog2 = screen.getByRole("dialog", { name: /planifier une livraison/i });
+    fireEvent.keyDown(dialog2.parentElement as HTMLElement, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /planifier une livraison/i })).not.toBeInTheDocument());
+  });
+
+  it("ferme la modale via Annuler", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => makeList([makeItem({ status: "attente_livraison", reference: "DOS-CAN" })]),
+    });
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-can/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^annuler$/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /planifier une livraison/i })).not.toBeInTheDocument());
+  });
+
+  it("affiche le détail d'erreur quand l'API renvoie detail sous forme de tableau (422)", async () => {
+    const item = makeItem({ status: "attente_livraison", id: 101, reference: "DOS-422" });
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([item]) })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ detail: [{ type: "value_error", loc: [], msg: "La date doit être dans le futur." }] }),
+      });
+
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-422/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/date et heure de livraison/i), {
+      target: { value: "2099-01-01T12:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^confirmer$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/futur/i),
+    );
+  });
+
+  it("affiche une erreur générique si le POST échoue sans exception Error", async () => {
+    const item = makeItem({ status: "attente_livraison", id: 102, reference: "DOS-NA" });
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([item]) })
+      .mockRejectedValueOnce("boom");
+
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-na/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/date et heure de livraison/i), {
+      target: { value: "2099-02-01T12:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^confirmer$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/inattendue/i),
     );
   });
 });

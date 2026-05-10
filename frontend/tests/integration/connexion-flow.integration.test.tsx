@@ -34,7 +34,7 @@ describe("Connexion flow integration", () => {
           credentials: "include",
         }),
       );
-      expect(pushMock).toHaveBeenCalledWith("/espace-client");
+      expect(pushMock).toHaveBeenCalledWith("/");
     });
   });
 });

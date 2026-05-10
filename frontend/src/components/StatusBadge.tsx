@@ -9,12 +9,17 @@ interface StatusConfig {
 }
 
 const STATUS_CONFIG: Record<DossierStatus, StatusConfig> = {
-  brouillon:      { label: "Brouillon",       color: "#6b7280", bg: "#f3f4f6" },
-  depose:         { label: "Déposé",          color: "#1d4ed8", bg: "#dbeafe" },
-  en_instruction: { label: "En instruction",  color: "#b45309", bg: "#fef3c7" },
-  valide:         { label: "Validé",          color: "#15803d", bg: "#dcfce7" },
-  rejete:         { label: "Rejeté",          color: "#b91c1c", bg: "#fee2e2" },
-  annule:         { label: "Annulé",          color: "#374151", bg: "#e5e7eb" },
+  brouillon:          { label: "Brouillon",            color: "#6b7280", bg: "#f3f4f6" },
+  depose:             { label: "Déposé",               color: "#1d4ed8", bg: "#dbeafe" },
+  en_instruction:     { label: "En instruction",       color: "#b45309", bg: "#fef3c7" },
+  valide:             { label: "Validé",               color: "#15803d", bg: "#dcfce7" },
+  en_signature:       { label: "En signature",         color: "#0e7490", bg: "#cffafe" },
+  attente_livraison:  { label: "Attente de livraison", color: "#0369a1", bg: "#dbeafe" },
+  livraison_planifiee:{ label: "Livraison planifiée",  color: "#15803d", bg: "#dcfce7" },
+  contrat_en_cours:   { label: "Contrat en cours",     color: "#0f766e", bg: "#ccfbf1" },
+  cloture:            { label: "Clôturé",              color: "#4b5563", bg: "#e5e7eb" },
+  rejete:             { label: "Rejeté",               color: "#b91c1c", bg: "#fee2e2" },
+  annule:             { label: "Annulé",               color: "#374151", bg: "#e5e7eb" },
 };
 
 interface StatusBadgeProps {

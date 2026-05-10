@@ -5,6 +5,8 @@
  *
  * US-06-01 : filtres (statut, type, dates), tri, pagination.
  * US-06-02 : bouton "Prendre en charge" sur les dossiers au statut "Déposé".
+ * US-06-10 : bouton "Planifier une livraison" + modale date/heure pour ``attente_livraison``.
+ * US-06-09 : bouton "Livraison" pour ``livraison_planifiee`` → LLD : contrat en cours ; achat : clôturé.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -14,7 +16,18 @@ import { apiBase } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DossierStatus = "brouillon" | "depose" | "en_instruction" | "valide" | "rejete" | "annule";
+type DossierStatus =
+  | "brouillon"
+  | "depose"
+  | "en_instruction"
+  | "valide"
+  | "en_signature"
+  | "attente_livraison"
+  | "livraison_planifiee"
+  | "contrat_en_cours"
+  | "cloture"
+  | "rejete"
+  | "annule";
 type DossierType = "achat" | "lld";
 type SortOption = "submitted_asc" | "submitted_desc" | "created_desc";
 
@@ -40,15 +53,27 @@ interface DossierBoList {
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const ALL_STATUTS: { value: DossierStatus; label: string; color: string; bg: string }[] = [
-  { value: "brouillon",      label: "Brouillon",      color: "#6b7280", bg: "#f3f4f6" },
-  { value: "depose",         label: "Déposé",         color: "#1d4ed8", bg: "#dbeafe" },
-  { value: "en_instruction", label: "En instruction", color: "#b45309", bg: "#fef3c7" },
-  { value: "valide",         label: "Validé",         color: "#15803d", bg: "#dcfce7" },
-  { value: "rejete",         label: "Rejeté",         color: "#b91c1c", bg: "#fee2e2" },
-  { value: "annule",         label: "Annulé",         color: "#6b7280", bg: "#f3f4f6" },
+  { value: "brouillon",          label: "Brouillon",               color: "#6b7280", bg: "#f3f4f6" },
+  { value: "depose",             label: "Déposé",                  color: "#1d4ed8", bg: "#dbeafe" },
+  { value: "en_instruction",   label: "En instruction",          color: "#b45309", bg: "#fef3c7" },
+  { value: "valide",             label: "Validé",                  color: "#15803d", bg: "#dcfce7" },
+  { value: "en_signature",       label: "En signature",            color: "#0e7490", bg: "#cffafe" },
+  { value: "attente_livraison",  label: "Attente de livraison",    color: "#0369a1", bg: "#dbeafe" },
+  { value: "livraison_planifiee", label: "Livraison planifiée",    color: "#15803d", bg: "#dcfce7" },
+  { value: "contrat_en_cours",    label: "Contrat en cours",      color: "#0f766e", bg: "#ccfbf1" },
+  { value: "cloture",             label: "Clôturé",               color: "#4b5563", bg: "#e5e7eb" },
+  { value: "rejete",             label: "Rejeté",                  color: "#b91c1c", bg: "#fee2e2" },
+  { value: "annule",             label: "Annulé",                  color: "#6b7280", bg: "#f3f4f6" },
 ];
 
-const DEFAULT_STATUTS: DossierStatus[] = ["depose", "en_instruction"];
+/** Dossiers « en attente » + livraisons suivies (US-06-07 / US-06-10). */
+const DEFAULT_STATUTS: DossierStatus[] = [
+  "depose",
+  "en_instruction",
+  "attente_livraison",
+  "livraison_planifiee",
+  "contrat_en_cours",
+];
 const PAGE_SIZE = 20;
 
 // ── Utilitaires ───────────────────────────────────────────────────────────────
@@ -115,6 +140,12 @@ export default function BackofficeDossiersPage() {
   // US-06-02 — prise en charge
   const [takingId, setTakingId] = useState<number | null>(null);
   const [toast, setToast] = useState("");
+  // US-06-10 — planification livraison
+  const [planModal, setPlanModal] = useState<DossierBoItem | null>(null);
+  const [planDateTime, setPlanDateTime] = useState("");
+  const [planSubmitting, setPlanSubmitting] = useState(false);
+  /** US-06-09 — confirmation livraison effective */
+  const [effectuerId, setEffectuerId] = useState<number | null>(null);
 
   const fetchDossiers = useCallback(async (f: FilterState, p: number) => {
     setLoading(true);
@@ -136,6 +167,97 @@ export default function BackofficeDossiersPage() {
   useEffect(() => {
     fetchDossiers(filters, page);
   }, [fetchDossiers, filters, page]);
+
+  /** US-06-10 — Envoie la date/heure de livraison, met à jour la liste. */
+  async function handlePlanifierLivraison() {
+    if (!planModal || !planDateTime) return;
+    const dossierRef = planModal.reference;
+    const dossierId = planModal.id;
+    setPlanSubmitting(true);
+    try {
+      const iso = new Date(planDateTime).toISOString();
+      const res = await fetch(
+        `${apiBase()}/api/v1/dossiers/backoffice/${dossierId}/planifier-livraison`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ livraison_prevue_at: iso }),
+        },
+      );
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { detail?: unknown };
+        let msg = "Erreur lors de la planification.";
+        if (typeof payload.detail === "string") {
+          msg = payload.detail;
+        } else if (Array.isArray(payload.detail)) {
+          const parts = payload.detail.map((x) =>
+            typeof x === "object" && x !== null && "msg" in x ? String((x as { msg: string }).msg) : "",
+          );
+          msg = parts.filter(Boolean).join(" ") || msg;
+        }
+        throw new Error(msg);
+      }
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((item) =>
+                item.id === dossierId
+                  ? { ...item, status: "livraison_planifiee" as DossierStatus }
+                  : item,
+              ),
+            }
+          : prev,
+      );
+      setPlanModal(null);
+      setPlanDateTime("");
+      setToast(`Livraison planifiée pour ${dossierRef}.`);
+      setTimeout(() => setToast(""), 3500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur inattendue.");
+    } finally {
+      setPlanSubmitting(false);
+    }
+  }
+
+  /** US-06-09 — Enregistre la livraison (LLD : contrat en cours ; achat : clôturé). */
+  async function handleEffectuerLivraison(dossier: DossierBoItem) {
+    setEffectuerId(dossier.id);
+    setError("");
+    try {
+      const res = await fetch(
+        `${apiBase()}/api/v1/dossiers/backoffice/${dossier.id}/effectuer-livraison`,
+        { method: "POST", credentials: "include" },
+      );
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(payload.detail ?? "Erreur lors de l'enregistrement de la livraison.");
+      }
+      const body = (await res.json()) as { status: string };
+      const newStatus = body.status as DossierStatus;
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((item) =>
+                item.id === dossier.id ? { ...item, status: newStatus } : item,
+              ),
+            }
+          : prev,
+      );
+      const msgFin =
+        newStatus === "contrat_en_cours"
+          ? "contrat LLD en cours."
+          : "dossier clôturé.";
+      setToast(`Livraison enregistrée — ${msgFin} (${dossier.reference}).`);
+      setTimeout(() => setToast(""), 3500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur inattendue.");
+    } finally {
+      setEffectuerId(null);
+    }
+  }
 
   /** US-06-02 — Prend en charge un dossier et met à jour son statut dans la liste. */
   async function handlePrendreEnCharge(dossier: DossierBoItem) {
@@ -435,7 +557,7 @@ export default function BackofficeDossiersPage() {
                             </span>
                           ) : "—"}
                         </td>
-                        {/* US-06-02 — Bouton prise en charge */}
+                        {/* US-06-02 / US-06-10 / US-06-09 — Actions */}
                         <td style={{ padding: "10px 14px" }}>
                           {d.status === "depose" ? (
                             <button
@@ -456,6 +578,49 @@ export default function BackofficeDossiersPage() {
                               }}
                             >
                               {takingId === d.id ? "…" : "Prendre en charge"}
+                            </button>
+                          ) : d.status === "attente_livraison" ? (
+                            <button
+                              type="button"
+                              aria-label={`Planifier une livraison pour le dossier ${d.reference}`}
+                              onClick={() => {
+                                setError("");
+                                setPlanModal(d);
+                                setPlanDateTime("");
+                              }}
+                              style={{
+                                padding: "5px 12px",
+                                background: "#15803d",
+                                color: "#fff",
+                                border: 0,
+                                borderRadius: 6,
+                                fontSize: ".78rem",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              Planifier une livraison
+                            </button>
+                          ) : d.status === "livraison_planifiee" ? (
+                            <button
+                              type="button"
+                              aria-label={`Enregistrer la livraison du dossier ${d.reference}`}
+                              disabled={effectuerId === d.id}
+                              onClick={() => void handleEffectuerLivraison(d)}
+                              style={{
+                                padding: "5px 12px",
+                                background: effectuerId === d.id ? "#94a3b8" : "#7c3aed",
+                                color: "#fff",
+                                border: 0,
+                                borderRadius: 6,
+                                fontSize: ".78rem",
+                                fontWeight: 700,
+                                cursor: effectuerId === d.id ? "not-allowed" : "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {effectuerId === d.id ? "…" : "Livraison"}
                             </button>
                           ) : (
                             <span style={{ fontSize: ".78rem", color: "var(--muted)" }}>—</span>
@@ -499,6 +664,102 @@ export default function BackofficeDossiersPage() {
           </>
         )}
       </main>
+
+      {/* US-06-10 — Modale planification livraison */}
+      {planModal && (
+        <div
+          role="presentation"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 600,
+            padding: "1rem",
+          }}
+          onClick={() => !planSubmitting && setPlanModal(null)}
+          onKeyDown={(e) => e.key === "Escape" && !planSubmitting && setPlanModal(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="plan-livraison-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: 12,
+              maxWidth: 420,
+              width: "100%",
+              padding: "1.35rem 1.5rem",
+              boxShadow: "0 20px 50px rgba(0,0,0,.2)",
+            }}
+          >
+            <h2 id="plan-livraison-title" style={{ margin: "0 0 .5rem", fontSize: "1.1rem", color: "var(--navy)" }}>
+              Planifier une livraison
+            </h2>
+            <p style={{ margin: "0 0 1rem", fontSize: ".88rem", color: "var(--muted)" }}>
+              Dossier <strong style={{ fontFamily: "monospace" }}>{planModal.reference}</strong> — le client recevra un
+              email avec la date, l&apos;heure et le lieu (Garage Gaudin).
+            </p>
+            <label htmlFor="plan-datetime" style={{ display: "block", fontWeight: 700, fontSize: ".82rem", marginBottom: 6 }}>
+              Date et heure de livraison
+            </label>
+            <input
+              id="plan-datetime"
+              type="datetime-local"
+              value={planDateTime}
+              onChange={(e) => setPlanDateTime(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                border: "1px solid #d1d5db",
+                borderRadius: 8,
+                fontSize: ".9rem",
+                boxSizing: "border-box",
+                marginBottom: "1.25rem",
+              }}
+            />
+            <div style={{ display: "flex", gap: ".6rem", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                disabled={planSubmitting}
+                onClick={() => {
+                  setPlanModal(null);
+                  setPlanDateTime("");
+                }}
+                style={{
+                  padding: "8px 16px",
+                  background: "#fff",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  cursor: planSubmitting ? "not-allowed" : "pointer",
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={planSubmitting || !planDateTime}
+                onClick={() => void handlePlanifierLivraison()}
+                style={{
+                  padding: "8px 18px",
+                  background: planSubmitting || !planDateTime ? "#94a3b8" : "var(--navy)",
+                  color: "#fff",
+                  border: 0,
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  cursor: planSubmitting || !planDateTime ? "not-allowed" : "pointer",
+                }}
+              >
+                {planSubmitting ? "…" : "Confirmer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast US-06-02 */}
       {toast && (

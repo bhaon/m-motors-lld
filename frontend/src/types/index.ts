@@ -41,13 +41,19 @@ export type ContratType = "all" | "achat" | "lld";
 
 /**
  * Cycle de vie d'un dossier client :
- * brouillon → depose → en_instruction → valide | rejete | annule
+ * brouillon → depose → en_instruction → en_signature → attente_livraison → livraison_planifiee | rejete | annule
+ * (le statut « valide » peut subsister sur d'anciennes données.)
  */
 export type DossierStatus =
   | "brouillon"
   | "depose"
   | "en_instruction"
   | "valide"
+  | "en_signature"
+  | "attente_livraison"
+  | "livraison_planifiee"
+  | "contrat_en_cours"
+  | "cloture"
   | "rejete"
   | "annule";
 
@@ -97,4 +103,6 @@ export interface ContratListItem {
   date_debut: string | null;
   date_fin: string | null;
   is_active: boolean;
+  /** Base véhicule + options cochées (HT), aligné sur le détail dossier LLD (US-06-08). */
+  total_mensualite_ht?: number | null;
 }

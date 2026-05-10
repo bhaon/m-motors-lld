@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { FormEvent, useState } from "react";
 
 type CurrentUser = {
@@ -21,7 +22,16 @@ function resolveAuthUrl(path: string): string {
   return base ? `${base}${path}` : path;
 }
 
-export default function ProfileManagementClient({ initialUser }: { initialUser: CurrentUser }) {
+export default function ProfileManagementClient({
+  initialUser,
+  variant = "page",
+  onProfileUpdated,
+}: {
+  initialUser: CurrentUser;
+  /** Affichage compact dans la modale profil (navbar). */
+  variant?: "page" | "modal";
+  onProfileUpdated?: () => void;
+}) {
   const [profile, setProfile] = useState({
     first_name: initialUser.first_name,
     last_name: initialUser.last_name,
@@ -52,6 +62,7 @@ export default function ProfileManagementClient({ initialUser }: { initialUser: 
       const payload = (await response.json()) as { message?: string; detail?: string };
       if (!response.ok) throw new Error(payload.detail || "Erreur lors de la sauvegarde.");
       setProfileMessage(payload.message || "Profil mis a jour avec succes.");
+      onProfileUpdated?.();
     } catch (e) {
       setProfileError(e instanceof Error ? e.message : "Erreur technique.");
     }
@@ -81,10 +92,22 @@ export default function ProfileManagementClient({ initialUser }: { initialUser: 
     }
   }
 
+  const sectionStyle: CSSProperties =
+    variant === "modal"
+      ? { marginBottom: "1rem", padding: 0, background: "transparent", maxWidth: "100%" }
+      : { maxWidth: 720, margin: "2rem auto", padding: "1.5rem", background: "#fff", borderRadius: 12 };
+
+  const sectionStyleSecond: CSSProperties =
+    variant === "modal"
+      ? { marginBottom: 0, padding: 0, background: "transparent", maxWidth: "100%" }
+      : { maxWidth: 720, margin: "1rem auto 2rem", padding: "1.5rem", background: "#fff", borderRadius: 12 };
+
   return (
     <>
-      <section style={{ maxWidth: 720, margin: "2rem auto", padding: "1.5rem", background: "#fff", borderRadius: 12 }}>
-        <h1 style={{ fontFamily: "Syne, sans-serif", marginBottom: "1rem" }}>Mon profil</h1>
+      <section style={sectionStyle}>
+        {variant === "page" ? (
+          <h1 style={{ fontFamily: "Syne, sans-serif", marginBottom: "1rem" }}>Mon profil</h1>
+        ) : null}
         <p style={{ marginBottom: "1rem", color: "#4b5563" }}>
           Etat email: {initialUser.email_verified ? "verifie" : "a confirmer"}
         </p>
@@ -106,8 +129,10 @@ export default function ProfileManagementClient({ initialUser }: { initialUser: 
         </form>
       </section>
 
-      <section style={{ maxWidth: 720, margin: "1rem auto 2rem", padding: "1.5rem", background: "#fff", borderRadius: 12 }}>
-        <h2 style={{ fontFamily: "Syne, sans-serif", marginBottom: "1rem" }}>Changer mon mot de passe</h2>
+      <section style={sectionStyleSecond}>
+        <h2 style={{ fontFamily: "Syne, sans-serif", marginBottom: "1rem", fontSize: variant === "modal" ? "1.05rem" : undefined }}>
+          Changer mon mot de passe
+        </h2>
         <form onSubmit={onChangePassword} style={{ display: "grid", gap: "0.9rem" }}>
           <input
             placeholder="Ancien mot de passe"

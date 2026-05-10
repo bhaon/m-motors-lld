@@ -85,12 +85,27 @@ def test_gestionnaire_can_access_backoffice(client: TestClient, db: Session) -> 
     assert "items" in body
 
 
-# ── Filtre par statut (défaut = depose + en_instruction) ─────────────────────
+# ── Filtre par statut (défaut = depose + en_instruction + attente_livraison) ──
 
 def test_default_filter_returns_only_active_dossiers(client: TestClient, db: Session) -> None:
-    """Sans filtre explicite, seuls les dossiers déposés et en instruction sont retournés."""
+    """Sans filtre explicite : déposé, en instruction, attente et livraison planifiée (hors brouillon / validé isolé)."""
     _make_dossier(db, client_email="c.dep@ex.com", status=DossierStatusEnum.depose, reference="DEP-001")
     _make_dossier(db, client_email="c.ins@ex.com", status=DossierStatusEnum.en_instruction, reference="INS-001")
+    _make_dossier(
+        db,
+        client_email="c.livr@ex.com",
+        status=DossierStatusEnum.attente_livraison,
+        reference="LIV-001",
+    )
+    pla = _make_dossier(
+        db,
+        client_email="c.plan@ex.com",
+        status=DossierStatusEnum.livraison_planifiee,
+        reference="PLA-001",
+    )
+    pla.livraison_prevue_at = datetime.now(timezone.utc)
+    db.add(pla)
+    db.commit()
     _make_dossier(db, client_email="c.val@ex.com", status=DossierStatusEnum.valide, reference="VAL-001")
     _make_dossier(db, client_email="c.bro@ex.com", status=DossierStatusEnum.brouillon, reference="BRO-001")
     headers = _gest(client, db,"gest.deffilter@ex.com")
@@ -99,7 +114,7 @@ def test_default_filter_returns_only_active_dossiers(client: TestClient, db: Ses
 
     assert resp.status_code == 200
     statuts = {item["status"] for item in resp.json()["items"]}
-    assert statuts == {"depose", "en_instruction"}
+    assert statuts == {"depose", "en_instruction", "attente_livraison", "livraison_planifiee"}
 
 
 def test_explicit_statut_filter(client: TestClient, db: Session) -> None:

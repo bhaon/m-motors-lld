@@ -13,6 +13,8 @@ import app.models.feature_flag  # noqa
 import app.models.lld_option_catalog  # noqa
 import app.models.vehicle  # noqa
 import app.models.option_lld  # noqa
+import app.models.dossier_contract  # noqa
+import app.models.lld_avenant  # noqa
 
 
 @asynccontextmanager

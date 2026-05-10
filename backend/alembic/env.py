@@ -14,6 +14,7 @@ from app.db.session import Base
 # Import des modèles pour enregistrer les tables sur Base.metadata
 import app.models.audit  # noqa: F401
 import app.models.dossier  # noqa: F401
+import app.models.lld_avenant  # noqa: F401
 import app.models.user  # noqa: F401
 import app.models.vehicle  # noqa: F401
 

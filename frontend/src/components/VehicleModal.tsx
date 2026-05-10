@@ -2,7 +2,16 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { apiUrl } from "@/lib/api";
 import { Vehicle } from "@/types";
+
+/** Ligne renvoyée par GET /api/v1/lld-catalog (catalogue public). */
+interface LldStorefrontItem {
+  code: string;
+  label: string;
+  surcout_mensuel_ht: number;
+  enabled: boolean;
+}
 
 interface VehicleModalProps {
   vehicle: Vehicle | null;
@@ -22,6 +31,15 @@ function resolveApiBase(): string {
   return pub ? pub.replace(/\/$/, "") : "";
 }
 
+/** Formate un surcoût catalogue pour la fiche véhicule (FR). */
+function formatLldSurchargeHt(ht: number): string {
+  const formatted = ht.toLocaleString("fr-FR", {
+    minimumFractionDigits: ht % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+  return `+${formatted} €/mois HT`;
+}
+
 export default function VehicleModal({
   vehicle: v,
   onClose,
@@ -31,6 +49,8 @@ export default function VehicleModal({
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [activePhoto, setActivePhoto] = useState<string | null>(null);
+  const [lldCatalog, setLldCatalog] = useState<LldStorefrontItem[] | null>(null);
+  const [lldCatalogLoading, setLldCatalogLoading] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -59,6 +79,33 @@ export default function VehicleModal({
       .catch(() => setPhotos([]))
       .finally(() => setGalleryLoading(false));
   }, [v]);
+
+  useEffect(() => {
+    if (!v?.lld) {
+      setLldCatalog(null);
+      return;
+    }
+    let cancelled = false;
+    setLldCatalogLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(apiUrl("/api/v1/lld-catalog"), { cache: "no-store" });
+        const data = (await res.json()) as { items?: LldStorefrontItem[] };
+        if (!res.ok || !Array.isArray(data.items)) {
+          if (!cancelled) setLldCatalog(null);
+          return;
+        }
+        if (!cancelled) setLldCatalog(data.items);
+      } catch {
+        if (!cancelled) setLldCatalog(null);
+      } finally {
+        if (!cancelled) setLldCatalogLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [v?.id, v?.lld]);
 
   if (!v) return null;
 
@@ -481,8 +528,8 @@ export default function VehicleModal({
             </div>
           </div>
 
-          {/* LLD Options */}
-          {v.lld && v.options.length > 0 && (
+          {/* Options LLD — catalogue serveur (4 options) ; repli sur les options véhicule historiques si besoin */}
+          {v.lld && (
             <div style={{ marginBottom: "1.5rem" }}>
               <h4
                 style={{
@@ -496,42 +543,81 @@ export default function VehicleModal({
               >
                 Options LLD disponibles
               </h4>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: ".6rem",
-                }}
-              >
-                {v.options.map((o) => (
-                  <div
-                    key={o.n}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      background: "var(--off)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      padding: ".55rem .9rem",
-                      fontSize: ".82rem",
-                    }}
-                  >
-                    <span style={{ fontWeight: 500, color: "var(--navy)" }}>
-                      {o.n}
-                    </span>
-                    <span
+              {lldCatalogLoading ? (
+                <p style={{ fontSize: ".82rem", color: "var(--muted)" }}>Chargement des options…</p>
+              ) : null}
+              {!lldCatalogLoading && lldCatalog && lldCatalog.length > 0 ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: ".6rem",
+                  }}
+                >
+                  {lldCatalog.map((o) => (
+                    <div
+                      key={o.code}
                       style={{
-                        fontWeight: 600,
-                        color: "#185FA5",
-                        fontSize: ".78rem",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        background: o.enabled ? "var(--off)" : "rgba(15,23,42,.04)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "8px",
+                        padding: ".55rem .9rem",
+                        fontSize: ".82rem",
+                        opacity: o.enabled ? 1 : 0.75,
                       }}
                     >
-                      {o.p}
-                    </span>
-                  </div>
-                ))}
-              </div>
+                      <span style={{ fontWeight: 500, color: "var(--navy)" }}>{o.label}</span>
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          color: o.enabled ? "#185FA5" : "var(--muted)",
+                          fontSize: ".78rem",
+                          textAlign: "right",
+                          marginLeft: ".5rem",
+                        }}
+                      >
+                        {o.enabled ? formatLldSurchargeHt(o.surcout_mensuel_ht) : "Non proposé"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {!lldCatalogLoading && (!lldCatalog || lldCatalog.length === 0) && v.options.length > 0 ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: ".6rem",
+                  }}
+                >
+                  {v.options.map((o) => (
+                    <div
+                      key={o.n}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        background: "var(--off)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "8px",
+                        padding: ".55rem .9rem",
+                        fontSize: ".82rem",
+                      }}
+                    >
+                      <span style={{ fontWeight: 500, color: "var(--navy)" }}>{o.n}</span>
+                      <span style={{ fontWeight: 600, color: "#185FA5", fontSize: ".78rem" }}>{o.p}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {!lldCatalogLoading && (!lldCatalog || lldCatalog.length === 0) && v.options.length === 0 ? (
+                <p style={{ fontSize: ".82rem", color: "var(--muted)" }}>
+                  Détail des options indisponible pour le moment.
+                </p>
+              ) : null}
             </div>
           )}
 

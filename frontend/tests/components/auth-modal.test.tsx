@@ -36,7 +36,7 @@ describe("AuthModal", () => {
       fireEvent.click(screen.getByRole("button", { name: /se connecter/i }));
 
       await waitFor(() => {
-        expect(pushMock).toHaveBeenCalledWith("/espace-client");
+        expect(pushMock).toHaveBeenCalledWith("/");
       });
     });
 

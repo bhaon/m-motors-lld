@@ -19,6 +19,11 @@ class DossierStatusEnum(str, enum.Enum):
     depose = "depose"
     en_instruction = "en_instruction"
     valide = "valide"
+    en_signature = "en_signature"
+    attente_livraison = "attente_livraison"
+    livraison_planifiee = "livraison_planifiee"
+    contrat_en_cours = "contrat_en_cours"
+    cloture = "cloture"
     rejete = "rejete"
     annule = "annule"
 
@@ -54,6 +59,9 @@ class Dossier(Base):
     validated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # US-06-10 — livraison planifiée par le gestionnaire après signature contrat
+    livraison_prevue_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -73,6 +81,17 @@ class Dossier(Base):
     )
     options_lld_rows: Mapped[list["OptionLld"]] = relationship(
         "OptionLld",
+        back_populates="dossier",
+        cascade="all, delete-orphan",
+    )
+    contrat: Mapped[Optional["DossierContrat"]] = relationship(
+        "DossierContrat",
+        back_populates="dossier",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    lld_avenants: Mapped[list["LldAvenant"]] = relationship(
+        "LldAvenant",
         back_populates="dossier",
         cascade="all, delete-orphan",
     )
@@ -109,3 +128,5 @@ class DossierHistorique(Base):
 from app.models.vehicle import Vehicle  # noqa: E402, F401
 from app.models.user import User  # noqa: E402, F401
 from app.models.option_lld import OptionLld  # noqa: E402, F401
+from app.models.dossier_contract import DossierContrat  # noqa: E402, F401
+from app.models.lld_avenant import LldAvenant  # noqa: E402, F401

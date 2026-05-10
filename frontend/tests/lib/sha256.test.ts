@@ -13,6 +13,10 @@ describe("sha256HexToBase64", () => {
   it("retourne une chaîne vide pour un hex vide", () => {
     expect(sha256HexToBase64("")).toBe("");
   });
+
+  it("rejette une empreinte hex de longueur impaire", () => {
+    expect(() => sha256HexToBase64("a")).toThrow(/invalide/);
+  });
 });
 
 describe("computeFileSha256Hex", () => {

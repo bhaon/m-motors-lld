@@ -144,7 +144,7 @@ export default function AuthModal({ open, onClose, defaultTab, onAuthenticated }
       }
       onAuthenticated?.();
       onClose();
-      router.push("/espace-client");
+      router.push("/");
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : "Email ou mot de passe invalide.");
     } finally {

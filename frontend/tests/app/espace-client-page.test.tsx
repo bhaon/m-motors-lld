@@ -1,4 +1,3 @@
-import { render, screen } from "@testing-library/react";
 import EspaceClientPage from "@/app/espace-client/page";
 
 const headersMock = jest.fn();
@@ -18,11 +17,6 @@ jest.mock("next/navigation", () => ({
   }),
 }));
 
-jest.mock("@/app/espace-client/ProfileManagementClient", () => ({
-  __esModule: true,
-  default: ({ initialUser }: { initialUser: { email: string } }) => <div>Profil {initialUser.email}</div>,
-}));
-
 describe("EspaceClientPage", () => {
   const originalEnv = { ...process.env };
   const fetchMock = jest.fn();
@@ -38,16 +32,15 @@ describe("EspaceClientPage", () => {
     process.env = originalEnv;
   });
 
-  it("rend la page quand la session est valide", async () => {
+  it("redirige vers l'accueil avec parametre profil quand la session est valide", async () => {
     headersMock.mockResolvedValue({
       get: () => "access_token=jwt",
     });
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ email: "ok@example.com" }) });
 
-    const tree = await EspaceClientPage();
-    render(tree);
+    await EspaceClientPage();
 
-    expect(screen.getByText(/profil ok@example.com/i)).toBeInTheDocument();
+    expect(redirectMock).toHaveBeenCalledWith("/?profil=1");
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/v1\/auth\/me$/),
       expect.objectContaining({
@@ -56,7 +49,6 @@ describe("EspaceClientPage", () => {
         headers: { cookie: "access_token=jwt" },
       }),
     );
-    expect(redirectMock).not.toHaveBeenCalled();
   });
 
   it("redirige vers l'accueil avec parametre connexion quand la session est invalide", async () => {

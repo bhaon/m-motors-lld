@@ -4,12 +4,17 @@ import type { DossierStatus } from "@/types";
 
 describe("StatusBadge", () => {
   it.each<[DossierStatus, string]>([
-    ["brouillon",      "Brouillon"],
-    ["depose",         "Déposé"],
-    ["en_instruction", "En instruction"],
-    ["valide",         "Validé"],
-    ["rejete",         "Rejeté"],
-    ["annule",         "Annulé"],
+    ["brouillon",          "Brouillon"],
+    ["depose",             "Déposé"],
+    ["en_instruction",     "En instruction"],
+    ["valide",             "Validé"],
+    ["en_signature",       "En signature"],
+    ["attente_livraison",  "Attente de livraison"],
+    ["livraison_planifiee", "Livraison planifiée"],
+    ["contrat_en_cours", "Contrat en cours"],
+    ["cloture", "Clôturé"],
+    ["rejete",             "Rejeté"],
+    ["annule",             "Annulé"],
   ])("affiche le bon libellé français pour le statut « %s »", (status, label) => {
     render(<StatusBadge status={status} />);
     expect(screen.getByText(label)).toBeInTheDocument();
@@ -37,5 +42,10 @@ describe("StatusBadge", () => {
     const bgRejete = (rejete as HTMLElement).style.background;
 
     expect(bgValide).not.toBe(bgRejete);
+  });
+
+  it("affiche le statut brut si la valeur n'est pas reconnue (fallback)", () => {
+    render(<StatusBadge status={"inconnu_statut" as DossierStatus} />);
+    expect(screen.getByText("inconnu_statut")).toBeInTheDocument();
   });
 });
