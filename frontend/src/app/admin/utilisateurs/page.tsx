@@ -7,6 +7,7 @@ import { validateAdminPassword } from "@/lib/validation";
 
 type Role = "client" | "gestionnaire" | "superviseur" | "admin";
 
+// Interface pour les utilisateurs administrateurs
 interface AdminUser {
   id: number;
   email: string;
@@ -18,6 +19,7 @@ interface AdminUser {
   created_at: string | null;
 }
 
+// Interface pour le formulaire de création d'utilisateur
 interface CreateForm {
   email: string;
   password: string;
@@ -26,6 +28,7 @@ interface CreateForm {
   role: Role;
 }
 
+// Formulaire initial
 const INITIAL_FORM: CreateForm = {
   email: "",
   password: "",
@@ -34,6 +37,7 @@ const INITIAL_FORM: CreateForm = {
   role: "superviseur",
 };
 
+// Configuration des rôles
 const ROLE_CONFIG: Record<Role, { label: string; color: string; bg: string }> = {
   client:       { label: "Client",       color: "#374151", bg: "#f3f4f6" },
   gestionnaire: { label: "Gestionnaire", color: "#1d4ed8", bg: "#dbeafe" },
@@ -41,9 +45,11 @@ const ROLE_CONFIG: Record<Role, { label: string; color: string; bg: string }> = 
   admin:        { label: "Administrateur", color: "#b91c1c", bg: "#fee2e2" },
 };
 
+// Liste de tous les rôles
 const ALL_ROLES: Role[] = ["client", "gestionnaire", "superviseur", "admin"];
 
 
+// Composant pour afficher le badge du rôle
 function RoleBadge({ role }: { role: Role }) {
   const cfg = ROLE_CONFIG[role] ?? ROLE_CONFIG.client;
   return (
@@ -64,17 +70,19 @@ function RoleBadge({ role }: { role: Role }) {
   );
 }
 
+// Fonction pour formater la date
 function formatDate(v: string | null): string {
   if (!v) return "—";
   return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(v));
 }
 
+// Page d'administration des utilisateurs
 export default function AdminUtilisateursPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Création
+  // Création d'utilisateur
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<CreateForm>(INITIAL_FORM);
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof CreateForm, string>>>({});
@@ -82,17 +90,18 @@ export default function AdminUtilisateursPage() {
   const [createSuccess, setCreateSuccess] = useState("");
   const [createError, setCreateError] = useState("");
 
-  // Changement de rôle
+  // Changement de rôle d'un utilisateur
   const [pendingRole, setPendingRole] = useState<Record<number, Role>>({});
   const [savingRole, setSavingRole] = useState<number | null>(null);
   const [roleSuccess, setRoleSuccess] = useState<Record<number, string>>({});
   const [roleError, setRoleError] = useState("");
 
-  // Suppression
+  // Suppression d'un utilisateur
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
+  // Fonction pour charger les utilisateurs
   async function loadUsers() {
     setLoading(true);
     setError("");
@@ -115,9 +124,11 @@ export default function AdminUtilisateursPage() {
 
   useEffect(() => { loadUsers(); }, []);
 
-  // ── Création ──────────────────────────────────────────────────────────────
+  // ── Création d'un utilisateur ──────────────────────────────────────────────────────
 
+  // Fonction pour valider le formulaire de création d'utilisateur
   function validateForm(): boolean {
+    // Initialisation des erreurs
     const errs: Partial<Record<keyof CreateForm, string>> = {};
     if (!form.email.trim() || !form.email.includes("@")) errs.email = "Email invalide.";
     if (!form.first_name.trim()) errs.first_name = "Prénom obligatoire.";
@@ -128,6 +139,7 @@ export default function AdminUtilisateursPage() {
     return Object.keys(errs).length === 0;
   }
 
+  // Fonction pour créer un utilisateur
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setCreateError("");
@@ -157,12 +169,15 @@ export default function AdminUtilisateursPage() {
     }
   }
 
-  // ── Changement de rôle ────────────────────────────────────────────────────
+  // ── Changement de rôle d'un utilisateur ──────────────────────────────────────────────────────
 
+  // Fonction pour enregistrer le nouveau rôle d'un utilisateur
   async function handleSaveRole(userId: number) {
+    // Récupération du nouveau rôle
     const newRole = pendingRole[userId];
     if (!newRole) return;
     setSavingRole(userId);
+    // Enregistrement du nouveau rôle
     try {
       const res = await fetch(apiUrl(`/api/v1/admin/users/${userId}/role`), {
         method: "PATCH",
@@ -170,10 +185,12 @@ export default function AdminUtilisateursPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: newRole }),
       });
+      // Vérification de la réponse
       if (!res.ok) {
         const p = (await res.json().catch(() => ({}))) as { detail?: string };
         throw new Error(p.detail || "Erreur lors de la mise à jour.");
       }
+      // Mise à jour des utilisateurs
       setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
       setPendingRole((prev) => { const n = { ...prev }; delete n[userId]; return n; });
       setRoleSuccess((prev) => ({ ...prev, [userId]: "Rôle mis à jour." }));
@@ -185,8 +202,9 @@ export default function AdminUtilisateursPage() {
     }
   }
 
-  // ── Suppression ───────────────────────────────────────────────────────────
+  // ── Suppression d'un utilisateur ──────────────────────────────────────────────────────
 
+  // Fonction pour supprimer un utilisateur
   async function handleDelete(userId: number) {
     setDeleting(userId);
     try {
@@ -207,6 +225,7 @@ export default function AdminUtilisateursPage() {
     }
   }
 
+  // Styles pour les inputs
   const inputStyle: React.CSSProperties = {
     width: "100%",
     padding: "8px 12px",
@@ -216,6 +235,7 @@ export default function AdminUtilisateursPage() {
     boxSizing: "border-box",
   };
 
+  // Styles pour les labels
   const labelStyle: React.CSSProperties = {
     display: "block",
     fontWeight: 600,
@@ -224,9 +244,11 @@ export default function AdminUtilisateursPage() {
     marginBottom: 3,
   };
 
+  // Fonction pour compter les utilisateurs par rôle
   const countByRole = (r: Role) => users.filter((u) => u.role === r).length;
 
   return (
+    // Page d'administration des utilisateurs
     <>
       <Navbar />
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem 1.5rem" }}>
