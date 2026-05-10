@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import BackofficeDossiersPage from "@/app/backoffice/dossiers/page";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -134,6 +134,12 @@ describe("BackofficeDossiersPage — affichage des données", () => {
     await waitFor(() => expect(screen.getByText(/42 dossiers trouvés/i)).toBeInTheDocument());
   });
 
+  it("affiche le compteur au singulier lorsqu'un seul dossier correspond", async () => {
+    mockFetch(makeList([makeItem()], 1));
+    render(<BackofficeDossiersPage />);
+    await waitFor(() => expect(screen.getByText(/1 dossier trouvé/i)).toBeInTheDocument());
+  });
+
   it("affiche un message vide quand aucun dossier", async () => {
     mockFetch(makeList([], 0));
     render(<BackofficeDossiersPage />);
@@ -262,6 +268,24 @@ describe("BackofficeDossiersPage — pagination", () => {
         expect.stringContaining("page=2"),
         expect.anything(),
       );
+    });
+  });
+
+  it("clique sur Précédent depuis la page 2 envoie page=1", async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ total: 45, page: 1, page_size: 20, items: [makeItem()] }) })
+      .mockResolvedValue({ ok: true, json: async () => ({ total: 45, page: 2, page_size: 20, items: [makeItem({ id: 2 })] }) });
+
+    render(<BackofficeDossiersPage />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /suivant/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /suivant/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /précédent/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: /précédent/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("page=1"), expect.anything());
     });
   });
 });
@@ -413,6 +437,97 @@ describe("BackofficeDossiersPage — planifier livraison (US-06-10)", () => {
           body: expect.stringContaining("livraison_prevue_at"),
         }),
       ),
+    );
+  });
+
+  it("affiche un tiret en colonne Action pour un dossier en livraison planifiée", async () => {
+    mockFetch(makeList([makeItem({ status: "livraison_planifiee", reference: "DOS-PLAN-1" })]));
+    render(<BackofficeDossiersPage />);
+    const link = await screen.findByRole("link", { name: /consulter le dossier dos-plan-1/i });
+    const row = link.closest("tr");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getAllByText("—").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ferme la modale au clic sur le fond ou à la touche Escape", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => makeList([makeItem({ status: "attente_livraison", reference: "DOS-ESC" })]),
+    });
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-esc/i }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /planifier une livraison/i });
+    const overlay = dialog.parentElement;
+    expect(overlay).toBeTruthy();
+
+    fireEvent.click(overlay as HTMLElement);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /planifier une livraison/i })).not.toBeInTheDocument());
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-esc/i }),
+    );
+    const dialog2 = screen.getByRole("dialog", { name: /planifier une livraison/i });
+    fireEvent.keyDown(dialog2.parentElement as HTMLElement, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /planifier une livraison/i })).not.toBeInTheDocument());
+  });
+
+  it("ferme la modale via Annuler", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => makeList([makeItem({ status: "attente_livraison", reference: "DOS-CAN" })]),
+    });
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-can/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^annuler$/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /planifier une livraison/i })).not.toBeInTheDocument());
+  });
+
+  it("affiche le détail d'erreur quand l'API renvoie detail sous forme de tableau (422)", async () => {
+    const item = makeItem({ status: "attente_livraison", id: 101, reference: "DOS-422" });
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([item]) })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ detail: [{ type: "value_error", loc: [], msg: "La date doit être dans le futur." }] }),
+      });
+
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-422/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/date et heure de livraison/i), {
+      target: { value: "2099-01-01T12:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^confirmer$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/futur/i),
+    );
+  });
+
+  it("affiche une erreur générique si le POST échoue sans exception Error", async () => {
+    const item = makeItem({ status: "attente_livraison", id: 102, reference: "DOS-NA" });
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([item]) })
+      .mockRejectedValueOnce("boom");
+
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /planifier une livraison pour le dossier dos-na/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/date et heure de livraison/i), {
+      target: { value: "2099-02-01T12:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^confirmer$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/inattendue/i),
     );
   });
 });
