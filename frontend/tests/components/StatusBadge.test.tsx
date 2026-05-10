@@ -11,6 +11,7 @@ describe("StatusBadge", () => {
     ["en_signature",       "En signature"],
     ["attente_livraison",  "Attente de livraison"],
     ["livraison_planifiee", "Livraison planifiée"],
+    ["cloture", "Clôturé"],
     ["rejete",             "Rejeté"],
     ["annule",             "Annulé"],
   ])("affiche le bon libellé français pour le statut « %s »", (status, label) => {

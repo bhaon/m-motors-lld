@@ -6,6 +6,7 @@
  * US-06-01 : filtres (statut, type, dates), tri, pagination.
  * US-06-02 : bouton "Prendre en charge" sur les dossiers au statut "Déposé".
  * US-06-10 : bouton "Planifier une livraison" + modale date/heure pour ``attente_livraison``.
+ * US-06-09 : bouton "Livraison" pour ``livraison_planifiee`` → clôture + début LLD.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -23,6 +24,7 @@ type DossierStatus =
   | "en_signature"
   | "attente_livraison"
   | "livraison_planifiee"
+  | "cloture"
   | "rejete"
   | "annule";
 type DossierType = "achat" | "lld";
@@ -57,6 +59,7 @@ const ALL_STATUTS: { value: DossierStatus; label: string; color: string; bg: str
   { value: "en_signature",       label: "En signature",            color: "#0e7490", bg: "#cffafe" },
   { value: "attente_livraison",  label: "Attente de livraison",    color: "#0369a1", bg: "#dbeafe" },
   { value: "livraison_planifiee", label: "Livraison planifiée",    color: "#15803d", bg: "#dcfce7" },
+  { value: "cloture",             label: "Clôturé",               color: "#4b5563", bg: "#e5e7eb" },
   { value: "rejete",             label: "Rejeté",                  color: "#b91c1c", bg: "#fee2e2" },
   { value: "annule",             label: "Annulé",                  color: "#6b7280", bg: "#f3f4f6" },
 ];
@@ -138,6 +141,8 @@ export default function BackofficeDossiersPage() {
   const [planModal, setPlanModal] = useState<DossierBoItem | null>(null);
   const [planDateTime, setPlanDateTime] = useState("");
   const [planSubmitting, setPlanSubmitting] = useState(false);
+  /** US-06-09 — confirmation livraison effective */
+  const [effectuerId, setEffectuerId] = useState<number | null>(null);
 
   const fetchDossiers = useCallback(async (f: FilterState, p: number) => {
     setLoading(true);
@@ -210,6 +215,38 @@ export default function BackofficeDossiersPage() {
       setError(e instanceof Error ? e.message : "Erreur inattendue.");
     } finally {
       setPlanSubmitting(false);
+    }
+  }
+
+  /** US-06-09 — Enregistre la livraison : clôture le dossier (LLD : début contrat à la date prévue, 36 mois). */
+  async function handleEffectuerLivraison(dossier: DossierBoItem) {
+    setEffectuerId(dossier.id);
+    setError("");
+    try {
+      const res = await fetch(
+        `${apiBase()}/api/v1/dossiers/backoffice/${dossier.id}/effectuer-livraison`,
+        { method: "POST", credentials: "include" },
+      );
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(payload.detail ?? "Erreur lors de l'enregistrement de la livraison.");
+      }
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((item) =>
+                item.id === dossier.id ? { ...item, status: "cloture" as DossierStatus } : item,
+              ),
+            }
+          : prev,
+      );
+      setToast(`Livraison enregistrée — dossier ${dossier.reference} clôturé.`);
+      setTimeout(() => setToast(""), 3500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur inattendue.");
+    } finally {
+      setEffectuerId(null);
     }
   }
 
@@ -511,7 +548,7 @@ export default function BackofficeDossiersPage() {
                             </span>
                           ) : "—"}
                         </td>
-                        {/* US-06-02 / US-06-10 — Actions */}
+                        {/* US-06-02 / US-06-10 / US-06-09 — Actions */}
                         <td style={{ padding: "10px 14px" }}>
                           {d.status === "depose" ? (
                             <button
@@ -555,6 +592,26 @@ export default function BackofficeDossiersPage() {
                               }}
                             >
                               Planifier une livraison
+                            </button>
+                          ) : d.status === "livraison_planifiee" ? (
+                            <button
+                              type="button"
+                              aria-label={`Enregistrer la livraison du dossier ${d.reference}`}
+                              disabled={effectuerId === d.id}
+                              onClick={() => void handleEffectuerLivraison(d)}
+                              style={{
+                                padding: "5px 12px",
+                                background: effectuerId === d.id ? "#94a3b8" : "#7c3aed",
+                                color: "#fff",
+                                border: 0,
+                                borderRadius: 6,
+                                fontSize: ".78rem",
+                                fontWeight: 700,
+                                cursor: effectuerId === d.id ? "not-allowed" : "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {effectuerId === d.id ? "…" : "Livraison"}
                             </button>
                           ) : (
                             <span style={{ fontSize: ".78rem", color: "var(--muted)" }}>—</span>

@@ -440,10 +440,49 @@ describe("BackofficeDossiersPage — planifier livraison (US-06-10)", () => {
     );
   });
 
-  it("affiche un tiret en colonne Action pour un dossier en livraison planifiée", async () => {
-    mockFetch(makeList([makeItem({ status: "livraison_planifiee", reference: "DOS-PLAN-1" })]));
+  it("affiche le bouton Livraison pour un dossier en livraison planifiée (US-06-09)", async () => {
+    mockFetch(makeList([makeItem({ status: "livraison_planifiee", reference: "DOS-LIV-609" })]));
     render(<BackofficeDossiersPage />);
-    const link = await screen.findByRole("link", { name: /consulter le dossier dos-plan-1/i });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /enregistrer la livraison du dossier dos-liv-609/i }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("appelle POST effectuer-livraison au clic sur Livraison", async () => {
+    const item = makeItem({ status: "livraison_planifiee", id: 77, reference: "DOS-EFF-77" });
+    const postEff = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 77,
+        reference: "DOS-EFF-77",
+        status: "cloture",
+        date_debut_contrat: "2026-08-01",
+        duree_mois: 36,
+      }),
+    });
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeList([item]) })
+      .mockImplementation(postEff);
+
+    render(<BackofficeDossiersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /enregistrer la livraison du dossier dos-eff-77/i }),
+    );
+
+    await waitFor(() =>
+      expect(postEff).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/dossiers/backoffice/77/effectuer-livraison"),
+        expect.objectContaining({ method: "POST", credentials: "include" }),
+      ),
+    );
+  });
+
+  it("affiche un tiret en colonne Action pour un dossier clôturé", async () => {
+    mockFetch(makeList([makeItem({ status: "cloture", reference: "DOS-CLOT-1" })]));
+    render(<BackofficeDossiersPage />);
+    const link = await screen.findByRole("link", { name: /consulter le dossier dos-clot-1/i });
     const row = link.closest("tr");
     expect(row).toBeTruthy();
     expect(within(row as HTMLElement).getAllByText("—").length).toBeGreaterThanOrEqual(1);

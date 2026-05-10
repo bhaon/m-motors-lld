@@ -178,6 +178,16 @@ class DossierPlanifierLivraisonOut(BaseModel):
     livraison_lieu: str
 
 
+class DossierEffectuerLivraisonOut(BaseModel):
+    """Réponse après confirmation de livraison effective (US-06-09) : statut clôturé, dates LLD."""
+
+    id: int
+    reference: str
+    status: str
+    date_debut_contrat: date | None = None
+    duree_mois: int | None = None
+
+
 class DossierDetailOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

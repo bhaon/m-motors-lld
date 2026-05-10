@@ -4,6 +4,7 @@ from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 import logging
 from typing import cast
+from zoneinfo import ZoneInfo
 
 from typing import Annotated
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, status
@@ -35,6 +36,7 @@ from app.schemas.dossier import (
     LldOptionsPricingOut,
     DossierPlanifierLivraisonIn,
     DossierPlanifierLivraisonOut,
+    DossierEffectuerLivraisonOut,
     DossierListItemOut,
     LivraisonInfoOut,
     DossierRejeterIn,
@@ -85,6 +87,9 @@ logger = logging.getLogger(__name__)
 
 # US-06-10 — lieu de remise véhicule (fixe produit).
 LIEU_LIVRAISON_DEFAUT = "Garage Gaudin"
+
+# US-06-09 — durée contractuelle LLD après livraison effective (3 ans).
+LLD_DUREE_MOIS_APRES_LIVRAISON = 36
 
 
 def _resolve_user_from_cookie(access_token: str | None, db: DbSession) -> User:
@@ -157,6 +162,12 @@ def _utc_safe(dt: datetime | None) -> datetime | None:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+def _date_livraison_calendar_fr(dt: datetime) -> date:
+    """Jour calendaire en Europe/Paris pour ancrer le début de contrat LLD à la date de livraison."""
+    aware = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return aware.astimezone(ZoneInfo("Europe/Paris")).date()
 
 
 def _livraison_info_out(dossier: Dossier) -> LivraisonInfoOut | None:
@@ -640,6 +651,94 @@ def planifier_livraison(
     )
 
 
+@router.post(
+    "/backoffice/{dossier_id}/effectuer-livraison",
+    response_model=DossierEffectuerLivraisonOut,
+    summary="US-06-09 — Livraison effectuée : clôture du dossier et début du LLD",
+)
+def effectuer_livraison(
+    dossier_id: int,
+    db: DbSession,
+    request: Request,
+    access_token: str | None = Cookie(default=None),
+) -> DossierEffectuerLivraisonOut:
+    """Passe le dossier en ``cloture``. Pour un LLD : ``date_debut_contrat`` = jour de livraison, ``duree_mois`` = 36."""
+    user = _resolve_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.client))
+        .filter(Dossier.id == dossier_id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+
+    if dossier.status != DossierStatusEnum.livraison_planifiee:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La livraison ne peut être enregistrée que pour un dossier au statut « livraison planifiée ».",
+        )
+    if dossier.livraison_prevue_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Aucune date de livraison planifiée : impossible d'enregistrer la livraison.",
+        )
+
+    old_status = dossier.status.value
+    dossier.status = DossierStatusEnum.cloture
+
+    date_debut: date | None = None
+    duree: int | None = None
+    if dossier.type == DossierTypeEnum.lld:
+        date_debut = _date_livraison_calendar_fr(dossier.livraison_prevue_at)
+        duree = LLD_DUREE_MOIS_APRES_LIVRAISON
+        dossier.date_debut_contrat = date_debut
+        dossier.duree_mois = duree
+
+    db.add(
+        DossierHistorique(
+            dossier_id=dossier.id,
+            ancien_status=old_status,
+            nouveau_status=DossierStatusEnum.cloture.value,
+            commentaire=(
+                f"Livraison effectuée par {user.first_name} {user.last_name} ({user.email})"
+                + (f" — début contrat LLD le {date_debut} ({duree} mois)." if date_debut and duree else ".")
+            ),
+            operateur_id=user.id,
+        )
+    )
+
+    audit_service.record(
+        db,
+        action=audit_service.DOSSIER_LIVRAISON_EFFECTUEE,
+        entity_type="dossier",
+        entity_id=dossier.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state={"status": old_status},
+        after_state={
+            "status": DossierStatusEnum.cloture.value,
+            "date_debut_contrat": date_debut.isoformat() if date_debut else None,
+            "duree_mois": duree,
+        },
+    )
+
+    db.commit()
+    db.refresh(dossier)
+
+    _notify_status_change(dossier, dossier.client.email)
+
+    return DossierEffectuerLivraisonOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        status=dossier.status.value,
+        date_debut_contrat=dossier.date_debut_contrat,
+        duree_mois=dossier.duree_mois,
+    )
+
+
 @router.get(
     "/backoffice/{dossier_id}/pieces/{type_piece}/download-url",
     response_model=PieceDownloadUrlOut,
@@ -808,10 +907,14 @@ def valider_dossier(
     if not dossier:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
 
-    if dossier.status in (DossierStatusEnum.attente_livraison, DossierStatusEnum.livraison_planifiee):
+    if dossier.status in (
+        DossierStatusEnum.attente_livraison,
+        DossierStatusEnum.livraison_planifiee,
+        DossierStatusEnum.cloture,
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Le dossier est déjà signé ou en livraison : validation impossible.",
+            detail="Le dossier est déjà signé, en livraison ou clôturé : validation impossible.",
         )
 
     if dossier.status == DossierStatusEnum.valide:
@@ -1028,6 +1131,7 @@ def list_my_contrats(
                     DossierStatusEnum.valide,
                     DossierStatusEnum.attente_livraison,
                     DossierStatusEnum.livraison_planifiee,
+                    DossierStatusEnum.cloture,
                 )
             ),
         )

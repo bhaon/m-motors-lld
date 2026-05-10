@@ -294,6 +294,7 @@ _STATUS_LABELS: dict[str, str] = {
     "en_signature": "En signature",
     "attente_livraison": "Attente de livraison",
     "livraison_planifiee": "Livraison planifiée",
+    "cloture": "Clôturé",
     "rejete": "Rejeté",
     "annule": "Annulé",
 }

@@ -22,6 +22,7 @@ class DossierStatusEnum(str, enum.Enum):
     en_signature = "en_signature"
     attente_livraison = "attente_livraison"
     livraison_planifiee = "livraison_planifiee"
+    cloture = "cloture"
     rejete = "rejete"
     annule = "annule"
 
