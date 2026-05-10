@@ -164,6 +164,8 @@ export default function Navbar() {
   const isGestionnaire = role !== null && GESTIONNAIRE_ROLES.has(role);
   const isAdmin = role === "admin";
   const isSuperviseurReporting = role === "superviseur" || role === "admin";
+  /** Liens espace client masqués uniquement pour le rôle gestionnaire (staff terrain). */
+  const showClientPortfolioLinks = role !== "gestionnaire";
 
   /**
    * Vérifie si l'utilisateur est connecté afin d'afficher la pastille profil.
@@ -435,45 +437,49 @@ export default function Navbar() {
                   Profile
                 </button>
 
-                <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+                {showClientPortfolioLinks ? (
+                  <>
+                    <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
 
-                <Link
-                  href="/mes-dossiers"
-                  role="menuitem"
-                  onClick={() => setIsMenuOpen(false)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "12px 14px",
-                    textDecoration: "none",
-                    color: "#0f172a",
-                    fontWeight: 600,
-                  }}
-                >
-                  <FolderIcon />
-                  Mes dossiers
-                </Link>
+                    <Link
+                      href="/mes-dossiers"
+                      role="menuitem"
+                      onClick={() => setIsMenuOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "12px 14px",
+                        textDecoration: "none",
+                        color: "#0f172a",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <FolderIcon />
+                      Mes dossiers
+                    </Link>
 
-                <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
+                    <div style={{ height: 1, background: "rgba(15,23,42,.08)" }} />
 
-                <Link
-                  href="/mes-contrats"
-                  role="menuitem"
-                  onClick={() => setIsMenuOpen(false)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "12px 14px",
-                    textDecoration: "none",
-                    color: "#0f172a",
-                    fontWeight: 600,
-                  }}
-                >
-                  <ContractIcon />
-                  Mes contrats
-                </Link>
+                    <Link
+                      href="/mes-contrats"
+                      role="menuitem"
+                      onClick={() => setIsMenuOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "12px 14px",
+                        textDecoration: "none",
+                        color: "#0f172a",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <ContractIcon />
+                      Mes contrats
+                    </Link>
+                  </>
+                ) : null}
 
                 {isGestionnaire && (
                   <>

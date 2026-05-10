@@ -34,7 +34,11 @@ describe("Navbar", () => {
     process.env.NODE_ENV = "production";
     jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ first_name: "Jean", last_name: "Durand" }),
+      json: async () => ({
+        first_name: "Jean",
+        last_name: "Durand",
+        role: "client",
+      }),
     });
     render(<Navbar />);
 
@@ -46,6 +50,10 @@ describe("Navbar", () => {
     expect(screen.getByRole("menu", { name: /menu utilisateur/i })).toBeInTheDocument();
     const profileItem = screen.getByRole("menuitem", { name: "Profile" });
     const dossiersItem = screen.getByRole("menuitem", { name: "Mes dossiers" });
+    expect(screen.getByRole("menuitem", { name: "Mes contrats" })).toHaveAttribute(
+      "href",
+      "/mes-contrats",
+    );
     expect(profileItem.tagName).toBe("BUTTON");
     expect(dossiersItem).toHaveAttribute("href", "/mes-dossiers");
     expect(screen.getByRole("menuitem", { name: "Déconnexion" })).toBeInTheDocument();
@@ -71,7 +79,11 @@ describe("Navbar", () => {
     process.env.NODE_ENV = "production";
     jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ first_name: "Jean", last_name: "Durand" }),
+      json: async () => ({
+        first_name: "Jean",
+        last_name: "Durand",
+        role: "client",
+      }),
     });
     render(<Navbar />);
 
@@ -103,7 +115,11 @@ describe("Navbar", () => {
       // /me
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ first_name: "Jean", last_name: "Durand" }),
+        json: async () => ({
+          first_name: "Jean",
+          last_name: "Durand",
+          role: "client",
+        }),
       })
       // /logout
       .mockResolvedValueOnce({ ok: true });
@@ -146,7 +162,11 @@ describe("Navbar", () => {
     process.env.NODE_ENV = "production";
     jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ first_name: "Jean", last_name: "Durand" }),
+      json: async () => ({
+        first_name: "Jean",
+        last_name: "Durand",
+        role: "client",
+      }),
     });
     render(<Navbar />);
 
@@ -166,7 +186,11 @@ describe("Navbar", () => {
     process.env.NODE_ENV = "production";
     jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ first_name: "Jean", last_name: "Durand" }),
+      json: async () => ({
+        first_name: "Jean",
+        last_name: "Durand",
+        role: "client",
+      }),
     });
     render(<Navbar />);
 
@@ -208,6 +232,8 @@ describe("Navbar", () => {
       "/backoffice/dossiers",
     );
     expect(screen.queryByRole("menuitem", { name: /reporting dossiers/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Mes dossiers" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Mes contrats" })).not.toBeInTheDocument();
   });
 
   it("affiche le lien Reporting dossiers pour un superviseur", async () => {
