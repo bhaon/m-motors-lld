@@ -21,7 +21,7 @@ Le projet est compose de :
 - Langage: `TypeScript`
 - UI: `React`, `Tailwind`
 - Rôle: interface utilisateur, appels API, pages publiques/privées
-
+ 
 ### Backend
 - Framework: `FastAPI`
 - ORM/migrations: `SQLAlchemy`, `Alembic`
