@@ -19,6 +19,8 @@ class DossierStatusEnum(str, enum.Enum):
     depose = "depose"
     en_instruction = "en_instruction"
     valide = "valide"
+    en_signature = "en_signature"
+    attente_livraison = "attente_livraison"
     rejete = "rejete"
     annule = "annule"
 
@@ -76,6 +78,12 @@ class Dossier(Base):
         back_populates="dossier",
         cascade="all, delete-orphan",
     )
+    contrat: Mapped[Optional["DossierContrat"]] = relationship(
+        "DossierContrat",
+        back_populates="dossier",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
 
 class PieceJustificative(Base):
@@ -109,3 +117,4 @@ class DossierHistorique(Base):
 from app.models.vehicle import Vehicle  # noqa: E402, F401
 from app.models.user import User  # noqa: E402, F401
 from app.models.option_lld import OptionLld  # noqa: E402, F401
+from app.models.dossier_contract import DossierContrat  # noqa: E402, F401

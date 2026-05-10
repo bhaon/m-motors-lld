@@ -6,12 +6,14 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
 
-from fastapi import APIRouter, Cookie, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 from jose import JWTError
 
 from app.core.config import settings
 from app.core.deps import DbSession
 from app.core.security import create_access_token, decode_token, hash_password, verify_password
+from app.models.dossier import Dossier, DossierHistorique, DossierStatusEnum
+from app.models.dossier_contract import DossierContrat
 from app.models.user import RoleEnum, User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -32,6 +34,7 @@ from app.schemas.auth import (
     UpdateProfileRequest,
     UpdateProfileResponse,
 )
+from app.services import audit as audit_service
 from app.services.emailing import send_password_reset_email, send_verification_email
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
@@ -333,3 +336,58 @@ def confirm_email(token: str, db: DbSession) -> EmailVerificationResponse:
     user.email_verification_expires_at = None
     db.commit()
     return EmailVerificationResponse(message="Votre email a ete confirme avec succes.")
+
+
+@router.get("/confirm-contract-signature", response_model=EmailVerificationResponse)
+def confirm_contract_signature(token: str, db: DbSession, request: Request) -> EmailVerificationResponse:
+    """Valide le jeton reçu par email et finalise la signature (statut « attente de livraison »)."""
+    token_hash = _hash_email_verification_token(token)
+    ctr = (
+        db.query(DossierContrat)
+        .filter(DossierContrat.signature_token_hash == token_hash)
+        .first()
+    )
+    if not ctr:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lien de signature invalide.")
+
+    now = datetime.now(timezone.utc)
+    if _is_token_expired(ctr.signature_token_expires_at, now):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lien de signature expire.")
+
+    dossier = db.query(Dossier).filter(Dossier.id == ctr.dossier_id).first()
+    if not dossier or dossier.status != DossierStatusEnum.en_signature or ctr.signed_at is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lien de signature invalide.")
+
+    old_status = dossier.status.value
+    dossier.status = DossierStatusEnum.attente_livraison
+    ctr.signed_at = now
+    ctr.signature_token_hash = None
+    ctr.signature_token_sent_at = None
+    ctr.signature_token_expires_at = None
+
+    db.add(
+        DossierHistorique(
+            dossier_id=dossier.id,
+            ancien_status=old_status,
+            nouveau_status=DossierStatusEnum.attente_livraison.value,
+            commentaire="Signature électronique du contrat confirmée via lien email.",
+            operateur_id=None,
+        )
+    )
+    client_user = db.query(User).filter(User.id == dossier.client_id).first()
+    if client_user:
+        audit_service.record(
+            db,
+            action=audit_service.CONTRAT_SIGNE_ELECTRONIQUEMENT,
+            entity_type="dossier",
+            entity_id=dossier.id,
+            operator=client_user,
+            ip_address=request.client.host if request.client else None,
+            before_state={"status": old_status},
+            after_state={
+                "status": DossierStatusEnum.attente_livraison.value,
+                "contract_reference": ctr.reference,
+            },
+        )
+    db.commit()
+    return EmailVerificationResponse(message="Votre signature sur le contrat a ete enregistree.")

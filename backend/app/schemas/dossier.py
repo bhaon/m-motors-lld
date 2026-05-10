@@ -120,6 +120,28 @@ class LldOptionsPatchIn(BaseModel):
     selections: dict[str, bool]
 
 
+class DossierContratSummaryOut(BaseModel):
+    """Résumé du contrat dans le détail dossier (US-06-07)."""
+
+    reference: str
+    signed_at: datetime | None = None
+    can_sign: bool = False
+
+
+class DossierContratContentOut(BaseModel):
+    """Markdown du contrat : réservé au client propriétaire du dossier."""
+
+    reference: str
+    markdown: str
+    signed_at: datetime | None = None
+
+
+class DossierContratSignatureRequestIn(BaseModel):
+    """Corps attendu après validation dans la modale « Signer le contrat »."""
+
+    accepte: bool = True
+
+
 class DossierDetailOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -138,6 +160,7 @@ class DossierDetailOut(BaseModel):
     vehicle: VehicleSummaryOut | None = None
     historique: list[HistoriqueItemOut] = []
     lld_pricing: LldOptionsPricingOut | None = None
+    contrat: DossierContratSummaryOut | None = None
 
 
 # ── US-06-01 : Tableau de bord gestionnaire ───────────────────────────────────

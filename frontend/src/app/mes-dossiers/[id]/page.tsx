@@ -2,7 +2,7 @@
 
 import Navbar from "@/components/Navbar";
 import StatusBadge from "@/components/StatusBadge";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { DossierStatus } from "@/types";
@@ -29,6 +29,12 @@ interface DossierVehicle {
   year: number;
 }
 
+interface DossierContratSummary {
+  reference: string;
+  signed_at?: string | null;
+  can_sign: boolean;
+}
+
 interface DossierDetail {
   id: number;
   reference: string;
@@ -43,6 +49,7 @@ interface DossierDetail {
   can_submit: boolean;
   historique?: HistoriqueItem[];
   lld_pricing?: LldPricing | null;
+  contrat?: DossierContratSummary | null;
 }
 
 const PIECE_LABELS: Record<PieceType, string> = {
@@ -57,6 +64,9 @@ const dossierUrl = (id: string) => apiUrl(`/api/v1/dossiers/${id}`);
 const dossierSubmitUrl = (id: string) => apiUrl(`/api/v1/dossiers/${id}/submit`);
 const pieceDownloadUrl = (dossierId: string, typePiece: PieceType) =>
   apiUrl(`/api/v1/dossiers/${dossierId}/pieces/${typePiece}/download-url`);
+const dossierContratUrl = (dossierId: string) => apiUrl(`/api/v1/dossiers/${dossierId}/contrat`);
+const dossierDemanderSignatureUrl = (dossierId: string) =>
+  apiUrl(`/api/v1/dossiers/${dossierId}/contrat/demander-signature`);
 
 function formatDate(value?: string | null): string {
   if (!value) return "—";
@@ -82,6 +92,14 @@ export default function DossierDetailPage() {
   const [submitMessage, setSubmitMessage] = useState("");
   const [uploadMessage, setUploadMessage] = useState("");
   const [downloadingType, setDownloadingType] = useState<PieceType | null>(null);
+  const [contractMarkdown, setContractMarkdown] = useState<string | null>(null);
+  const [contractLoading, setContractLoading] = useState(false);
+  const [contractLoadError, setContractLoadError] = useState("");
+  const [signModalOpen, setSignModalOpen] = useState(false);
+  const [signModalAccept, setSignModalAccept] = useState(false);
+  const [signSubmitting, setSignSubmitting] = useState(false);
+  const [signMessage, setSignMessage] = useState("");
+  const contratAnchorRef = useRef<HTMLElement | null>(null);
 
   // Délègue la logique d'upload (init→PUT→complete) au hook partagé
   const { uploadingType, error: uploadError, uploadPiece } = useFileUpload(params.id ?? "");
@@ -166,6 +184,70 @@ export default function DossierDetailPage() {
   useEffect(() => {
     loadDetail();
   }, [loadDetail]);
+
+  /** Charge le markdown du contrat (accès réservé au client du dossier). */
+  const loadContractMarkdown = useCallback(async () => {
+    if (!params.id || !detail?.contrat) return;
+    setContractLoading(true);
+    setContractLoadError("");
+    try {
+      const response = await fetch(dossierContratUrl(params.id), {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => ({}))) as { markdown?: string; detail?: string };
+      if (!response.ok) {
+        throw new Error(payload.detail || "Impossible de charger le contrat.");
+      }
+      setContractMarkdown(payload.markdown ?? "");
+    } catch (e) {
+      setContractLoadError(e instanceof Error ? e.message : "Erreur de chargement du contrat.");
+    } finally {
+      setContractLoading(false);
+    }
+  }, [params.id, detail?.contrat]);
+
+  useEffect(() => {
+    if (detail?.contrat) {
+      void loadContractMarkdown();
+    } else {
+      setContractMarkdown(null);
+    }
+  }, [detail?.contrat?.reference, loadContractMarkdown, detail?.contrat]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !detail?.contrat) return;
+    if (window.location.hash !== "#contrat") return;
+    contratAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [detail?.contrat, contractMarkdown]);
+
+  /** POST : envoie l'email avec le lien magique de signature (après validation modale). */
+  async function submitDemanderSignature() {
+    if (!params.id) return;
+    setSignSubmitting(true);
+    setSignMessage("");
+    setError("");
+    try {
+      const response = await fetch(dossierDemanderSignatureUrl(params.id), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accepte: true }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { message?: string; detail?: string };
+      if (!response.ok) {
+        throw new Error(payload.detail || "Envoi impossible.");
+      }
+      setSignMessage(payload.message || "Vérifiez votre boîte mail.");
+      setSignModalOpen(false);
+      setSignModalAccept(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur technique.");
+    } finally {
+      setSignSubmitting(false);
+    }
+  }
 
   return (
     <main>
@@ -280,6 +362,79 @@ export default function DossierDetailPage() {
                   setDetail((d) => (d ? { ...d, lld_pricing: next } : d))
                 }
               />
+            )}
+
+            {/* ── Contrat (US-06-07) ─────────────────────────── */}
+            {detail.contrat && (
+              <article
+                ref={contratAnchorRef}
+                id="contrat"
+                style={{
+                  background: "#fff",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  padding: "1.25rem 1.5rem",
+                  boxShadow: "var(--shadow)",
+                }}
+              >
+                <h2 style={{ fontFamily: "Syne, sans-serif", fontSize: "1rem", marginBottom: ".75rem", color: "var(--navy)" }}>
+                  Contrat
+                </h2>
+                <p style={{ margin: "0 0 .75rem", color: "var(--muted)", fontSize: ".9rem" }}>
+                  Référence contrat : <strong style={{ color: "var(--navy)" }}>{detail.contrat.reference}</strong>
+                  {detail.contrat.signed_at && (
+                    <>
+                      {" "}
+                      — signé le {formatDate(detail.contrat.signed_at)}
+                    </>
+                  )}
+                </p>
+                {contractLoadError && (
+                  <p style={{ color: "#b91c1c", fontSize: ".9rem" }}>{contractLoadError}</p>
+                )}
+                {contractLoading && <p style={{ color: "var(--muted)" }}>Chargement du contrat…</p>}
+                {!contractLoading && contractMarkdown !== null && (
+                  <pre
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      fontSize: ".8rem",
+                      lineHeight: 1.45,
+                      maxHeight: 360,
+                      overflow: "auto",
+                      padding: "1rem",
+                      background: "#f9fafb",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      margin: "0 0 1rem",
+                      fontFamily: "ui-monospace, monospace",
+                    }}
+                  >
+                    {contractMarkdown}
+                  </pre>
+                )}
+                {detail.contrat.can_sign && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSignModalOpen(true);
+                      setSignModalAccept(false);
+                      setSignMessage("");
+                    }}
+                    style={{
+                      background: "var(--navy)",
+                      color: "#fff",
+                      border: 0,
+                      padding: ".65rem 1.1rem",
+                      borderRadius: 8,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Signer le contrat
+                  </button>
+                )}
+                {signMessage && <p style={{ color: "#166534", marginTop: ".75rem" }}>{signMessage}</p>}
+              </article>
             )}
 
             {/* ── Checklist pièces ────────────────────────────── */}
@@ -550,6 +705,82 @@ export default function DossierDetailPage() {
                 </ol>
               </div>
             )}
+          </div>
+        )}
+
+        {signModalOpen && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sign-modal-title"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15,23,42,0.45)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 50,
+              padding: "1rem",
+            }}
+          >
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: 12,
+                maxWidth: 440,
+                width: "100%",
+                padding: "1.5rem",
+                boxShadow: "0 20px 40px rgba(0,0,0,0.15)",
+              }}
+            >
+              <h2 id="sign-modal-title" style={{ fontFamily: "Syne, sans-serif", marginTop: 0 }}>
+                Confirmer la demande de signature
+              </h2>
+              <p style={{ margin: "0 0 1rem", color: "var(--muted)", fontSize: ".95rem" }}>
+                Un email vous sera envoyé avec un lien sécurisé pour valider votre signature électronique, sur le même principe
+                que la confirmation d&apos;adresse email à l&apos;inscription.
+              </p>
+              <label style={{ display: "flex", gap: ".5rem", alignItems: "flex-start", marginBottom: "1rem", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={signModalAccept}
+                  onChange={(e) => setSignModalAccept(e.target.checked)}
+                />
+                <span style={{ fontSize: ".9rem" }}>Je confirme avoir pris connaissance du contrat et souhaite recevoir le lien de signature.</span>
+              </label>
+              <div style={{ display: "flex", gap: ".6rem", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => setSignModalOpen(false)}
+                  style={{
+                    background: "#fff",
+                    border: "1px solid var(--border)",
+                    padding: ".5rem .9rem",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                  }}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  disabled={!signModalAccept || signSubmitting}
+                  onClick={() => void submitDemanderSignature()}
+                  style={{
+                    background: signModalAccept && !signSubmitting ? "var(--navy)" : "#9ca3af",
+                    color: "#fff",
+                    border: 0,
+                    padding: ".5rem .9rem",
+                    borderRadius: 8,
+                    fontWeight: 600,
+                    cursor: signModalAccept && !signSubmitting ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {signSubmitting ? "Envoi…" : "Recevoir le lien par email"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </section>

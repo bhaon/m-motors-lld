@@ -289,6 +289,8 @@ _STATUS_LABELS: dict[str, str] = {
     "depose": "Déposé",
     "en_instruction": "En instruction",
     "valide": "Validé",
+    "en_signature": "En signature",
+    "attente_livraison": "Attente de livraison",
     "rejete": "Rejeté",
     "annule": "Annulé",
 }
@@ -403,3 +405,150 @@ def send_status_change_email(
         logger.exception(
             "Echec Resend notification statut %s pour dossier %s", nouveau_status, dossier_reference
         )
+
+
+def _build_contract_ready_email_html(*, dossier_reference: str, contrat_url: str) -> str:
+    """HTML : dossier validé, contrat à consulter et signer."""
+    return f"""
+    <div style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+        <tr>
+          <td style="background:#0f172a;padding:20px 24px;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:.04em;">
+            M-<span style="color:#06b6d4;">MOTORS</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 24px 18px;">
+            <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">Votre dossier est validé — contrat à signer</h1>
+            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+              Votre dossier <strong>{dossier_reference}</strong> a été validé. Un contrat a été généré : connectez-vous à votre espace
+              et ouvrez le dossier pour le consulter et lancer la signature électronique.
+            </p>
+            <p style="margin:0 0 22px;font-size:14px;line-height:1.6;color:#4b5563;">
+              Le statut de votre dossier est désormais <strong>en signature</strong>.
+            </p>
+            <a
+              href="{contrat_url}"
+              style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:14px;"
+            >
+              Voir le contrat dans mon dossier
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 24px 22px;">
+            <p style="margin:14px 0 8px;font-size:13px;line-height:1.6;color:#6b7280;">
+              Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :
+            </p>
+            <p style="margin:0;font-size:12px;line-height:1.5;word-break:break-all;">
+              <a href="{contrat_url}" style="color:#0369a1;text-decoration:underline;">{contrat_url}</a>
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.6;">
+            Cet email a été envoyé automatiquement, merci de ne pas y répondre.<br />
+            © M-Motors
+          </td>
+        </tr>
+      </table>
+    </div>
+    """.strip()
+
+
+def send_contract_ready_email(*, to_email: str, dossier_reference: str, contrat_url: str) -> None:
+    """Notifie le client que le contrat est disponible (US-06-07). Non-bloquant si Resend absent."""
+    if resend is None:
+        logger.warning("Package resend absent : email contrat prêt non envoyé pour %s", to_email)
+        return
+    if not settings.RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY absente : email contrat prêt non envoyé pour %s", to_email)
+        return
+    resend.api_key = settings.RESEND_API_KEY
+    try:
+        resend.Emails.send(
+            {
+                "from": settings.RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": f"Contrat à signer — dossier {dossier_reference}",
+                "html": _build_contract_ready_email_html(
+                    dossier_reference=dossier_reference,
+                    contrat_url=contrat_url,
+                ),
+            }
+        )
+    except Exception:  # pragma: no cover
+        logger.exception("Echec Resend email contrat prêt pour dossier %s", dossier_reference)
+
+
+def _build_contract_signature_link_email_html(*, dossier_reference: str, confirmation_link: str) -> str:
+    """HTML : lien magique pour confirmer la signature (comme la confirmation email)."""
+    return f"""
+    <div style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+        <tr>
+          <td style="background:#0f172a;padding:20px 24px;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:.04em;">
+            M-<span style="color:#06b6d4;">MOTORS</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 24px 18px;">
+            <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">Confirmez votre signature électronique</h1>
+            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+              Vous avez demandé à signer le contrat pour le dossier <strong>{dossier_reference}</strong>.
+            </p>
+            <p style="margin:0 0 22px;font-size:14px;line-height:1.6;color:#4b5563;">
+              Cliquez sur le bouton ci-dessous pour valider définitivement votre signature. Lien valable 24 heures.
+            </p>
+            <a
+              href="{confirmation_link}"
+              style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:14px;"
+            >
+              Valider ma signature
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 24px 22px;">
+            <p style="margin:14px 0 8px;font-size:13px;line-height:1.6;color:#6b7280;">
+              Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :
+            </p>
+            <p style="margin:0;font-size:12px;line-height:1.5;word-break:break-all;">
+              <a href="{confirmation_link}" style="color:#0369a1;text-decoration:underline;">{confirmation_link}</a>
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.6;">
+            Cet email a été envoyé automatiquement, merci de ne pas y répondre.<br />
+            © M-Motors
+          </td>
+        </tr>
+      </table>
+    </div>
+    """.strip()
+
+
+def send_contract_signature_link_email(*, to_email: str, dossier_reference: str, confirmation_link: str) -> None:
+    """Envoie le lien de confirmation de signature (US-06-07)."""
+    if resend is None:
+        logger.warning("Package resend absent : email signature contrat non envoyé pour %s", to_email)
+        return
+    if not settings.RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY absente : email signature contrat non envoyé pour %s", to_email)
+        return
+    resend.api_key = settings.RESEND_API_KEY
+    try:
+        resend.Emails.send(
+            {
+                "from": settings.RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": f"Confirmez votre signature — dossier {dossier_reference}",
+                "html": _build_contract_signature_link_email_html(
+                    dossier_reference=dossier_reference,
+                    confirmation_link=confirmation_link,
+                ),
+            }
+        )
+    except Exception:  # pragma: no cover
+        logger.exception("Echec Resend email lien signature dossier %s", dossier_reference)

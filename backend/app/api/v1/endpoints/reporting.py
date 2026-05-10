@@ -70,24 +70,39 @@ def _build_dossier_reporting(
 
     cohort_count = sum(by_status.values())
 
-    valide_n = by_status.get(DossierStatusEnum.valide.value, 0)
+    positif_n = (
+        by_status.get(DossierStatusEnum.valide.value, 0)
+        + by_status.get(DossierStatusEnum.en_signature.value, 0)
+        + by_status.get(DossierStatusEnum.attente_livraison.value, 0)
+    )
     rejete_n = by_status.get(DossierStatusEnum.rejete.value, 0)
-    soldes = valide_n + rejete_n
-    validation_rate: float | None = (valide_n / soldes) if soldes > 0 else None
+    soldes = positif_n + rejete_n
+    validation_rate: float | None = (positif_n / soldes) if soldes > 0 else None
 
     deltas_days: list[float] = []
     decided = (
         db.query(Dossier)
         .filter(
             *cohort_filter,
-            Dossier.status.in_((DossierStatusEnum.valide, DossierStatusEnum.rejete)),
+            Dossier.status.in_(
+                (
+                    DossierStatusEnum.valide,
+                    DossierStatusEnum.en_signature,
+                    DossierStatusEnum.attente_livraison,
+                    DossierStatusEnum.rejete,
+                )
+            ),
         )
         .all()
     )
     for row in decided:
         if row.submitted_at is None:
             continue
-        if row.status == DossierStatusEnum.valide and row.validated_at is not None:
+        if row.status in (
+            DossierStatusEnum.valide,
+            DossierStatusEnum.en_signature,
+            DossierStatusEnum.attente_livraison,
+        ) and row.validated_at is not None:
             deltas_days.append((row.validated_at - row.submitted_at).total_seconds() / 86400.0)
         elif row.status == DossierStatusEnum.rejete and row.rejected_at is not None:
             deltas_days.append((row.rejected_at - row.submitted_at).total_seconds() / 86400.0)

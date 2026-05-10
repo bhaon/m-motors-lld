@@ -56,7 +56,16 @@ def test_superviseur_get_dossiers_reporting(client: TestClient, db: Session) -> 
     assert "by_status" in body
     assert "validation_rate" in body
     assert "avg_processing_days" in body
-    for st in ("brouillon", "depose", "en_instruction", "valide", "rejete", "annule"):
+    for st in (
+        "brouillon",
+        "depose",
+        "en_instruction",
+        "valide",
+        "en_signature",
+        "attente_livraison",
+        "rejete",
+        "annule",
+    ):
         assert st in body["by_status"]
 
 

@@ -41,13 +41,16 @@ export type ContratType = "all" | "achat" | "lld";
 
 /**
  * Cycle de vie d'un dossier client :
- * brouillon → depose → en_instruction → valide | rejete | annule
+ * brouillon → depose → en_instruction → en_signature → attente_livraison | rejete | annule
+ * (le statut « valide » peut subsister sur d'anciennes données.)
  */
 export type DossierStatus =
   | "brouillon"
   | "depose"
   | "en_instruction"
   | "valide"
+  | "en_signature"
+  | "attente_livraison"
   | "rejete"
   | "annule";
 

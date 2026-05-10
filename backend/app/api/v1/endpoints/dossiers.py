@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import logging
 from typing import cast
 
@@ -9,7 +9,9 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, status
 
 from app.core.deps import DbSession, enforce_role, get_user_from_cookie
+from app.api.v1.endpoints.auth import _generate_email_verification_token, _hash_email_verification_token
 from app.models.dossier import Dossier, DossierHistorique, DossierStatusEnum, DossierTypeEnum, PieceJustificative
+from app.models.dossier_contract import DossierContrat
 from app.models.option_lld import OptionLld
 from app.models.user import RoleEnum, User
 from app.models.vehicle import Vehicle
@@ -23,6 +25,9 @@ from app.schemas.dossier import (
     DossierBoItemOut,
     DossierBoListOut,
     DossierCreateIn,
+    DossierContratContentOut,
+    DossierContratSignatureRequestIn,
+    DossierContratSummaryOut,
     DossierCreateOut,
     DossierDetailOut,
     LldOptionRowOut,
@@ -53,7 +58,12 @@ from app.services.object_storage import (
     verify_object_checksum,
 )
 from app.core.config import settings
-from app.services.emailing import send_status_change_email
+from app.services.contract_fill import build_contract_reference, render_contract_markdown
+from app.services.emailing import (
+    send_contract_ready_email,
+    send_contract_signature_link_email,
+    send_status_change_email,
+)
 from app.services import audit as audit_service
 from app.services.lld_catalog_data import is_lld_option_enabled
 from app.services.lld_options_catalog import (
@@ -142,6 +152,19 @@ def _utc_safe(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
+def _contrat_summary_for_detail(dossier: Dossier) -> DossierContratSummaryOut | None:
+    """Expose la présence du contrat et si le client peut encore initier / finaliser la signature."""
+    if not dossier.contrat:
+        return None
+    c = dossier.contrat
+    can_sign = dossier.status == DossierStatusEnum.en_signature and c.signed_at is None
+    return DossierContratSummaryOut(
+        reference=c.reference,
+        signed_at=_utc_safe(c.signed_at),
+        can_sign=can_sign,
+    )
+
+
 def _client_dossier_detail_out(db: DbSession, dossier: Dossier) -> DossierDetailOut:
     """Construit la réponse détail dossier côté client (dont bloc LLD si applicable)."""
     checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
@@ -199,6 +222,7 @@ def _client_dossier_detail_out(db: DbSession, dossier: Dossier) -> DossierDetail
         vehicle=vehicle_out,
         historique=historique_out,
         lld_pricing=lld_pricing,
+        contrat=_contrat_summary_for_detail(dossier),
     )
 
 
@@ -647,26 +671,44 @@ def valider_dossier(
     request: Request,
     access_token: str | None = Cookie(default=None),
 ) -> DossierValiderOut:
-    """Passe le dossier au statut « valide », enregistre ``validated_at``, notifie le client.
+    """Valide le instruction, génère le contrat (gabarit markdown), passe en « en_signature », notifie le client.
 
     Règles :
     - Le dossier doit être au statut ``en_instruction``.
-    - Si déjà ``valide``, l'appel est idempotent (pas de doublon historique / audit / email).
-    - Toute autre transition lève 409.
+    - Idempotent : déjà ``en_signature`` avec contrat en base, ou ancien statut ``valide`` (jeu de données legacy).
+    - Après signature client, statut ``attente_livraison`` : nouvelle validation interdite (409).
     """
     user = _resolve_user_from_cookie(access_token, db)
     enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
 
     dossier = (
         db.query(Dossier)
-        .options(joinedload(Dossier.client))
+        .options(
+            joinedload(Dossier.client),
+            joinedload(Dossier.vehicle),
+            joinedload(Dossier.contrat),
+        )
         .filter(Dossier.id == dossier_id)
         .first()
     )
     if not dossier:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
 
+    if dossier.status == DossierStatusEnum.attente_livraison:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Le dossier est déjà signé : validation impossible.",
+        )
+
     if dossier.status == DossierStatusEnum.valide:
+        return DossierValiderOut(
+            id=dossier.id,
+            reference=dossier.reference,
+            status=dossier.status.value,
+            validated_at=dossier.validated_at,
+        )
+
+    if dossier.status == DossierStatusEnum.en_signature and dossier.contrat is not None:
         return DossierValiderOut(
             id=dossier.id,
             reference=dossier.reference,
@@ -685,15 +727,28 @@ def valider_dossier(
 
     old_status = dossier.status.value
     now = datetime.now(timezone.utc)
-    dossier.status = DossierStatusEnum.valide
+    dossier.status = DossierStatusEnum.en_signature
     dossier.validated_at = now
+
+    if dossier.type == DossierTypeEnum.lld:
+        ensure_option_rows_for_lld_dossier(db, dossier)
+
+    cref = build_contract_reference(dossier)
+    body_md = render_contract_markdown(db, dossier, contract_reference=cref)
+    db.add(
+        DossierContrat(
+            dossier_id=dossier.id,
+            reference=cref,
+            body_markdown=body_md,
+        )
+    )
 
     db.add(
         DossierHistorique(
             dossier_id=dossier.id,
             ancien_status=old_status,
-            nouveau_status=DossierStatusEnum.valide.value,
-            commentaire=f"Dossier validé par {user.first_name} {user.last_name} ({user.email})",
+            nouveau_status=DossierStatusEnum.en_signature.value,
+            commentaire=f"Dossier validé par {user.first_name} {user.last_name} ({user.email}), contrat généré",
             operateur_id=user.id,
         )
     )
@@ -707,16 +762,25 @@ def valider_dossier(
         ip_address=request.client.host if request.client else None,
         before_state={"status": old_status, "validated_at": None},
         after_state={
-            "status": DossierStatusEnum.valide.value,
+            "status": DossierStatusEnum.en_signature.value,
             "validated_at": dossier.validated_at.isoformat(),
             "gestionnaire_email": user.email,
+            "contract_reference": cref,
         },
     )
 
     db.commit()
     db.refresh(dossier)
 
-    _notify_status_change(dossier, dossier.client.email)
+    contrat_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/mes-dossiers/{dossier.id}#contrat"
+    try:
+        send_contract_ready_email(
+            to_email=dossier.client.email,
+            dossier_reference=dossier.reference,
+            contrat_url=contrat_url,
+        )
+    except Exception:
+        logger.exception("Echec envoi email contrat prêt pour dossier %s", dossier.reference)
 
     return DossierValiderOut(
         id=dossier.id,
@@ -845,7 +909,9 @@ def list_my_contrats(
         .filter(
             Dossier.client_id == user.id,
             Dossier.type == DossierTypeEnum.lld,
-            Dossier.status == DossierStatusEnum.valide,
+            Dossier.status.in_(
+                (DossierStatusEnum.valide, DossierStatusEnum.attente_livraison)
+            ),
         )
         .order_by(Dossier.created_at.desc())
         .all()
@@ -897,12 +963,16 @@ def patch_lld_options(
     if not dossier_allows_lld_option_edit(dossier):
         detail = "Les options ne sont pas modifiables pour ce dossier."
         if (
-            dossier.status == DossierStatusEnum.valide
+            dossier.status in (DossierStatusEnum.valide, DossierStatusEnum.attente_livraison)
             and dossier.type == DossierTypeEnum.lld
             and not contrat_lld_est_actif(dossier)
         ):
             detail = "Les options ne peuvent plus être modifiées : le contrat est terminé."
-        elif dossier.status not in (DossierStatusEnum.brouillon, DossierStatusEnum.valide):
+        elif dossier.status not in (
+            DossierStatusEnum.brouillon,
+            DossierStatusEnum.valide,
+            DossierStatusEnum.attente_livraison,
+        ):
             detail = (
                 "Les options ne peuvent être modifiées qu'en brouillon ou sur un contrat LLD actif déjà validé."
             )
@@ -992,6 +1062,84 @@ def patch_lld_options(
     )
 
 
+@router.get("/{dossier_id}/contrat", response_model=DossierContratContentOut)
+def get_dossier_contrat_markdown(
+    dossier_id: int,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> DossierContratContentOut:
+    """Retourne le markdown du contrat : uniquement le client propriétaire du dossier (US-06-07)."""
+    user = _resolve_user_from_cookie(access_token, db)
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.contrat))
+        .filter(Dossier.id == dossier_id, Dossier.client_id == user.id)
+        .first()
+    )
+    if not dossier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
+    if not dossier.contrat:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aucun contrat pour ce dossier.")
+    c = dossier.contrat
+    return DossierContratContentOut(
+        reference=c.reference,
+        markdown=c.body_markdown,
+        signed_at=_utc_safe(c.signed_at),
+    )
+
+
+@router.post(
+    "/{dossier_id}/contrat/demander-signature",
+    status_code=status.HTTP_200_OK,
+    summary="US-06-07 — Demande de signature (lien envoyé par email)",
+)
+def demander_signature_contrat(
+    dossier_id: int,
+    payload: DossierContratSignatureRequestIn,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> dict[str, str]:
+    """Après acceptation dans la modale : émet un jeton hashé et envoie le lien de confirmation."""
+    user = _resolve_user_from_cookie(access_token, db)
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.client), joinedload(Dossier.contrat))
+        .filter(Dossier.id == dossier_id, Dossier.client_id == user.id)
+        .first()
+    )
+    if not dossier or not dossier.contrat:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier ou contrat introuvable.")
+    if dossier.status != DossierStatusEnum.en_signature:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La signature n'est demandée que lorsque le dossier est « en signature ».",
+        )
+    if dossier.contrat.signed_at is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Le contrat est déjà signé.")
+    if not payload.accepte:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="La confirmation est requise.")
+
+    now = datetime.now(timezone.utc)
+    raw = _generate_email_verification_token()
+    dossier.contrat.signature_token_hash = _hash_email_verification_token(raw)
+    dossier.contrat.signature_token_sent_at = now
+    dossier.contrat.signature_token_expires_at = now + timedelta(hours=24)
+    db.commit()
+
+    confirm_url = (
+        f"{settings.FRONTEND_BASE_URL.rstrip('/')}/confirm-contract-signature?token={raw}"
+    )
+    try:
+        send_contract_signature_link_email(
+            to_email=dossier.client.email,
+            dossier_reference=dossier.reference,
+            confirmation_link=confirm_url,
+        )
+    except Exception:
+        logger.exception("Echec envoi email lien signature dossier %s", dossier.reference)
+    return {"message": "Un email avec le lien de validation de signature vous a été envoyé."}
+
+
 @router.get("/{dossier_id}", response_model=DossierDetailOut)
 def get_dossier_detail(
     dossier_id: int,
@@ -1002,7 +1150,7 @@ def get_dossier_detail(
     user = _resolve_user_from_cookie(access_token, db)
     dossier = (
         db.query(Dossier)
-        .options(joinedload(Dossier.vehicle), joinedload(Dossier.historique))
+        .options(joinedload(Dossier.vehicle), joinedload(Dossier.historique), joinedload(Dossier.contrat))
         .filter(Dossier.id == dossier_id, Dossier.client_id == user.id)
         .first()
     )

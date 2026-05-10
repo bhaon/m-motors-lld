@@ -37,7 +37,10 @@ def contrat_lld_est_actif(dossier: Dossier, *, today: date | None = None) -> boo
     Même règle que ``GET /dossiers/contrats`` : sans dates contractuelles, le contrat est
     considéré comme actif ; sinon ``date_fin >= today``.
     """
-    if dossier.type != DossierTypeEnum.lld or dossier.status != DossierStatusEnum.valide:
+    if dossier.type != DossierTypeEnum.lld or dossier.status not in (
+        DossierStatusEnum.valide,
+        DossierStatusEnum.attente_livraison,
+    ):
         return False
     t = today or date.today()
     date_fin: date | None = None
@@ -72,7 +75,10 @@ def dossier_allows_lld_option_edit(dossier: Dossier) -> bool:
         return False
     if dossier.status == DossierStatusEnum.brouillon:
         return True
-    if dossier.status == DossierStatusEnum.valide and contrat_lld_est_actif(dossier):
+    if dossier.status in (
+        DossierStatusEnum.valide,
+        DossierStatusEnum.attente_livraison,
+    ) and contrat_lld_est_actif(dossier):
         return True
     return False
 
