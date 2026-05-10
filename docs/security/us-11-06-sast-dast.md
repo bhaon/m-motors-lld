@@ -8,7 +8,7 @@ En tant que responsable sécurité, l’objectif est de détecter les vulnérabi
 |----------|------------------|
 | SonarQube à chaque PR | Workflow [`.github/workflows/sonarqube-pr.yaml`](../../.github/workflows/sonarqube-pr.yaml) |
 | OWASP ZAP sur staging avant validation du déploiement | Étape ZAP dans [`.github/workflows/deploy-staging.yaml`](../../.github/workflows/deploy-staging.yaml) après smoke tests |
-| Vulnérabilités critiques → blocage | **Sonar** : Quality Gate (à configurer côté Sonar pour traiter les sévérités *Blocker* / *Critical* comme échec). **ZAP** : seuil **`-l WARN`** (niveaux acceptés par Baseline : `PASS` … `FAIL`, pas `HIGH` — voir ci-dessous). |
+| Vulnérabilités critiques → blocage | **Sonar** : Quality Gate (*Blocker* / *Critical*). **ZAP** : échec pipeline si **FAIL** Baseline ; les WARN sont rapportées mais **ne bloquent pas** grâce à **`-I`** (voir section ZAP). |
 | Rapport archivé à chaque cycle | Artefacts `security-report-sast-pr-*` (PR) et `security-report-staging-*` + `zap-dast-staging-*` (staging) |
 
 ## Configuration SonarCloud / SonarQube (SAST)
@@ -26,7 +26,8 @@ Les PR depuis forks du dépôt ne exécutent pas le job Sonar (`if: github.event
 
 Le workflow **Deploy → STAGING** appelle le scan **Baseline** après les smoke tests HTTP, contre l’URL définie par `STAGING_DAST_TARGET` (par défaut `https://staging.netdevops.fr`, surcharge possible via la variable dépôt `STAGING_DAST_TARGET`).
 
-- **Blocage** : `fail_action: true` et **`-l WARN`** — le script Baseline classe les findings en `PASS` / `IGNORE` / `INFO` / `WARN` / `FAIL` (depuis les versions récentes de `zap-baseline.py`). **`HIGH` n’est plus une valeur valide pour `-l`** : elle provoquait une erreur d’options puis **code de sortie 3** (« any other failure », souvent confondu avec un bug Docker). Pour ne bloquer que les règles marquées `FAIL` dans la config, utilisez **`-l FAIL`**.
+- **Blocage** : `fail_action: true`, **`-l WARN`** et **`-I`** (`ignore_warn`). Sans **`-I`**, dès qu’il existe des **WARN-NEW** (souvent nombreux sur une app réelle), `zap-baseline` sort avec le code **2** et le job échoue — alors que **FAIL-NEW** peut rester à **0**. Avec **`-I`**, seules les alertes classées **FAIL** dans le jeu Baseline font échouer le scan (**exit 1**) ; les WARN restent listées dans les rapports HTML/JSON archivés pour traitement manuel. Pour **ré-exiger** un blocage sur tout WARN, retirez **`-I`** du workflow.
+- **Références `-l`** : valeurs valides `PASS` … `FAIL` — **`HIGH` est invalide** (erreur d’options, exit **3**). Ajuster la sévérité par règle : fichier `.zap/rules.tsv` / [`rules_file_name`](https://github.com/zaproxy/action-baseline).
 - **Rapports** : l’action attache un artefact nommé `zap-dast-staging-<run_id>` ; un fichier Markdown `security-report-dast-staging.md` est également produit et conservé 90 jours.
 
 Pour ignorer des alertes connues sans les masquer côté CI, vous pouvez ajouter un fichier `.zap/rules.tsv` et la propriété `rules_file_name` dans l’étape ZAP (voir [documentation ZAP Baseline](https://www.zaproxy.org/docs/docker/baseline-scan/)).
