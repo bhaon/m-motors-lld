@@ -114,13 +114,14 @@ jobs:
           echo "✅ Tous les smoke tests passés"
 
       # ── DAST — OWASP ZAP (US-11-06) : gate avant de valider le déploiement staging
-      # -l HIGH : échoue sur alertes High (niveau maximal ZAP ≈ blocage « critique »).
+      # Baseline moderne : -l accepte PASS|IGNORE|INFO|WARN|FAIL (plus HIGH/MEDIUM/LOW).
+      # -m 3 : spider 3 min ; -l WARN : prise en compte des alertes classées WARN/FAIL (défaut baseline).
       - name: OWASP ZAP — Baseline scan (staging)
         uses: zaproxy/action-baseline@v0.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           target: ${{ env.STAGING_DAST_TARGET }}
-          cmd_options: "-l HIGH"
+          cmd_options: "-m 3 -l WARN"
           fail_action: true
           allow_issue_writing: false
           artifact_name: zap-dast-staging-${{ github.run_id }}
@@ -140,7 +141,7 @@ jobs:
           | Artefact ZAP | zap-dast-staging-${{ github.run_id }} |
 
           Les fichiers détaillés (HTML/JSON) sont joints à l’artefact **zap-dast-staging-${{ github.run_id }}**.
-          En cas d’alertes **High**, le scan échoue et le déploiement staging est considéré comme non conforme (rollback déclenché si étapes suivantes échouent).
+          En cas d’alertes classées **WARN** ou **FAIL** (seuil `-l WARN`), le scan échoue et le déploiement staging est considéré comme non conforme (rollback déclenché si étapes suivantes échouent).
           EOF
 
       - name: Upload rapport sécurité consolidé (staging)
