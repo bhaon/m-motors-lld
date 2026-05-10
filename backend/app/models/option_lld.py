@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-
 import enum
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
+
+if TYPE_CHECKING:
+    from app.models.dossier import Dossier
 
 
 class OptionLldCode(str, enum.Enum):
