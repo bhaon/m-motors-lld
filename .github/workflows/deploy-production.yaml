@@ -157,26 +157,28 @@ jobs:
           # --retry-connrefused + retry étendu remplace le sleep fixe de stabilisation.
           echo "Smoke tests sur: $PRODUCTION_PUBLIC_URL"
 
-          for endpoint in "/api/healthz" "/api/readyz"; do
-            STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
-              "${PRODUCTION_PUBLIC_URL}${endpoint}" \
-              --max-time 15 --retry 18 --retry-delay 10 --retry-connrefused \
-              -H "User-Agent: GitHub-Actions-ProdSmokeTest")
-            if [ "$STATUS" != "200" ]; then
-              echo "❌ Endpoint $endpoint retourne HTTP $STATUS"
-              exit 1
+          _check() {
+            local label="$1" url="$2"
+            local status curl_exit
+            status=$(curl -o /dev/null -s -w "%{http_code}" \
+              "$url" \
+              --max-time 20 --retry 18 --retry-delay 10 --retry-connrefused \
+              --retry-http-errors \
+              -H "User-Agent: GitHub-Actions-ProdSmokeTest") || curl_exit=$?
+            if [ "${curl_exit:-0}" -ne 0 ]; then
+              echo "❌ $label — curl a échoué (exit ${curl_exit})"
+              return 1
             fi
-            echo "✅ $endpoint → HTTP $STATUS"
-          done
+            if [ "$status" != "200" ]; then
+              echo "❌ $label → HTTP $status"
+              return 1
+            fi
+            echo "✅ $label → HTTP $status"
+          }
 
-          # Test frontend
-          STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
-            "${PRODUCTION_PUBLIC_URL}/" --max-time 15 --retry 5 --retry-delay 10 --retry-connrefused)
-          if [ "$STATUS" != "200" ]; then
-            echo "❌ Frontend retourne HTTP $STATUS"
-            exit 1
-          fi
-          echo "✅ Frontend → HTTP $STATUS"
+          _check "/api/healthz" "${PRODUCTION_PUBLIC_URL}/api/healthz"
+          _check "/api/readyz"  "${PRODUCTION_PUBLIC_URL}/api/readyz"
+          _check "/"            "${PRODUCTION_PUBLIC_URL}/"
 
           echo "✅ Tous les smoke tests production passés"
 
