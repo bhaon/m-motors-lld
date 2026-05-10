@@ -8,9 +8,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps (psycopg2)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc \
+# System deps (psycopg2) + security patches
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
+        libpq-dev gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps
@@ -26,6 +28,8 @@ RUN groupadd --system --gid 1001 fastapi \
 
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
+
+USER fastapi
 
 EXPOSE 8000
 
