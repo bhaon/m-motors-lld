@@ -177,7 +177,7 @@ def _client_dossier_detail_out(db: DbSession, dossier: Dossier) -> DossierDetail
                     code=str(i["code"]),
                     label=str(i["label"]),
                     description=str(i["description"]),
-                    surcout_mensuel_ht=float(i["surcout_mensuel_ht"]),
+                    surcout_mensuel_ht=float(cast(float | int | str, i["surcout_mensuel_ht"])),
                     selected=bool(i["selected"]),
                 )
                 for i in state.items
@@ -946,7 +946,7 @@ def patch_lld_options(
                     code=str(i["code"]),
                     label=str(i["label"]),
                     description=str(i["description"]),
-                    surcout_mensuel_ht=float(i["surcout_mensuel_ht"]),
+                    surcout_mensuel_ht=float(cast(float | int | str, i["surcout_mensuel_ht"])),
                     selected=bool(i["selected"]),
                 )
                 for i in state_after.items
@@ -984,7 +984,7 @@ def patch_lld_options(
                 code=str(i["code"]),
                 label=str(i["label"]),
                 description=str(i["description"]),
-                surcout_mensuel_ht=float(i["surcout_mensuel_ht"]),
+                surcout_mensuel_ht=float(cast(float | int | str, i["surcout_mensuel_ht"])),
                 selected=bool(i["selected"]),
             )
             for i in state_after.items
@@ -1090,14 +1090,14 @@ def submit_dossier(
     db.commit()
     db.refresh(dossier)
     _notify_status_change(dossier, user.email)
-    dossier = (
+    dossier_detail = (
         db.query(Dossier)
         .options(joinedload(Dossier.vehicle), joinedload(Dossier.historique))
         .filter(Dossier.id == dossier_id, Dossier.client_id == user.id)
         .first()
     )
-    assert dossier
-    return _client_dossier_detail_out(db, dossier)
+    assert dossier_detail is not None
+    return _client_dossier_detail_out(db, dossier_detail)
 
 
 @router.post("/{dossier_id}/pieces/upload-init", response_model=PieceUploadInitOut)

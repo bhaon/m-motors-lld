@@ -5,7 +5,7 @@ from __future__ import annotations
 from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date
-from typing import Literal
+from typing import Literal, cast
 
 from sqlalchemy.orm import Session
 
@@ -137,7 +137,11 @@ def build_lld_options_state(db: Session, dossier: Dossier) -> LldOptionsState | 
                 "selected": bool(row.selected) if row else False,
             }
         )
-    supplement = sum(float(i["surcout_mensuel_ht"]) for i in items if i["selected"])
+    supplement = sum(
+        float(cast(float | int | str, i["surcout_mensuel_ht"]))
+        for i in items
+        if bool(i["selected"])
+    )
     base = float(dossier.vehicle.mensualite) if dossier.vehicle and dossier.vehicle.mensualite is not None else None
     total = (base if base is not None else 0.0) + supplement
     editable = dossier_allows_lld_option_edit(dossier)
