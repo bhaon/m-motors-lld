@@ -22,25 +22,30 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "audit_trail",
-        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("action", sa.String(64), nullable=False),
-        sa.Column("entity_type", sa.String(64), nullable=False),
-        sa.Column("entity_id", sa.Integer(), nullable=False),
-        sa.Column("operator_id", sa.Integer(), nullable=False),
-        sa.Column("operator_email", sa.String(255), nullable=False),
-        sa.Column("operator_role", sa.String(32), nullable=False),
-        sa.Column("ip_address", sa.String(45), nullable=True),
-        sa.Column("before_state", sa.JSON(), nullable=True),
-        sa.Column("after_state", sa.JSON(), nullable=False),
-    )
-    op.create_index("ix_audit_trail_action", "audit_trail", ["action"])
-    op.create_index("ix_audit_trail_entity_type", "audit_trail", ["entity_type"])
-    op.create_index("ix_audit_trail_entity_id", "audit_trail", ["entity_id"])
-    op.create_index("ix_audit_trail_operator_id", "audit_trail", ["operator_id"])
-    op.create_index("ix_audit_trail_created_at", "audit_trail", ["created_at"])
+    from sqlalchemy import inspect as sa_inspect
+
+    conn = op.get_bind()
+    # Garde idempotente : migration 001 peut avoir déjà créé la table via create_all
+    if "audit_trail" not in sa_inspect(conn).get_table_names():
+        op.create_table(
+            "audit_trail",
+            sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("action", sa.String(64), nullable=False),
+            sa.Column("entity_type", sa.String(64), nullable=False),
+            sa.Column("entity_id", sa.Integer(), nullable=False),
+            sa.Column("operator_id", sa.Integer(), nullable=False),
+            sa.Column("operator_email", sa.String(255), nullable=False),
+            sa.Column("operator_role", sa.String(32), nullable=False),
+            sa.Column("ip_address", sa.String(45), nullable=True),
+            sa.Column("before_state", sa.JSON(), nullable=True),
+            sa.Column("after_state", sa.JSON(), nullable=False),
+        )
+        op.create_index("ix_audit_trail_action", "audit_trail", ["action"])
+        op.create_index("ix_audit_trail_entity_type", "audit_trail", ["entity_type"])
+        op.create_index("ix_audit_trail_entity_id", "audit_trail", ["entity_id"])
+        op.create_index("ix_audit_trail_operator_id", "audit_trail", ["operator_id"])
+        op.create_index("ix_audit_trail_created_at", "audit_trail", ["created_at"])
 
 
 def downgrade() -> None:

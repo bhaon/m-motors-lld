@@ -10,6 +10,7 @@ from app.db.session import engine
 
 # Import all models so Alembic / Base.metadata sees them
 import app.models.vehicle  # noqa
+import app.models.option_lld  # noqa
 
 
 @asynccontextmanager

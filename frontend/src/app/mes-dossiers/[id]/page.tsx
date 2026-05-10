@@ -8,6 +8,7 @@ import Link from "next/link";
 import type { DossierStatus } from "@/types";
 import { apiUrl } from "@/lib/api";
 import { useFileUpload, PieceType } from "@/hooks/useFileUpload";
+import LldOptionsSection, { type LldPricing } from "@/components/LldOptionsSection";
 
 interface ChecklistItem {
   type_piece: PieceType;
@@ -41,6 +42,7 @@ interface DossierDetail {
   missing_pieces: PieceType[];
   can_submit: boolean;
   historique?: HistoriqueItem[];
+  lld_pricing?: LldPricing | null;
 }
 
 const PIECE_LABELS: Record<PieceType, string> = {
@@ -268,6 +270,17 @@ export default function DossierDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Options LLD (US-07-01) ─────────────────────── */}
+            {detail.type === "lld" && detail.lld_pricing && params.id && (
+              <LldOptionsSection
+                dossierId={params.id}
+                pricing={detail.lld_pricing}
+                onPricingUpdated={(next) =>
+                  setDetail((d) => (d ? { ...d, lld_pricing: next } : d))
+                }
+              />
+            )}
 
             {/* ── Checklist pièces ────────────────────────────── */}
             <div

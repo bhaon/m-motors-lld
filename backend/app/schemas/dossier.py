@@ -91,6 +91,32 @@ class PieceDownloadUrlOut(BaseModel):
     filename: str
 
 
+class LldOptionRowOut(BaseModel):
+    """Une option LLD affichée au client (US-07-01)."""
+
+    code: str
+    label: str
+    description: str
+    surcout_mensuel_ht: float
+    selected: bool
+
+
+class LldOptionsPricingOut(BaseModel):
+    """Récapitulatif mensuel LLD : base véhicule + options cochées."""
+
+    base_mensualite_ht: float | None = None
+    options_supplement_ht: float
+    total_mensualite_ht: float
+    editable: bool
+    items: list[LldOptionRowOut]
+
+
+class LldOptionsPatchIn(BaseModel):
+    """Mise à jour partielle ou complète des cases à cocher LLD."""
+
+    selections: dict[str, bool]
+
+
 class DossierDetailOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -108,6 +134,7 @@ class DossierDetailOut(BaseModel):
     can_submit: bool
     vehicle: VehicleSummaryOut | None = None
     historique: list[HistoriqueItemOut] = []
+    lld_pricing: LldOptionsPricingOut | None = None
 
 
 # ── US-06-01 : Tableau de bord gestionnaire ───────────────────────────────────
