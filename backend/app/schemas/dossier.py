@@ -112,6 +112,9 @@ class LldOptionsPricingOut(BaseModel):
     editable: bool
     edit_context: LldEditContext = "readonly"
     items: list[LldOptionRowOut]
+    pending_avenant_signature: bool = False
+    proposed_total_mensualite_ht: float | None = None
+    avenant_reference: str | None = None
 
 
 class LldOptionsPatchIn(BaseModel):
@@ -343,3 +346,4 @@ class ContratListItemOut(BaseModel):
     date_debut: date | None = None
     date_fin: date | None = None
     is_active: bool
+    total_mensualite_ht: float | None = None

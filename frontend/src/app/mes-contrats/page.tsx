@@ -150,7 +150,7 @@ export default function MesContratsPage() {
                   <th style={{ padding: "10px 14px" }}>Référence</th>
                   <th style={{ padding: "10px 14px" }}>Véhicule</th>
                   <th style={{ padding: "10px 14px" }}>Durée</th>
-                  <th style={{ padding: "10px 14px" }}>Mensualité</th>
+                  <th style={{ padding: "10px 14px" }}>Mensualité (HT)</th>
                   <th style={{ padding: "10px 14px" }}>Date de début</th>
                   <th style={{ padding: "10px 14px" }}>Fin prévue</th>
                   <th style={{ padding: "10px 14px" }}>Statut</th>
@@ -197,7 +197,9 @@ export default function MesContratsPage() {
                       )}
                     </td>
                     <td style={{ padding: "12px 14px", fontWeight: 600 }}>
-                      {formatMensualite(contrat.vehicle.mensualite)}
+                      {formatMensualite(
+                        contrat.total_mensualite_ht ?? contrat.vehicle.mensualite
+                      )}
                     </td>
                     <td style={{ padding: "12px 14px" }}>
                       {formatFrenchDate(contrat.date_debut)}

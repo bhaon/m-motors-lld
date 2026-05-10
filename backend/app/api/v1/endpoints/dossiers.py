@@ -10,7 +10,10 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, status
 
 from app.core.deps import DbSession, enforce_role, get_user_from_cookie
-from app.api.v1.endpoints.auth import _generate_email_verification_token, _hash_email_verification_token
+from app.api.v1.endpoints.auth import (
+    _generate_email_verification_token,
+    _hash_email_verification_token,
+)
 from app.models.dossier import Dossier, DossierHistorique, DossierStatusEnum, DossierTypeEnum, PieceJustificative
 from app.models.dossier_contract import DossierContrat
 from app.models.option_lld import OptionLld
@@ -72,12 +75,22 @@ from app.services.emailing import (
 )
 from app.services import audit as audit_service
 from app.services.lld_catalog_data import is_lld_option_enabled
+from app.services.lld_avenant_flow import (
+    create_pending_avenant,
+    expire_stale_lld_avenant_if_needed,
+    record_avenant_demande_audit,
+    send_avenant_signature_email,
+)
 from app.services.lld_dossier_lifecycle import close_expired_lld_contract_dossiers
 from app.services.lld_options_catalog import (
+    LldOptionsState,
     build_lld_options_state,
     contrat_lld_est_actif,
     dossier_allows_lld_option_edit,
     ensure_option_rows_for_lld_dossier,
+    merge_lld_selections_from_payload,
+    pending_unsigned_lld_avenant,
+    selections_differ_from_rows,
     validate_selection_keys,
 )
 
@@ -194,6 +207,30 @@ def _contrat_summary_for_detail(dossier: Dossier) -> DossierContratSummaryOut | 
     )
 
 
+def _lld_options_pricing_out(state: LldOptionsState) -> LldOptionsPricingOut:
+    """Projette l'état options LLD (dont avenant non signé, US-06-08) vers le schéma API."""
+    return LldOptionsPricingOut(
+        base_mensualite_ht=state.base_mensualite_ht,
+        options_supplement_ht=state.options_supplement_ht,
+        total_mensualite_ht=state.total_mensualite_ht,
+        editable=state.editable,
+        edit_context=state.edit_context,
+        pending_avenant_signature=state.pending_avenant_signature,
+        proposed_total_mensualite_ht=state.proposed_total_mensualite_ht,
+        avenant_reference=state.avenant_reference,
+        items=[
+            LldOptionRowOut(
+                code=str(i["code"]),
+                label=str(i["label"]),
+                description=str(i["description"]),
+                surcout_mensuel_ht=float(cast(float | int | str, i["surcout_mensuel_ht"])),
+                selected=bool(i["selected"]),
+            )
+            for i in state.items
+        ],
+    )
+
+
 def _client_dossier_detail_out(db: DbSession, dossier: Dossier) -> DossierDetailOut:
     """Construit la réponse détail dossier côté client (dont bloc LLD si applicable)."""
     checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
@@ -218,23 +255,7 @@ def _client_dossier_detail_out(db: DbSession, dossier: Dossier) -> DossierDetail
     lld_pricing: LldOptionsPricingOut | None = None
     state = build_lld_options_state(db, dossier)
     if state:
-        lld_pricing = LldOptionsPricingOut(
-            base_mensualite_ht=state.base_mensualite_ht,
-            options_supplement_ht=state.options_supplement_ht,
-            total_mensualite_ht=state.total_mensualite_ht,
-            editable=state.editable,
-            edit_context=state.edit_context,
-            items=[
-                LldOptionRowOut(
-                    code=str(i["code"]),
-                    label=str(i["label"]),
-                    description=str(i["description"]),
-                    surcout_mensuel_ht=float(cast(float | int | str, i["surcout_mensuel_ht"])),
-                    selected=bool(i["selected"]),
-                )
-                for i in state.items
-            ],
-        )
+        lld_pricing = _lld_options_pricing_out(state)
     return DossierDetailOut(
         id=dossier.id,
         reference=dossier.reference,
@@ -1168,6 +1189,8 @@ def list_my_contrats(
         if d.date_debut_contrat and d.duree_mois:
             date_fin = _add_months(d.date_debut_contrat, d.duree_mois)
         is_active = date_fin is None or date_fin >= today
+        st_ll = build_lld_options_state(db, d)
+        total_m_ht = float(st_ll.total_mensualite_ht) if st_ll else None
         result.append(
             ContratListItemOut(
                 id=d.id,
@@ -1183,6 +1206,7 @@ def list_my_contrats(
                 date_debut=d.date_debut_contrat,
                 date_fin=date_fin,
                 is_active=is_active,
+                total_mensualite_ht=total_m_ht,
             )
         )
     result.sort(key=lambda c: (not c.is_active, -(c.date_debut.toordinal() if c.date_debut else 0)))
@@ -1197,7 +1221,7 @@ def patch_lld_options(
     db: DbSession,
     access_token: str | None = Cookie(default=None),
 ) -> LldOptionsPricingOut:
-    """Met à jour les options LLD (brouillon ou contrat actif validé, US-07-01 / US-07-02)."""
+    """Met à jour les options LLD (US-07-01 / 02). Sous ``contrat_en_cours`` : avenant + email (US-06-08)."""
     user = _resolve_user_from_cookie(access_token, db)
     dossier = _get_owned_dossier(db, dossier_id=dossier_id, user_id=user.id)
     if dossier.type != DossierTypeEnum.lld:
@@ -1205,7 +1229,14 @@ def patch_lld_options(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Les options LLD ne s'appliquent qu'aux dossiers de type LLD.",
         )
-    if not dossier_allows_lld_option_edit(dossier):
+    if dossier.status == DossierStatusEnum.contrat_en_cours:
+        expire_stale_lld_avenant_if_needed(db, dossier.id)
+        if pending_unsigned_lld_avenant(db, dossier.id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Un avenant est déjà en attente de signature. Consultez votre e-mail ou attendez l'expiration du lien (24 h).",
+            )
+    if not dossier_allows_lld_option_edit(db, dossier):
         detail = "Les options ne sont pas modifiables pour ce dossier."
         if (
             dossier.status
@@ -1242,10 +1273,48 @@ def patch_lld_options(
             )
     ensure_option_rows_for_lld_dossier(db, dossier)
     rows = db.query(OptionLld).filter(OptionLld.dossier_id == dossier.id).all()
+    rows_by_code = {r.code: r for r in rows}
     state_before = build_lld_options_state(db, dossier)
     if not state_before:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="État LLD incohérent.")
     sel_before = {str(i["code"]): bool(i["selected"]) for i in state_before.items}
+
+    if dossier.status == DossierStatusEnum.contrat_en_cours:
+        merged = merge_lld_selections_from_payload(db, dossier, payload.selections)
+        if not selections_differ_from_rows(merged, rows_by_code):
+            db.commit()
+            db.refresh(dossier)
+            st_no = build_lld_options_state(db, dossier)
+            if not st_no:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="État LLD incohérent.")
+            return _lld_options_pricing_out(st_no)
+        raw_tok = _generate_email_verification_token()
+        hashed = _hash_email_verification_token(raw_tok)
+        now = datetime.now(timezone.utc)
+        av = create_pending_avenant(db, dossier, merged, raw_tok, hashed, now)
+        try:
+            send_avenant_signature_email(
+                client_email=user.email,
+                dossier_reference=dossier.reference,
+                avenant_reference=av.reference,
+                raw_token=raw_tok,
+            )
+        except Exception:  # pragma: no cover
+            logger.exception("Envoi email avenant dossier %s", dossier.reference)
+        record_avenant_demande_audit(
+            db,
+            dossier=dossier,
+            user=user,
+            avenant=av,
+            ip_address=request.client.host if request.client else None,
+        )
+        db.commit()
+        db.refresh(dossier)
+        st_pending = build_lld_options_state(db, dossier)
+        if not st_pending:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="État LLD incohérent.")
+        return _lld_options_pricing_out(st_pending)
+
     changed = False
     for row in rows:
         if row.code in payload.selections and row.selected != payload.selections[row.code]:
@@ -1258,23 +1327,7 @@ def patch_lld_options(
     if not changed:
         db.commit()
         db.refresh(dossier)
-        return LldOptionsPricingOut(
-            base_mensualite_ht=state_after.base_mensualite_ht,
-            options_supplement_ht=state_after.options_supplement_ht,
-            total_mensualite_ht=state_after.total_mensualite_ht,
-            editable=state_after.editable,
-            edit_context=state_after.edit_context,
-            items=[
-                LldOptionRowOut(
-                    code=str(i["code"]),
-                    label=str(i["label"]),
-                    description=str(i["description"]),
-                    surcout_mensuel_ht=float(cast(float | int | str, i["surcout_mensuel_ht"])),
-                    selected=bool(i["selected"]),
-                )
-                for i in state_after.items
-            ],
-        )
+        return _lld_options_pricing_out(state_after)
 
     audit_service.record(
         db,
@@ -1296,23 +1349,7 @@ def patch_lld_options(
     )
     db.commit()
     db.refresh(dossier)
-    return LldOptionsPricingOut(
-        base_mensualite_ht=state_after.base_mensualite_ht,
-        options_supplement_ht=state_after.options_supplement_ht,
-        total_mensualite_ht=state_after.total_mensualite_ht,
-        editable=state_after.editable,
-        edit_context=state_after.edit_context,
-        items=[
-            LldOptionRowOut(
-                code=str(i["code"]),
-                label=str(i["label"]),
-                description=str(i["description"]),
-                surcout_mensuel_ht=float(cast(float | int | str, i["surcout_mensuel_ht"])),
-                selected=bool(i["selected"]),
-            )
-            for i in state_after.items
-        ],
-    )
+    return _lld_options_pricing_out(state_after)
 
 
 @router.get("/{dossier_id}/contrat", response_model=DossierContratContentOut)

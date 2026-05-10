@@ -14,6 +14,7 @@ from app.core.deps import DbSession
 from app.core.security import create_access_token, decode_token, hash_password, verify_password
 from app.models.dossier import Dossier, DossierHistorique, DossierStatusEnum
 from app.models.dossier_contract import DossierContrat
+from app.models.lld_avenant import LldAvenant
 from app.models.user import RoleEnum, User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -36,6 +37,7 @@ from app.schemas.auth import (
 )
 from app.services import audit as audit_service
 from app.services.emailing import send_password_reset_email, send_verification_email
+from app.services.lld_avenant_flow import finalize_avenant_signature
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 GENERIC_LOGIN_ERROR = "Email ou mot de passe invalide."
@@ -391,3 +393,34 @@ def confirm_contract_signature(token: str, db: DbSession, request: Request) -> E
         )
     db.commit()
     return EmailVerificationResponse(message="Votre signature sur le contrat a ete enregistree.")
+
+
+@router.get("/confirm-avenant-signature", response_model=EmailVerificationResponse)
+def confirm_avenant_signature(token: str, db: DbSession, request: Request) -> EmailVerificationResponse:
+    """Valide le jeton e-mail et applique les options de l'avenant LLD (US-06-08)."""
+    token_hash = _hash_email_verification_token(token)
+    av = db.query(LldAvenant).filter(LldAvenant.signature_token_hash == token_hash).first()
+    if not av:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lien de signature invalide.")
+
+    now = datetime.now(timezone.utc)
+    if _is_token_expired(av.signature_token_expires_at, now):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lien de signature expire.")
+
+    dossier = db.query(Dossier).filter(Dossier.id == av.dossier_id).first()
+    if not dossier or dossier.status != DossierStatusEnum.contrat_en_cours or av.signed_at is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lien de signature invalide.")
+
+    client_user = db.query(User).filter(User.id == dossier.client_id).first()
+    finalize_avenant_signature(
+        db,
+        avenant=av,
+        dossier=dossier,
+        now=now,
+        client_user=client_user,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.commit()
+    return EmailVerificationResponse(
+        message="Votre avenant a ete signe electroniquement. Votre location mensuelle est mise a jour."
+    )

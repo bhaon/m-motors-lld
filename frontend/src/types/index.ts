@@ -103,4 +103,6 @@ export interface ContratListItem {
   date_debut: string | null;
   date_fin: string | null;
   is_active: boolean;
+  /** Base véhicule + options cochées (HT), aligné sur le détail dossier LLD (US-06-08). */
+  total_mensualite_ht?: number | null;
 }

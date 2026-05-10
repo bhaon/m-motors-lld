@@ -90,6 +90,11 @@ class Dossier(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    lld_avenants: Mapped[list["LldAvenant"]] = relationship(
+        "LldAvenant",
+        back_populates="dossier",
+        cascade="all, delete-orphan",
+    )
 
 
 class PieceJustificative(Base):
@@ -124,3 +129,4 @@ from app.models.vehicle import Vehicle  # noqa: E402, F401
 from app.models.user import User  # noqa: E402, F401
 from app.models.option_lld import OptionLld  # noqa: E402, F401
 from app.models.dossier_contract import DossierContrat  # noqa: E402, F401
+from app.models.lld_avenant import LldAvenant  # noqa: E402, F401
