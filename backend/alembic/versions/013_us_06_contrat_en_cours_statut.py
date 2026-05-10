@@ -34,8 +34,10 @@ def _add_months(d: date, months: int) -> date:
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        op.execute(
-            text(f"""
+        # Commit séparé : sinon PG refuse d’utiliser la nouvelle valeur dans la même transaction (UnsafeNewEnumValueUsage).
+        with op.get_context().autocommit_block():
+            op.execute(
+                text(f"""
 DO $do$
 BEGIN
   IF NOT EXISTS (
@@ -49,7 +51,7 @@ BEGIN
 END
 $do$;
 """)
-        )
+            )
 
     # Repasse en « contrat en cours » les LLD encore sous garantie contractuelle.
     from app.models.dossier import Dossier, DossierStatusEnum, DossierTypeEnum
