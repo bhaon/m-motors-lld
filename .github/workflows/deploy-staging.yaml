@@ -26,6 +26,8 @@ permissions:
 env:
   NAMESPACE: staging
   IMAGE_TAG: staging-${{ github.sha }}
+  # Cible DAST (OWASP ZAP) — surcharge via vars.STAGING_DAST_TARGET si besoin.
+  STAGING_DAST_TARGET: ${{ vars.STAGING_DAST_TARGET != '' && vars.STAGING_DAST_TARGET || 'https://staging.netdevops.fr' }}
 
 jobs:
   ci:
@@ -110,6 +112,44 @@ jobs:
             -o /dev/null -w "HTTP Status: %{http_code}\n"
 
           echo "✅ Tous les smoke tests passés"
+
+      # ── DAST — OWASP ZAP (US-11-06) : gate avant de valider le déploiement staging
+      # -l HIGH : échoue sur alertes High (niveau maximal ZAP ≈ blocage « critique »).
+      - name: OWASP ZAP — Baseline scan (staging)
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: ${{ env.STAGING_DAST_TARGET }}
+          cmd_options: "-l HIGH"
+          fail_action: true
+          allow_issue_writing: false
+          artifact_name: zap-dast-staging-${{ github.run_id }}
+
+      - name: Rapport sécurité DAST + cycle staging (archive)
+        if: always()
+        run: |
+          cat > security-report-dast-staging.md << EOF
+          # Rapport sécurité — DAST / déploiement staging
+
+          | Champ | Valeur |
+          |-------|--------|
+          | Workflow | ${{ github.workflow }} |
+          | Run | ${{ github.run_id }} |
+          | Cible ZAP | ${{ env.STAGING_DAST_TARGET }} |
+          | Commit | ${{ github.sha }} |
+          | Artefact ZAP | zap-dast-staging-${{ github.run_id }} |
+
+          Les fichiers détaillés (HTML/JSON) sont joints à l’artefact **zap-dast-staging-${{ github.run_id }}**.
+          En cas d’alertes **High**, le scan échoue et le déploiement staging est considéré comme non conforme (rollback déclenché si étapes suivantes échouent).
+          EOF
+
+      - name: Upload rapport sécurité consolidé (staging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report-staging-${{ github.run_id }}
+          path: security-report-dast-staging.md
+          retention-days: 90
 
       - name: Run integration tests
         run: |
