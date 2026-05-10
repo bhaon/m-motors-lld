@@ -7,10 +7,28 @@ const SAMPLE_PHOTOS = [
   { id: 2, url: "https://example.com/photo2.jpg", is_main: false, order: 2 },
 ];
 
-function mockFetch(photos = []) {
-  global.fetch = jest.fn().mockResolvedValue({
-    ok: true,
-    json: async () => photos,
+const DEFAULT_LLD_STOREFRONT = {
+  items: [
+    { code: "assurance", label: "Assurance tous risques", surcout_mensuel_ht: 39, enabled: true },
+    { code: "assistance", label: "Assistance & dépannage", surcout_mensuel_ht: 9, enabled: true },
+    { code: "entretien", label: "Entretien & révisions", surcout_mensuel_ht: 29, enabled: true },
+    { code: "controle_technique", label: "Contrôle technique", surcout_mensuel_ht: 5, enabled: true },
+  ],
+};
+
+function mockFetch(photos = [], lldPayload = DEFAULT_LLD_STOREFRONT) {
+  global.fetch = jest.fn().mockImplementation((url) => {
+    const u = String(url);
+    if (u.includes("/api/v1/lld-catalog")) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => lldPayload,
+      });
+    }
+    return Promise.resolve({
+      ok: true,
+      json: async () => photos,
+    });
   });
 }
 
@@ -91,20 +109,20 @@ describe("VehicleModal", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("affiche les options LLD quand le véhicule en propose", () => {
-    const vehicle = SAMPLE_VEHICLES[0];
-    expect(vehicle.options.length).toBeGreaterThan(0);
+  it("affiche les quatre options catalogue LLD pour un véhicule LLD", async () => {
+    mockFetch([], DEFAULT_LLD_STOREFRONT);
+    const vehicle = SAMPLE_VEHICLES.find((x) => x.lld);
+    expect(vehicle).toBeDefined();
 
-    render(
-      <VehicleModal
-        vehicle={vehicle}
-        onClose={jest.fn()}
-        onDossier={jest.fn()}
-      />,
-    );
+    await act(async () => {
+      render(<VehicleModal vehicle={vehicle} onClose={jest.fn()} onDossier={jest.fn()} />);
+    });
 
     expect(screen.getByText("Options LLD disponibles")).toBeInTheDocument();
-    expect(screen.getByText(vehicle.options[0].n)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Assurance tous risques")).toBeInTheDocument();
+      expect(screen.getByText("Contrôle technique")).toBeInTheDocument();
+    });
   });
 
   it("dépose un dossier achat via le bouton principal sans LLD", () => {

@@ -68,3 +68,18 @@ class LldPriceHistoryListOut(BaseModel):
 
     option_code: str
     history: list[LldPriceHistoryItemOut]
+
+
+class LldStorefrontItemOut(BaseModel):
+    """Option catalogue pour affichage catalogue client / fiche véhicule (sans auth)."""
+
+    code: str
+    label: str
+    surcout_mensuel_ht: float
+    enabled: bool
+
+
+class LldStorefrontListOut(BaseModel):
+    """Les quatre options LLD du catalogue (filtrées désactivées côté UI si besoin)."""
+
+    items: list[LldStorefrontItemOut]

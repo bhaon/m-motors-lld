@@ -141,8 +141,17 @@ describe("CataloguePage", () => {
 
   it("uploade une pièce et affiche le checkmark vert", async () => {
     const v = SAMPLE_VEHICLES[0];
+    const lldCatalogJson = {
+      items: [
+        { code: "assurance", label: "Assurance tous risques", surcout_mensuel_ht: 39, enabled: true },
+        { code: "assistance", label: "Assistance & dépannage", surcout_mensuel_ht: 9, enabled: true },
+        { code: "entretien", label: "Entretien & révisions", surcout_mensuel_ht: 29, enabled: true },
+        { code: "controle_technique", label: "Contrôle technique", surcout_mensuel_ht: 5, enabled: true },
+      ],
+    };
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => [] }) // galerie
+      .mockResolvedValueOnce({ ok: true, json: async () => lldCatalogJson }) // catalogue LLD (VehicleModal)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ id: 55, reference: "DOS-2026-00055" }),
