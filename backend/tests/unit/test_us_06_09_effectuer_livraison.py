@@ -27,7 +27,7 @@ def _gest_headers(client: TestClient, db: Session, email: str = "gest.609@ex.com
 
 
 def test_effectuer_livraison_lld_maj_contrat_et_contrats_client(client: TestClient, db: Session, monkeypatch) -> None:
-    """POST effectuer-livraison : cloture, date_debut = jour livraison FR, duree 36 ; GET /contrats exposé."""
+    """POST effectuer-livraison LLD : contrat_en_cours, date_debut = jour livraison FR, duree 36 ; GET /contrats exposé."""
 
     def _noop(*_a, **_k):
         pass
@@ -53,13 +53,13 @@ def test_effectuer_livraison_lld_maj_contrat_et_contrats_client(client: TestClie
     r = client.post(f"/api/v1/dossiers/backoffice/{d.id}/effectuer-livraison", headers=hdr)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["status"] == "cloture"
+    assert body["status"] == "contrat_en_cours"
     assert body["duree_mois"] == 36
     assert body["date_debut_contrat"] == "2026-07-14"
 
     db.expire_all()
     row = db.query(Dossier).filter(Dossier.id == d.id).one()
-    assert row.status == DossierStatusEnum.cloture
+    assert row.status == DossierStatusEnum.contrat_en_cours
     assert row.duree_mois == 36
 
     h_cli = _cookie(client, cli.email)

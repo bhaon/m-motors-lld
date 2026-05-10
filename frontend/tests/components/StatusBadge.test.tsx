@@ -11,6 +11,7 @@ describe("StatusBadge", () => {
     ["en_signature",       "En signature"],
     ["attente_livraison",  "Attente de livraison"],
     ["livraison_planifiee", "Livraison planifiée"],
+    ["contrat_en_cours", "Contrat en cours"],
     ["cloture", "Clôturé"],
     ["rejete",             "Rejeté"],
     ["annule",             "Annulé"],

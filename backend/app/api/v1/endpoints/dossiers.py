@@ -72,6 +72,7 @@ from app.services.emailing import (
 )
 from app.services import audit as audit_service
 from app.services.lld_catalog_data import is_lld_option_enabled
+from app.services.lld_dossier_lifecycle import close_expired_lld_contract_dossiers
 from app.services.lld_options_catalog import (
     build_lld_options_state,
     contrat_lld_est_actif,
@@ -344,6 +345,7 @@ def list_my_dossiers(
 ) -> list[DossierListItemOut]:
     """Retourne les dossiers du client connecté avec info véhicule, du plus récent au plus ancien."""
     user = _resolve_user_from_cookie(access_token, db)
+    close_expired_lld_contract_dossiers(db)
     dossiers = (
         db.query(Dossier)
         .options(joinedload(Dossier.vehicle))
@@ -388,7 +390,7 @@ def list_all_dossiers_backoffice(
     """Liste paginée et filtrée des dossiers pour le tableau de bord gestionnaire.
 
     Filtres disponibles :
-    - ``statuts`` (répétable) : ex. depose,en_instruction,attente_livraison,livraison_planifiee. Défaut = depose + en_instruction + attente_livraison + livraison_planifiee.
+    - ``statuts`` (répétable) : ex. depose, contrat_en_cours, … Défaut = depose + en_instruction + attente_livraison + livraison_planifiee + contrat_en_cours.
     - ``type_contrat`` : achat | lld.
     - ``date_from`` / ``date_to`` : plage sur submitted_at.
 
@@ -398,11 +400,19 @@ def list_all_dossiers_backoffice(
     user = _resolve_user_from_cookie(access_token, db)
     enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
 
-    # Valeurs par défaut des statuts (dossiers en attente + en attente de livraison)
+    close_expired_lld_contract_dossiers(db)
+
+    # Valeurs par défaut des statuts (flux actif + livraisons + contrats en cours)
     active_statuts = (
         statuts
         if statuts
-        else ["depose", "en_instruction", "attente_livraison", "livraison_planifiee"]
+        else [
+            "depose",
+            "en_instruction",
+            "attente_livraison",
+            "livraison_planifiee",
+            "contrat_en_cours",
+        ]
     )
 
     # Validation des valeurs de statut
@@ -494,6 +504,8 @@ def get_dossier_bo_detail(
     """
     user = _resolve_user_from_cookie(access_token, db)
     enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
+
+    close_expired_lld_contract_dossiers(db)
 
     dossier = (
         db.query(Dossier)
@@ -654,7 +666,7 @@ def planifier_livraison(
 @router.post(
     "/backoffice/{dossier_id}/effectuer-livraison",
     response_model=DossierEffectuerLivraisonOut,
-    summary="US-06-09 — Livraison effectuée : clôture du dossier et début du LLD",
+    summary="US-06-09 — Livraison effectuée : contrat en cours (LLD) ou clôturé (achat)",
 )
 def effectuer_livraison(
     dossier_id: int,
@@ -662,7 +674,7 @@ def effectuer_livraison(
     request: Request,
     access_token: str | None = Cookie(default=None),
 ) -> DossierEffectuerLivraisonOut:
-    """Passe le dossier en ``cloture``. Pour un LLD : ``date_debut_contrat`` = jour de livraison, ``duree_mois`` = 36."""
+    """LLD → ``contrat_en_cours`` avec dates ; achat → ``cloture``. La clôture LLD intervient à l'échéance du contrat."""
     user = _resolve_user_from_cookie(access_token, db)
     enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
 
@@ -687,24 +699,32 @@ def effectuer_livraison(
         )
 
     old_status = dossier.status.value
-    dossier.status = DossierStatusEnum.cloture
-
     date_debut: date | None = None
     duree: int | None = None
+    new_status: DossierStatusEnum
     if dossier.type == DossierTypeEnum.lld:
+        new_status = DossierStatusEnum.contrat_en_cours
         date_debut = _date_livraison_calendar_fr(dossier.livraison_prevue_at)
         duree = LLD_DUREE_MOIS_APRES_LIVRAISON
         dossier.date_debut_contrat = date_debut
         dossier.duree_mois = duree
+    else:
+        new_status = DossierStatusEnum.cloture
+
+    dossier.status = new_status
 
     db.add(
         DossierHistorique(
             dossier_id=dossier.id,
             ancien_status=old_status,
-            nouveau_status=DossierStatusEnum.cloture.value,
+            nouveau_status=new_status.value,
             commentaire=(
                 f"Livraison effectuée par {user.first_name} {user.last_name} ({user.email})"
-                + (f" — début contrat LLD le {date_debut} ({duree} mois)." if date_debut and duree else ".")
+                + (
+                    f" — contrat LLD en cours à compter du {date_debut} ({duree} mois)."
+                    if date_debut and duree
+                    else "."
+                )
             ),
             operateur_id=user.id,
         )
@@ -719,7 +739,7 @@ def effectuer_livraison(
         ip_address=request.client.host if request.client else None,
         before_state={"status": old_status},
         after_state={
-            "status": DossierStatusEnum.cloture.value,
+            "status": new_status.value,
             "date_debut_contrat": date_debut.isoformat() if date_debut else None,
             "duree_mois": duree,
         },
@@ -910,11 +930,12 @@ def valider_dossier(
     if dossier.status in (
         DossierStatusEnum.attente_livraison,
         DossierStatusEnum.livraison_planifiee,
+        DossierStatusEnum.contrat_en_cours,
         DossierStatusEnum.cloture,
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Le dossier est déjà signé, en livraison ou clôturé : validation impossible.",
+            detail="Le dossier est déjà signé, en livraison, sous contrat ou clôturé : validation impossible.",
         )
 
     if dossier.status == DossierStatusEnum.valide:
@@ -1120,6 +1141,7 @@ def list_my_contrats(
 ) -> list[ContratListItemOut]:
     """Retourne les contrats LLD validés du client connecté, actifs et terminés."""
     user = _resolve_user_from_cookie(access_token, db)
+    close_expired_lld_contract_dossiers(db)
     dossiers = (
         db.query(Dossier)
         .options(joinedload(Dossier.vehicle))
@@ -1131,6 +1153,7 @@ def list_my_contrats(
                     DossierStatusEnum.valide,
                     DossierStatusEnum.attente_livraison,
                     DossierStatusEnum.livraison_planifiee,
+                    DossierStatusEnum.contrat_en_cours,
                     DossierStatusEnum.cloture,
                 )
             ),
@@ -1190,6 +1213,7 @@ def patch_lld_options(
                 DossierStatusEnum.valide,
                 DossierStatusEnum.attente_livraison,
                 DossierStatusEnum.livraison_planifiee,
+                DossierStatusEnum.contrat_en_cours,
             )
             and dossier.type == DossierTypeEnum.lld
             and not contrat_lld_est_actif(dossier)
@@ -1200,6 +1224,7 @@ def patch_lld_options(
             DossierStatusEnum.valide,
             DossierStatusEnum.attente_livraison,
             DossierStatusEnum.livraison_planifiee,
+            DossierStatusEnum.contrat_en_cours,
         ):
             detail = (
                 "Les options ne peuvent être modifiées qu'en brouillon ou sur un contrat LLD actif déjà validé."
@@ -1376,6 +1401,7 @@ def get_dossier_detail(
 ) -> DossierDetailOut:
     """Retourne le détail complet d'un dossier : infos véhicule, checklist, historique et motif de rejet."""
     user = _resolve_user_from_cookie(access_token, db)
+    close_expired_lld_contract_dossiers(db)
     dossier = (
         db.query(Dossier)
         .options(joinedload(Dossier.vehicle), joinedload(Dossier.historique), joinedload(Dossier.contrat))

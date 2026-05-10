@@ -75,6 +75,7 @@ def _build_dossier_reporting(
         + by_status.get(DossierStatusEnum.en_signature.value, 0)
         + by_status.get(DossierStatusEnum.attente_livraison.value, 0)
         + by_status.get(DossierStatusEnum.livraison_planifiee.value, 0)
+        + by_status.get(DossierStatusEnum.contrat_en_cours.value, 0)
         + by_status.get(DossierStatusEnum.cloture.value, 0)
     )
     rejete_n = by_status.get(DossierStatusEnum.rejete.value, 0)
@@ -92,6 +93,7 @@ def _build_dossier_reporting(
                     DossierStatusEnum.en_signature,
                     DossierStatusEnum.attente_livraison,
                     DossierStatusEnum.livraison_planifiee,
+                    DossierStatusEnum.contrat_en_cours,
                     DossierStatusEnum.cloture,
                     DossierStatusEnum.rejete,
                 )
@@ -107,6 +109,7 @@ def _build_dossier_reporting(
             DossierStatusEnum.en_signature,
             DossierStatusEnum.attente_livraison,
             DossierStatusEnum.livraison_planifiee,
+            DossierStatusEnum.contrat_en_cours,
             DossierStatusEnum.cloture,
         ) and row.validated_at is not None:
             deltas_days.append((row.validated_at - row.submitted_at).total_seconds() / 86400.0)

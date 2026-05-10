@@ -52,6 +52,7 @@ export type DossierStatus =
   | "en_signature"
   | "attente_livraison"
   | "livraison_planifiee"
+  | "contrat_en_cours"
   | "cloture"
   | "rejete"
   | "annule";

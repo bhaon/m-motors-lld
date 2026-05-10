@@ -2,7 +2,7 @@
 
 ## Objectif
 
-Lorsqu’un dossier est en **livraison planifiée**, le personnel du back-office enregistre la **livraison effective**. Le dossier est **clôturé** ; pour un contrat **LLD**, le terme du leasing commence : dates contractuelles fixées pour l’espace client **Mes contrats**.
+Lorsqu’un dossier est en **livraison planifiée**, le personnel du back-office enregistre la **livraison effective**. Pour un **LLD**, le dossier passe en **contrat en cours** et le terme du leasing commence (dates pour l’espace **Mes contrats**). Pour un **achat**, le dossier est **clôturé** dès la livraison. La **clôture** d’un LLD intervient **à l’échéance** du contrat (date de fin dépassée), via une transition automatique.
 
 ## Interface back-office
 
@@ -14,18 +14,19 @@ Lorsqu’un dossier est en **livraison planifiée**, le personnel du back-office
 
 | Cas | Effet |
 |-----|--------|
-| Type **LLD** | Statut → **`cloture`**. **`date_debut_contrat`** = jour calendaire (**Europe/Paris**) de la livraison planifiée (`livraison_prevue_at`). **`duree_mois`** = **36** (3 ans). |
+| Type **LLD** | Statut → **`contrat_en_cours`**. **`date_debut_contrat`** = jour calendaire (**Europe/Paris**) de la livraison planifiée (`livraison_prevue_at`). **`duree_mois`** = **36** (3 ans). |
 | Type **achat** | Statut → **`cloture`**. Pas de dates de contrat LLD (champs inchangés `null`). |
+| Fin de contrat LLD | Tant que **`date_debut_contrat` + `duree_mois`** n’est pas passée, le dossier reste **`contrat_en_cours`**. Ensuite : **`cloture`** (historique + lectures listes/détails). |
 | Prérequis | Statut exactement **`livraison_planifiee`** et **`livraison_prevue_at`** renseigné (sinon 400 / 409). |
 
 ## Espace client — Mes contrats
 
-`GET /api/v1/dossiers/contrats` inclut les dossiers LLD au statut **`cloture`**. La **date de début** affichée correspond à **`date_debut_contrat`** ; la **date de fin** est calculée comme **début + 36 mois** (même règle que les autres contrats LLD avec durée en base).
+`GET /api/v1/dossiers/contrats` inclut les dossiers LLD aux statuts **`contrat_en_cours`** et **`cloture`**. La **date de début** affichée correspond à **`date_debut_contrat`** ; la **date de fin** est calculée comme **début + durée en mois** en base.
 
 ## Données
 
-- Nouveau statut enum : **`cloture`**.
-- Migration **012** : ajout de la valeur PostgreSQL `cloture` sur `dossierstatusenum`.
+- Statuts enum : **`contrat_en_cours`**, **`cloture`**.
+- Migrations PostgreSQL : **012** (`cloture`), **013** (`contrat_en_cours` + migration des anciens LLD encore sous contrat).
 
 ## Audit
 
@@ -33,6 +34,6 @@ Action enregistrée : **`DOSSIER_LIVRAISON_EFFECTUEE`**. Un email de changement 
 
 ## Tests
 
-- Backend : `tests/unit/test_us_06_09_effectuer_livraison.py`.
-- Reporting : clé `cloture` dans les tests de synthèse.
+- Backend : `tests/unit/test_us_06_09_effectuer_livraison.py`, `tests/unit/test_lld_dossier_lifecycle.py`.
+- Reporting : synthèses incluant **`contrat_en_cours`** / **`cloture`**.
 - Frontend : `backoffice-dossiers.test.tsx` (bouton + POST), `StatusBadge.test.tsx`.

@@ -41,7 +41,7 @@ def contrat_lld_est_actif(dossier: Dossier, *, today: date | None = None) -> boo
         DossierStatusEnum.valide,
         DossierStatusEnum.attente_livraison,
         DossierStatusEnum.livraison_planifiee,
-        DossierStatusEnum.cloture,
+        DossierStatusEnum.contrat_en_cours,
     ):
         return False
     t = today or date.today()
@@ -81,6 +81,7 @@ def dossier_allows_lld_option_edit(dossier: Dossier) -> bool:
         DossierStatusEnum.valide,
         DossierStatusEnum.attente_livraison,
         DossierStatusEnum.livraison_planifiee,
+        DossierStatusEnum.contrat_en_cours,
     ) and contrat_lld_est_actif(dossier):
         return True
     return False

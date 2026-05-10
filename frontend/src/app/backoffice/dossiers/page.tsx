@@ -6,7 +6,7 @@
  * US-06-01 : filtres (statut, type, dates), tri, pagination.
  * US-06-02 : bouton "Prendre en charge" sur les dossiers au statut "Déposé".
  * US-06-10 : bouton "Planifier une livraison" + modale date/heure pour ``attente_livraison``.
- * US-06-09 : bouton "Livraison" pour ``livraison_planifiee`` → clôture + début LLD.
+ * US-06-09 : bouton "Livraison" pour ``livraison_planifiee`` → LLD : contrat en cours ; achat : clôturé.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -24,6 +24,7 @@ type DossierStatus =
   | "en_signature"
   | "attente_livraison"
   | "livraison_planifiee"
+  | "contrat_en_cours"
   | "cloture"
   | "rejete"
   | "annule";
@@ -59,6 +60,7 @@ const ALL_STATUTS: { value: DossierStatus; label: string; color: string; bg: str
   { value: "en_signature",       label: "En signature",            color: "#0e7490", bg: "#cffafe" },
   { value: "attente_livraison",  label: "Attente de livraison",    color: "#0369a1", bg: "#dbeafe" },
   { value: "livraison_planifiee", label: "Livraison planifiée",    color: "#15803d", bg: "#dcfce7" },
+  { value: "contrat_en_cours",    label: "Contrat en cours",      color: "#0f766e", bg: "#ccfbf1" },
   { value: "cloture",             label: "Clôturé",               color: "#4b5563", bg: "#e5e7eb" },
   { value: "rejete",             label: "Rejeté",                  color: "#b91c1c", bg: "#fee2e2" },
   { value: "annule",             label: "Annulé",                  color: "#6b7280", bg: "#f3f4f6" },
@@ -70,6 +72,7 @@ const DEFAULT_STATUTS: DossierStatus[] = [
   "en_instruction",
   "attente_livraison",
   "livraison_planifiee",
+  "contrat_en_cours",
 ];
 const PAGE_SIZE = 20;
 
@@ -218,7 +221,7 @@ export default function BackofficeDossiersPage() {
     }
   }
 
-  /** US-06-09 — Enregistre la livraison : clôture le dossier (LLD : début contrat à la date prévue, 36 mois). */
+  /** US-06-09 — Enregistre la livraison (LLD : contrat en cours ; achat : clôturé). */
   async function handleEffectuerLivraison(dossier: DossierBoItem) {
     setEffectuerId(dossier.id);
     setError("");
@@ -231,17 +234,23 @@ export default function BackofficeDossiersPage() {
         const payload = (await res.json().catch(() => ({}))) as { detail?: string };
         throw new Error(payload.detail ?? "Erreur lors de l'enregistrement de la livraison.");
       }
+      const body = (await res.json()) as { status: string };
+      const newStatus = body.status as DossierStatus;
       setData((prev) =>
         prev
           ? {
               ...prev,
               items: prev.items.map((item) =>
-                item.id === dossier.id ? { ...item, status: "cloture" as DossierStatus } : item,
+                item.id === dossier.id ? { ...item, status: newStatus } : item,
               ),
             }
           : prev,
       );
-      setToast(`Livraison enregistrée — dossier ${dossier.reference} clôturé.`);
+      const msgFin =
+        newStatus === "contrat_en_cours"
+          ? "contrat LLD en cours."
+          : "dossier clôturé.";
+      setToast(`Livraison enregistrée — ${msgFin} (${dossier.reference}).`);
       setTimeout(() => setToast(""), 3500);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur inattendue.");
