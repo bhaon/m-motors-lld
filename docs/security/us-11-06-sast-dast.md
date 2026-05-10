@@ -8,7 +8,7 @@ En tant que responsable sécurité, l’objectif est de détecter les vulnérabi
 |----------|------------------|
 | SonarQube à chaque PR | Workflow [`.github/workflows/sonarqube-pr.yaml`](../../.github/workflows/sonarqube-pr.yaml) |
 | OWASP ZAP sur staging avant validation du déploiement | Étape ZAP dans [`.github/workflows/deploy-staging.yaml`](../../.github/workflows/deploy-staging.yaml) après smoke tests |
-| Vulnérabilités critiques → blocage | **Sonar** : Quality Gate (à configurer côté Sonar pour traiter les sévérités *Blocker* / *Critical* comme échec). **ZAP** : échec sur alertes **High** (`-l HIGH`, niveau maximal dans ZAP). |
+| Vulnérabilités critiques → blocage | **Sonar** : Quality Gate (à configurer côté Sonar pour traiter les sévérités *Blocker* / *Critical* comme échec). **ZAP** : seuil **`-l WARN`** (niveaux acceptés par Baseline : `PASS` … `FAIL`, pas `HIGH` — voir ci-dessous). |
 | Rapport archivé à chaque cycle | Artefacts `security-report-sast-pr-*` (PR) et `security-report-staging-*` + `zap-dast-staging-*` (staging) |
 
 ## Configuration SonarCloud / SonarQube (SAST)
@@ -26,7 +26,7 @@ Les PR depuis forks du dépôt ne exécutent pas le job Sonar (`if: github.event
 
 Le workflow **Deploy → STAGING** appelle le scan **Baseline** après les smoke tests HTTP, contre l’URL définie par `STAGING_DAST_TARGET` (par défaut `https://staging.netdevops.fr`, surcharge possible via la variable dépôt `STAGING_DAST_TARGET`).
 
-- **Blocage** : `fail_action: true` et `-l HIGH` — toute alerte **High** fait échouer le job ; le rollback staging existant s’applique en cas d’échec global du job déployer.
+- **Blocage** : `fail_action: true` et **`-l WARN`** — le script Baseline classe les findings en `PASS` / `IGNORE` / `INFO` / `WARN` / `FAIL` (depuis les versions récentes de `zap-baseline.py`). **`HIGH` n’est plus une valeur valide pour `-l`** : elle provoquait une erreur d’options puis **code de sortie 3** (« any other failure », souvent confondu avec un bug Docker). Pour ne bloquer que les règles marquées `FAIL` dans la config, utilisez **`-l FAIL`**.
 - **Rapports** : l’action attache un artefact nommé `zap-dast-staging-<run_id>` ; un fichier Markdown `security-report-dast-staging.md` est également produit et conservé 90 jours.
 
 Pour ignorer des alertes connues sans les masquer côté CI, vous pouvez ajouter un fichier `.zap/rules.tsv` et la propriété `rules_file_name` dans l’étape ZAP (voir [documentation ZAP Baseline](https://www.zaproxy.org/docs/docker/baseline-scan/)).
