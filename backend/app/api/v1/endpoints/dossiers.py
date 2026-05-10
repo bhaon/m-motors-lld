@@ -359,7 +359,7 @@ def list_all_dossiers_backoffice(
     """Liste paginée et filtrée des dossiers pour le tableau de bord gestionnaire.
 
     Filtres disponibles :
-    - ``statuts`` (répétable) : ex. depose,en_instruction. Défaut = depose + en_instruction.
+    - ``statuts`` (répétable) : ex. depose,en_instruction,attente_livraison. Défaut = depose + en_instruction + attente_livraison.
     - ``type_contrat`` : achat | lld.
     - ``date_from`` / ``date_to`` : plage sur submitted_at.
 
@@ -369,8 +369,8 @@ def list_all_dossiers_backoffice(
     user = _resolve_user_from_cookie(access_token, db)
     enforce_role(user, RoleEnum.gestionnaire, RoleEnum.superviseur, RoleEnum.admin)
 
-    # Valeurs par défaut des statuts (dossiers en attente de traitement)
-    active_statuts = statuts if statuts else ["depose", "en_instruction"]
+    # Valeurs par défaut des statuts (dossiers en attente + en attente de livraison)
+    active_statuts = statuts if statuts else ["depose", "en_instruction", "attente_livraison"]
 
     # Validation des valeurs de statut
     valid_statuts = {s.value for s in DossierStatusEnum}

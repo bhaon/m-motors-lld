@@ -51,13 +51,15 @@ describe("BackofficeDossiersPage — rendu initial", () => {
     render(<BackofficeDossiersPage />);
     expect(screen.getByRole("button", { name: /déposé/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /en instruction/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /attente de livraison/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /validé/i })).toBeInTheDocument();
   });
 
-  it("les statuts Déposé et En instruction sont actifs par défaut", () => {
+  it("les statuts Déposé, En instruction et Attente de livraison sont actifs par défaut", () => {
     render(<BackofficeDossiersPage />);
     expect(screen.getByRole("button", { name: /déposé/i })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /en instruction/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /attente de livraison/i })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /validé/i })).toHaveAttribute("aria-pressed", "false");
   });
 
@@ -71,6 +73,10 @@ describe("BackofficeDossiersPage — rendu initial", () => {
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("statuts=en_instruction"),
+      expect.anything(),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("statuts=attente_livraison"),
       expect.anything(),
     );
   });
@@ -201,6 +207,8 @@ describe("BackofficeDossiersPage — filtres", () => {
     fireEvent.click(screen.getByRole("button", { name: /réinitialiser/i }));
 
     expect(screen.getByRole("button", { name: /déposé/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /en instruction/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /attente de livraison/i })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /validé/i })).toHaveAttribute("aria-pressed", "false");
   });
 

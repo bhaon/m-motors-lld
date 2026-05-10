@@ -14,7 +14,15 @@ import { apiBase } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DossierStatus = "brouillon" | "depose" | "en_instruction" | "valide" | "rejete" | "annule";
+type DossierStatus =
+  | "brouillon"
+  | "depose"
+  | "en_instruction"
+  | "valide"
+  | "en_signature"
+  | "attente_livraison"
+  | "rejete"
+  | "annule";
 type DossierType = "achat" | "lld";
 type SortOption = "submitted_asc" | "submitted_desc" | "created_desc";
 
@@ -40,15 +48,18 @@ interface DossierBoList {
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const ALL_STATUTS: { value: DossierStatus; label: string; color: string; bg: string }[] = [
-  { value: "brouillon",      label: "Brouillon",      color: "#6b7280", bg: "#f3f4f6" },
-  { value: "depose",         label: "Déposé",         color: "#1d4ed8", bg: "#dbeafe" },
-  { value: "en_instruction", label: "En instruction", color: "#b45309", bg: "#fef3c7" },
-  { value: "valide",         label: "Validé",         color: "#15803d", bg: "#dcfce7" },
-  { value: "rejete",         label: "Rejeté",         color: "#b91c1c", bg: "#fee2e2" },
-  { value: "annule",         label: "Annulé",         color: "#6b7280", bg: "#f3f4f6" },
+  { value: "brouillon",          label: "Brouillon",               color: "#6b7280", bg: "#f3f4f6" },
+  { value: "depose",             label: "Déposé",                  color: "#1d4ed8", bg: "#dbeafe" },
+  { value: "en_instruction",   label: "En instruction",          color: "#b45309", bg: "#fef3c7" },
+  { value: "valide",             label: "Validé",                  color: "#15803d", bg: "#dcfce7" },
+  { value: "en_signature",       label: "En signature",            color: "#0e7490", bg: "#cffafe" },
+  { value: "attente_livraison",  label: "Attente de livraison",    color: "#0369a1", bg: "#dbeafe" },
+  { value: "rejete",             label: "Rejeté",                  color: "#b91c1c", bg: "#fee2e2" },
+  { value: "annule",             label: "Annulé",                  color: "#6b7280", bg: "#f3f4f6" },
 ];
 
-const DEFAULT_STATUTS: DossierStatus[] = ["depose", "en_instruction"];
+/** Dossiers « en attente » côté métier : flux actif + livraisons à préparer (US-06-07). */
+const DEFAULT_STATUTS: DossierStatus[] = ["depose", "en_instruction", "attente_livraison"];
 const PAGE_SIZE = 20;
 
 // ── Utilitaires ───────────────────────────────────────────────────────────────
