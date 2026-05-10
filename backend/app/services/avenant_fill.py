@@ -87,8 +87,9 @@ def build_avenant_placeholder_map(
     m["AVENANT_TOTAL_TTC_MOIS"] = _fmt_money(float(supp_ttc))
     m["AVENANT_MENSUALITE_GLOBALE_TTC"] = _fmt_money(float(total_ttc))
     m["AVENANT_COUT_TOTAL_TTC"] = _fmt_money(float(supp_ttc))
+    base_ht_contrat = float(st.base_mensualite_ht) if st and st.base_mensualite_ht is not None else 0.0
     m["CONTRACT_MENSUALITE_TTC"] = _fmt_money(
-        float((Decimal(str(st.base_mensualite_ht or 0)) * (Decimal("1") + _TVA_RATE)).quantize(Decimal("0.01")))
+        float((Decimal(str(base_ht_contrat)) * (Decimal("1") + _TVA_RATE)).quantize(Decimal("0.01")))
     )
     if dossier.date_debut_contrat and dossier.duree_mois:
         from calendar import monthrange
