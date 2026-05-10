@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /root/studi/m-motors-lld/backend/.venv
+set -gx VIRTUAL_ENV /root/studi/bloc3/m-motors-lld/backend/.venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

@@ -1,4 +1,4 @@
-#!/root/studi/M-Motors/backend/.venv/bin/python3
+#!/root/studi/bloc3/m-motors-lld/backend/.venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

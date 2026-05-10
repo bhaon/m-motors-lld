@@ -1,0 +1,122 @@
+---
+# ============================================================
+# SAST — SonarQube / SonarCloud sur chaque PR (US-11-06)
+# Exige : secrets.SONAR_TOKEN, vars.SONAR_ORGANIZATION (SonarCloud)
+# ============================================================
+name: SonarQube — SAST (PR)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sonarqube:
+    name: Analyse statique SonarQube
+    runs-on: ubuntu-latest
+    # Évite un échec bruyant sur fork sans secrets ; la doc décrit l’activation SonarCloud.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout (historique complet pour blame Sonar)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Tests frontend + couverture (lcov)
+        working-directory: frontend
+        run: |
+          npm ci --prefer-offline
+          npm run test:ci -- --passWithNoTests
+        env:
+          CI: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Tests backend + couverture (coverage.xml)
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+          pytest \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --tb=short \
+            -q
+        env:
+          DATABASE_URL: "postgresql://testuser:testpass@localhost:5432/testdb"
+          SECRET_KEY: "test-secret-key-only-for-ci"
+          ENVIRONMENT: "test"
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
+            -Dsonar.pullrequest.branch=${{ github.head_ref }}
+            -Dsonar.pullrequest.base=${{ github.base_ref }}
+
+      - name: Rapport sécurité SAST (résumé + archive)
+        if: always()
+        run: |
+          cat > security-report-sast.md << EOF
+          # Rapport sécurité — Analyse statique (SAST)
+
+          | Champ | Valeur |
+          |-------|--------|
+          | Workflow | ${{ github.workflow }} |
+          | Run | ${{ github.run_id }} |
+          | PR | #${{ github.event.pull_request.number }} |
+          | Commit | ${{ github.sha }} |
+          | Sonar project | m-motors-lld |
+
+          Les détails de la Quality Gate et des blocages **Critical / Blocker** sont visibles dans SonarQube / SonarCloud.
+          Les seuils de Quality Gate doivent être configurés côté serveur pour faire échouer la pipeline en cas de vulnérabilités critiques.
+          EOF
+
+      - name: Upload rapport sécurité SAST
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report-sast-pr-${{ github.run_id }}
+          path: security-report-sast.md
+          retention-days: 90
