@@ -55,6 +55,7 @@ from app.services.object_storage import (
 from app.core.config import settings
 from app.services.emailing import send_status_change_email
 from app.services import audit as audit_service
+from app.services.lld_catalog_data import is_lld_option_enabled
 from app.services.lld_options_catalog import (
     build_lld_options_state,
     contrat_lld_est_actif,
@@ -907,9 +908,15 @@ def patch_lld_options(
             )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
     try:
-        validate_selection_keys(payload.selections)
+        validate_selection_keys(db, payload.selections)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    for opt_code, sel in payload.selections.items():
+        if sel and not is_lld_option_enabled(db, opt_code):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"L'option « {opt_code} » n'est pas disponible actuellement.",
+            )
     ensure_option_rows_for_lld_dossier(db, dossier)
     rows = db.query(OptionLld).filter(OptionLld.dossier_id == dossier.id).all()
     state_before = build_lld_options_state(db, dossier)
