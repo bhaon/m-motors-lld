@@ -4,13 +4,15 @@
 
 ### 1. Référence Traefik vers le middleware CORS
 
-Avec le provider **KubernetesCRD**, un `Middleware` nommé `s3-cors` dans le namespace `staging` se référence ainsi sur l’Ingress S3 :
+Même convention que les autres Middlewares CRD référencés depuis un Ingress : **`{namespace}-{nom-du-middleware}@kubernetescrd`** (voir `production-rate-limit@…` pour le middleware `rate-limit` en `production`, ou `kube-system-redirect-to-https@…` dans `infra/traefik`).
+
+Un `Middleware` nommé `s3-cors` dans le namespace `staging` doit donc être référencé ainsi sur l’Ingress S3 :
 
 ```text
-s3-cors-staging@kubernetescrd
+staging-s3-cors@kubernetescrd
 ```
 
-**Pas** `staging-s3-cors@…` (ordre nom / namespace inversé). Une mauvaise référence fait que **aucun en-tête CORS** n’est appliqué par Traefik sur `PUT` / `GET` vers les URLs pré-signées : le navigateur bloque les appels cross-origin.
+Une référence du type `s3-cors-staging@…` pointe vers un middleware nommé `staging` dans un namespace `s3-cors` (inexistant) : **aucun en-tête CORS** n’est alors appliqué par Traefik sur `PUT` / `GET` / préflight `OPTIONS`, et le navigateur signale une erreur CORS.
 
 ### 2. Alignement des URLs
 

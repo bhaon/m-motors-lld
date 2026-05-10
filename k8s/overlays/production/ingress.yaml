@@ -67,7 +67,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/service.passhostheader: "true"
-    traefik.ingress.kubernetes.io/router.middlewares: s3-cors-production@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: production-s3-cors@kubernetescrd
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: traefik
