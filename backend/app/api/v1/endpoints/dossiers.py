@@ -10,6 +10,7 @@ from fastapi import APIRouter, Cookie, HTTPException, Query, Request, status
 
 from app.core.deps import DbSession, enforce_role, get_user_from_cookie
 from app.models.dossier import Dossier, DossierHistorique, DossierStatusEnum, DossierTypeEnum, PieceJustificative
+from app.models.option_lld import OptionLld
 from app.models.user import RoleEnum, User
 from app.models.vehicle import Vehicle
 from sqlalchemy.orm import joinedload
@@ -24,6 +25,9 @@ from app.schemas.dossier import (
     DossierCreateIn,
     DossierCreateOut,
     DossierDetailOut,
+    LldOptionRowOut,
+    LldOptionsPatchIn,
+    LldOptionsPricingOut,
     DossierListItemOut,
     DossierRejeterIn,
     DossierRejeterOut,
@@ -51,6 +55,14 @@ from app.services.object_storage import (
 from app.core.config import settings
 from app.services.emailing import send_status_change_email
 from app.services import audit as audit_service
+from app.services.lld_catalog_data import is_lld_option_enabled
+from app.services.lld_options_catalog import (
+    build_lld_options_state,
+    contrat_lld_est_actif,
+    dossier_allows_lld_option_edit,
+    ensure_option_rows_for_lld_dossier,
+    validate_selection_keys,
+)
 
 router = APIRouter(prefix="/dossiers", tags=["Dossiers"])
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
@@ -121,6 +133,75 @@ def _build_piece_checklist(
     return checklist, missing_pieces, len(missing_pieces) == 0
 
 
+def _utc_safe(dt: datetime | None) -> datetime | None:
+    """Normalise les datetimes SQLAlchemy/SQLite parfois naïfs en UTC pour la sérialisation JSON."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _client_dossier_detail_out(db: DbSession, dossier: Dossier) -> DossierDetailOut:
+    """Construit la réponse détail dossier côté client (dont bloc LLD si applicable)."""
+    checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
+    vehicle_out = (
+        VehicleSummaryOut(
+            make=dossier.vehicle.make,
+            model=dossier.vehicle.model,
+            year=dossier.vehicle.year,
+        )
+        if dossier.vehicle
+        else None
+    )
+    historique_out = [
+        HistoriqueItemOut(
+            ancien_status=h.ancien_status,
+            nouveau_status=h.nouveau_status,
+            commentaire=h.commentaire,
+            created_at=_utc_safe(h.created_at) or h.created_at,
+        )
+        for h in dossier.historique
+    ]
+    lld_pricing: LldOptionsPricingOut | None = None
+    state = build_lld_options_state(db, dossier)
+    if state:
+        lld_pricing = LldOptionsPricingOut(
+            base_mensualite_ht=state.base_mensualite_ht,
+            options_supplement_ht=state.options_supplement_ht,
+            total_mensualite_ht=state.total_mensualite_ht,
+            editable=state.editable,
+            edit_context=state.edit_context,
+            items=[
+                LldOptionRowOut(
+                    code=str(i["code"]),
+                    label=str(i["label"]),
+                    description=str(i["description"]),
+                    surcout_mensuel_ht=float(i["surcout_mensuel_ht"]),
+                    selected=bool(i["selected"]),
+                )
+                for i in state.items
+            ],
+        )
+    return DossierDetailOut(
+        id=dossier.id,
+        reference=dossier.reference,
+        type=dossier.type,
+        status=dossier.status.value,
+        vehicle_id=dossier.vehicle_id,
+        client_id=dossier.client_id,
+        created_at=_utc_safe(dossier.created_at),
+        submitted_at=_utc_safe(dossier.submitted_at),
+        motif_rejet=dossier.motif_rejet,
+        checklist=checklist,
+        missing_pieces=missing_pieces,
+        can_submit=can_submit,
+        vehicle=vehicle_out,
+        historique=historique_out,
+        lld_pricing=lld_pricing,
+    )
+
+
 def _format_utc_timestamp(timestamp: datetime) -> str:
     """Retourne une date ISO 8601 normalisée en UTC (suffixe Z)."""
     return timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -189,6 +270,9 @@ def create_dossier(
     db.add(dossier)
     db.commit()
     db.refresh(dossier)
+    if dossier.type == DossierTypeEnum.lld:
+        ensure_option_rows_for_lld_dossier(db, dossier)
+        db.commit()
     return DossierCreateOut(
         id=dossier.id,
         reference=dossier.reference,
@@ -794,6 +878,120 @@ def list_my_contrats(
     return result
 
 
+@router.patch("/{dossier_id}/options-lld", response_model=LldOptionsPricingOut)
+def patch_lld_options(
+    dossier_id: int,
+    payload: LldOptionsPatchIn,
+    request: Request,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> LldOptionsPricingOut:
+    """Met à jour les options LLD (brouillon ou contrat actif validé, US-07-01 / US-07-02)."""
+    user = _resolve_user_from_cookie(access_token, db)
+    dossier = _get_owned_dossier(db, dossier_id=dossier_id, user_id=user.id)
+    if dossier.type != DossierTypeEnum.lld:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Les options LLD ne s'appliquent qu'aux dossiers de type LLD.",
+        )
+    if not dossier_allows_lld_option_edit(dossier):
+        detail = "Les options ne sont pas modifiables pour ce dossier."
+        if (
+            dossier.status == DossierStatusEnum.valide
+            and dossier.type == DossierTypeEnum.lld
+            and not contrat_lld_est_actif(dossier)
+        ):
+            detail = "Les options ne peuvent plus être modifiées : le contrat est terminé."
+        elif dossier.status not in (DossierStatusEnum.brouillon, DossierStatusEnum.valide):
+            detail = (
+                "Les options ne peuvent être modifiées qu'en brouillon ou sur un contrat LLD actif déjà validé."
+            )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+    try:
+        validate_selection_keys(db, payload.selections)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    for opt_code, sel in payload.selections.items():
+        if sel and not is_lld_option_enabled(db, opt_code):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"L'option « {opt_code} » n'est pas disponible actuellement.",
+            )
+    ensure_option_rows_for_lld_dossier(db, dossier)
+    rows = db.query(OptionLld).filter(OptionLld.dossier_id == dossier.id).all()
+    state_before = build_lld_options_state(db, dossier)
+    if not state_before:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="État LLD incohérent.")
+    sel_before = {str(i["code"]): bool(i["selected"]) for i in state_before.items}
+    changed = False
+    for row in rows:
+        if row.code in payload.selections and row.selected != payload.selections[row.code]:
+            row.selected = payload.selections[row.code]
+            changed = True
+    db.flush()
+    state_after = build_lld_options_state(db, dossier)
+    if not state_after:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="État LLD incohérent.")
+    if not changed:
+        db.commit()
+        db.refresh(dossier)
+        return LldOptionsPricingOut(
+            base_mensualite_ht=state_after.base_mensualite_ht,
+            options_supplement_ht=state_after.options_supplement_ht,
+            total_mensualite_ht=state_after.total_mensualite_ht,
+            editable=state_after.editable,
+            edit_context=state_after.edit_context,
+            items=[
+                LldOptionRowOut(
+                    code=str(i["code"]),
+                    label=str(i["label"]),
+                    description=str(i["description"]),
+                    surcout_mensuel_ht=float(i["surcout_mensuel_ht"]),
+                    selected=bool(i["selected"]),
+                )
+                for i in state_after.items
+            ],
+        )
+
+    audit_service.record(
+        db,
+        action=audit_service.LLD_OPTIONS_UPDATED,
+        entity_type="dossier",
+        entity_id=dossier.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state={
+            "selections": sel_before,
+            "total_mensuel_ht": state_before.total_mensualite_ht,
+            "options_supplement_ht": state_before.options_supplement_ht,
+        },
+        after_state={
+            "selections": {str(i["code"]): bool(i["selected"]) for i in state_after.items},
+            "total_mensuel_ht": state_after.total_mensualite_ht,
+            "options_supplement_ht": state_after.options_supplement_ht,
+        },
+    )
+    db.commit()
+    db.refresh(dossier)
+    return LldOptionsPricingOut(
+        base_mensualite_ht=state_after.base_mensualite_ht,
+        options_supplement_ht=state_after.options_supplement_ht,
+        total_mensualite_ht=state_after.total_mensualite_ht,
+        editable=state_after.editable,
+        edit_context=state_after.edit_context,
+        items=[
+            LldOptionRowOut(
+                code=str(i["code"]),
+                label=str(i["label"]),
+                description=str(i["description"]),
+                surcout_mensuel_ht=float(i["surcout_mensuel_ht"]),
+                selected=bool(i["selected"]),
+            )
+            for i in state_after.items
+        ],
+    )
+
+
 @router.get("/{dossier_id}", response_model=DossierDetailOut)
 def get_dossier_detail(
     dossier_id: int,
@@ -810,41 +1008,11 @@ def get_dossier_detail(
     )
     if not dossier:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
-    checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
-    vehicle_out = (
-        VehicleSummaryOut(
-            make=dossier.vehicle.make,
-            model=dossier.vehicle.model,
-            year=dossier.vehicle.year,
-        )
-        if dossier.vehicle
-        else None
-    )
-    historique_out = [
-        HistoriqueItemOut(
-            ancien_status=h.ancien_status,
-            nouveau_status=h.nouveau_status,
-            commentaire=h.commentaire,
-            created_at=h.created_at,
-        )
-        for h in dossier.historique
-    ]
-    return DossierDetailOut(
-        id=dossier.id,
-        reference=dossier.reference,
-        type=dossier.type,
-        status=dossier.status.value,
-        vehicle_id=dossier.vehicle_id,
-        client_id=dossier.client_id,
-        created_at=dossier.created_at,
-        submitted_at=dossier.submitted_at,
-        motif_rejet=dossier.motif_rejet,
-        checklist=checklist,
-        missing_pieces=missing_pieces,
-        can_submit=can_submit,
-        vehicle=vehicle_out,
-        historique=historique_out,
-    )
+    if dossier.type == DossierTypeEnum.lld:
+        ensure_option_rows_for_lld_dossier(db, dossier)
+        db.commit()
+        db.refresh(dossier)
+    return _client_dossier_detail_out(db, dossier)
 
 
 @router.get("/{dossier_id}/pieces/{type_piece}/download-url", response_model=PieceDownloadUrlOut)
@@ -922,20 +1090,14 @@ def submit_dossier(
     db.commit()
     db.refresh(dossier)
     _notify_status_change(dossier, user.email)
-    checklist, missing_pieces, can_submit = _build_piece_checklist(db, dossier_id=dossier.id)
-    return DossierDetailOut(
-        id=dossier.id,
-        reference=dossier.reference,
-        type=dossier.type,
-        status=dossier.status.value,
-        vehicle_id=dossier.vehicle_id,
-        client_id=dossier.client_id,
-        created_at=dossier.created_at,
-        submitted_at=dossier.submitted_at,
-        checklist=checklist,
-        missing_pieces=missing_pieces,
-        can_submit=can_submit,
+    dossier = (
+        db.query(Dossier)
+        .options(joinedload(Dossier.vehicle), joinedload(Dossier.historique))
+        .filter(Dossier.id == dossier_id, Dossier.client_id == user.id)
+        .first()
     )
+    assert dossier
+    return _client_dossier_detail_out(db, dossier)
 
 
 @router.post("/{dossier_id}/pieces/upload-init", response_model=PieceUploadInitOut)

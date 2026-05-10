@@ -413,6 +413,15 @@ export default function Navbar() {
                       Gestion véhicules
                     </Link>
                     <Link
+                      href="/backoffice/options-lld"
+                      role="menuitem"
+                      onClick={() => setIsMenuOpen(false)}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", textDecoration: "none", color: "#0e7490", fontWeight: 600 }}
+                    >
+                      <ListIcon />
+                      Options LLD
+                    </Link>
+                    <Link
                       href="/backoffice/dossiers"
                       role="menuitem"
                       onClick={() => setIsMenuOpen(false)}

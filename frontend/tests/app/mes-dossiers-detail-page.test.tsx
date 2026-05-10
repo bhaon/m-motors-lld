@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import DossierDetailPage from "@/app/mes-dossiers/[id]/page";
 
 jest.mock("next/navigation", () => ({
@@ -25,6 +25,19 @@ const BASE_DOSSIER = {
   ],
   missing_pieces: ["cni", "permis", "revenus", "domicile", "rib"],
   can_submit: false,
+  lld_pricing: {
+    base_mensualite_ht: 199,
+    options_supplement_ht: 0,
+    total_mensualite_ht: 199,
+    editable: true,
+    edit_context: "brouillon" as const,
+    items: [
+      { code: "assurance", label: "Assurance tous risques", description: "Couv.", surcout_mensuel_ht: 39, selected: false },
+      { code: "assistance", label: "Assistance & dépannage", description: "Aide.", surcout_mensuel_ht: 9, selected: false },
+      { code: "entretien", label: "Entretien & révisions", description: "Rév.", surcout_mensuel_ht: 29, selected: false },
+      { code: "controle_technique", label: "Contrôle technique", description: "CT.", surcout_mensuel_ht: 5, selected: false },
+    ],
+  },
 };
 
 // Payload complet : toutes pièces uploadées
@@ -79,6 +92,21 @@ describe("DossierDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/type.*:/i)).toBeInTheDocument();
       expect(screen.getByText("LLD")).toBeInTheDocument();
+    });
+  });
+
+  it("affiche les options LLD et le total mensuel (US-07-01)", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => BASE_DOSSIER,
+    } as Response);
+
+    render(<DossierDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Options de votre abonnement LLD/i)).toBeInTheDocument();
+      expect(screen.getByText(/Total mensuel HT/i)).toBeInTheDocument();
+      expect(screen.getByText(/Assurance tous risques/i)).toBeInTheDocument();
     });
   });
 
@@ -290,10 +318,9 @@ describe("DossierDetailPage", () => {
     render(<DossierDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("list", { name: /historique/i })).toBeInTheDocument();
+      const hist = screen.getByRole("list", { name: /historique/i });
       expect(screen.getByText("Dossier déposé par le client.")).toBeInTheDocument();
-      // 3 entrées dans la liste
-      expect(screen.getAllByRole("listitem")).toHaveLength(3);
+      expect(within(hist).getAllByRole("listitem")).toHaveLength(3);
     });
   });
 

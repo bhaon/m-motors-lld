@@ -20,7 +20,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """Crée toutes les tables ORM sur une base vide."""
+    """Crée les tables du schéma initial (hors tables ajoutées par des migrations ultérieures)."""
     bind = op.get_bind()
     from app.db.session import Base
 
@@ -28,7 +28,11 @@ def upgrade() -> None:
     import app.models.user  # noqa: F401
     import app.models.vehicle  # noqa: F401
 
-    Base.metadata.create_all(bind=bind)
+    # Exclure les tables gérées par des migrations postérieures pour éviter les DuplicateTable.
+    # Ajouter ici tout nouveau modèle dont la migration dédiée crée la table.
+    MANAGED_BY_LATER_MIGRATIONS = {"audit_trail"}
+    tables = [t for t in Base.metadata.sorted_tables if t.name not in MANAGED_BY_LATER_MIGRATIONS]
+    Base.metadata.create_all(bind=bind, tables=tables)
 
 
 def downgrade() -> None:

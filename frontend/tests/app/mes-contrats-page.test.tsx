@@ -83,6 +83,20 @@ describe("MesContratsPage", () => {
     });
   });
 
+  it("US-07-02 : lien « Adapter les options » vers la section options pour un contrat actif", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [CONTRAT_ACTIF],
+    } as Response);
+
+    render(<MesContratsPage />);
+
+    await waitFor(() => {
+      const opt = screen.getByRole("link", { name: /adapter les options/i });
+      expect(opt).toHaveAttribute("href", "/mes-dossiers/1#lld-options-section");
+    });
+  });
+
   it("affiche le véhicule (marque, modèle, année)", async () => {
     jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,

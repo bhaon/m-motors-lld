@@ -71,6 +71,11 @@ class Dossier(Base):
         cascade="all, delete-orphan",
         order_by="DossierHistorique.created_at",
     )
+    options_lld_rows: Mapped[list["OptionLld"]] = relationship(
+        "OptionLld",
+        back_populates="dossier",
+        cascade="all, delete-orphan",
+    )
 
 
 class PieceJustificative(Base):
@@ -103,3 +108,4 @@ class DossierHistorique(Base):
 
 from app.models.vehicle import Vehicle  # noqa: E402, F401
 from app.models.user import User  # noqa: E402, F401
+from app.models.option_lld import OptionLld  # noqa: E402, F401

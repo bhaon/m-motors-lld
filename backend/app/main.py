@@ -9,7 +9,10 @@ from app.api.v1.router import api_router
 from app.db.session import engine
 
 # Import all models so Alembic / Base.metadata sees them
+import app.models.feature_flag  # noqa
+import app.models.lld_option_catalog  # noqa
 import app.models.vehicle  # noqa
+import app.models.option_lld  # noqa
 
 
 @asynccontextmanager

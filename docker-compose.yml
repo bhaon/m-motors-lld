@@ -62,9 +62,8 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    # On court-circuite l'entrypoint Gunicorn/Kubernetes pour uvicorn avec hot-reload
-    entrypoint: ["/bin/sh", "-c"]
-    command: "alembic upgrade head && exec uvicorn app.main:application --host 0.0.0.0 --port 8000 --reload --log-level info"
+    # Entrypoint dev : migrations + uvicorn --reload (remplace le gunicorn K8s)
+    entrypoint: ["/bin/sh", "/app/docker-entrypoint.dev.sh"]
     environment:
       # ── Obligatoires ────────────────────────────────────────────────────────
       # Clé JWT dev (ne jamais réutiliser en staging/prod)

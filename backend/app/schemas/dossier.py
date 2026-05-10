@@ -1,9 +1,11 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Literal
 from datetime import date, datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.dossier import DossierTypeEnum
 
+LldEditContext = Literal["brouillon", "contrat_actif", "readonly"]
 PieceType = Literal["cni", "permis", "revenus", "domicile", "rib"]
 
 
@@ -91,6 +93,33 @@ class PieceDownloadUrlOut(BaseModel):
     filename: str
 
 
+class LldOptionRowOut(BaseModel):
+    """Une option LLD affichée au client (US-07-01)."""
+
+    code: str
+    label: str
+    description: str
+    surcout_mensuel_ht: float
+    selected: bool
+
+
+class LldOptionsPricingOut(BaseModel):
+    """Récapitulatif mensuel LLD : base véhicule + options cochées."""
+
+    base_mensualite_ht: float | None = None
+    options_supplement_ht: float
+    total_mensualite_ht: float
+    editable: bool
+    edit_context: LldEditContext = "readonly"
+    items: list[LldOptionRowOut]
+
+
+class LldOptionsPatchIn(BaseModel):
+    """Mise à jour partielle ou complète des cases à cocher LLD."""
+
+    selections: dict[str, bool]
+
+
 class DossierDetailOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -108,6 +137,7 @@ class DossierDetailOut(BaseModel):
     can_submit: bool
     vehicle: VehicleSummaryOut | None = None
     historique: list[HistoriqueItemOut] = []
+    lld_pricing: LldOptionsPricingOut | None = None
 
 
 # ── US-06-01 : Tableau de bord gestionnaire ───────────────────────────────────

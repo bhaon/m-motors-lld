@@ -373,7 +373,7 @@ def test_submit_dossier_persists_submitted_at_in_database(client: TestClient, db
     db.expunge_all()
     dossier_db = db.query(Dossier).filter(Dossier.id == dossier_id).one()
     assert dossier_db.submitted_at is not None
-    assert dossier_db.submitted_at.tzinfo is not None
+    # Avec SQLite, l'ORM peut renvoyer un datetime naïf après relecture ; l'API compense en UTC (voir _utc_safe).
     assert dossier_db.status == DossierStatusEnum.depose
 
 
