@@ -50,7 +50,7 @@ def test_deploy_staging_contient_zap_et_rapport_securite() -> None:
     assert "zaproxy/action-baseline" in deploy_body
     assert "STAGING_DAST_TARGET" in deploy_body
     assert "security-report-staging" in deploy_body
-    assert "-l WARN" in deploy_body or "cmd_options" in deploy_body
+    assert "cmd_options" in deploy_body and "-l WARN" in deploy_body and "-I" in deploy_body
 
 
 def test_sonar_project_properties_couverture_referencee() -> None:
