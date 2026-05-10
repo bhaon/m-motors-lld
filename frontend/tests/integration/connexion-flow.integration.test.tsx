@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import ConnexionPage from "@/app/connexion/page";
+import AuthModal from "@/components/AuthModal";
 
 const pushMock = jest.fn();
 
@@ -19,7 +19,7 @@ describe("Connexion flow integration", () => {
       json: async () => ({ message: "Connexion reussie." }),
     } as Response);
 
-    render(<ConnexionPage />);
+    render(<AuthModal open defaultTab="login" onClose={() => {}} />);
 
     fireEvent.change(screen.getByPlaceholderText("Email"), { target: { value: "integration@example.com" } });
     fireEvent.change(screen.getByPlaceholderText("Mot de passe"), { target: { value: "VeryStrongPass123!" } });

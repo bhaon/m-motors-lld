@@ -39,7 +39,7 @@ async function ensureAuthenticatedOrRedirect(): Promise<CurrentUser> {
   });
 
   if (!response.ok) {
-    redirect("/connexion");
+    redirect("/?connexion=1");
   }
   return (await response.json()) as CurrentUser;
 }

@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+import AuthModal from "@/components/AuthModal";
 
 /**
  * Résout l'URL d'authentification courante côté navigateur.
@@ -119,10 +122,13 @@ function DossierIcon({ size = 16 }: { size?: number }) {
 const GESTIONNAIRE_ROLES = new Set(["gestionnaire", "superviseur", "admin"]);
 
 export default function Navbar() {
+  const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [initials, setInitials] = useState<string>("U");
   const [role, setRole] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState<"login" | "register">("login");
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const isGestionnaire = role !== null && GESTIONNAIRE_ROLES.has(role);
@@ -174,6 +180,25 @@ export default function Navbar() {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
+  /**
+   * Ouvre la modale d’auth depuis une URL partagee (`/?connexion=1` ou `/?inscription=1`).
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const c = params.get("connexion");
+    const i = params.get("inscription");
+    if (c === "1") {
+      setAuthModalTab("login");
+      setAuthModalOpen(true);
+      router.replace("/", { scroll: false });
+    } else if (i === "1") {
+      setAuthModalTab("register");
+      setAuthModalOpen(true);
+      router.replace("/", { scroll: false });
+    }
+  }, [router]);
+
   useEffect(() => {
     /**
      * Ferme le menu si clic en dehors de la zone dropdown.
@@ -221,8 +246,15 @@ export default function Navbar() {
   }
 
   return (
-    // Barre principale persistante pour la navigation publique.
-    <nav
+    <>
+      <AuthModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        defaultTab={authModalTab}
+        onAuthenticated={checkAuthStatus}
+      />
+      {/* Barre principale persistante pour la navigation publique. */}
+      <nav
       style={{
         background: "var(--navy)",
         padding: "0 2rem",
@@ -262,32 +294,26 @@ export default function Navbar() {
         >
           Catalogue
         </Link>
-        {/* Point d'entrée principal du tunnel d'inscription (visible hors session). */}
         {!isAuthenticated ? (
-          <>
-            <Link
-              href="/inscription"
-              style={{
-                color: "var(--white)",
-                textDecoration: "none",
-                fontSize: ".85rem",
-                fontWeight: 500,
-              }}
-            >
-              Inscription
-            </Link>
-            <Link
-              href="/connexion"
-              style={{
-                color: "var(--white)",
-                textDecoration: "none",
-                fontSize: ".85rem",
-                fontWeight: 500,
-              }}
-            >
-              Connexion
-            </Link>
-          </>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthModalTab("login");
+              setAuthModalOpen(true);
+            }}
+            style={{
+              color: "var(--white)",
+              background: "transparent",
+              border: 0,
+              fontSize: ".85rem",
+              fontWeight: 500,
+              cursor: "pointer",
+              padding: 0,
+              fontFamily: "inherit",
+            }}
+          >
+            Connexion
+          </button>
         ) : null}
         {/* Lien placeholder en attendant une page "À propos" dédiée. */}
         <Link
@@ -504,5 +530,6 @@ export default function Navbar() {
         ) : null}
       </div>
     </nav>
+    </>
   );
 }
