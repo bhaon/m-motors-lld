@@ -163,7 +163,6 @@ jobs:
             status=$(curl -o /dev/null -s -w "%{http_code}" \
               "$url" \
               --max-time 20 --retry 18 --retry-delay 10 --retry-connrefused \
-              --retry-http-errors \
               -H "User-Agent: GitHub-Actions-ProdSmokeTest") || curl_exit=$?
             if [ "${curl_exit:-0}" -ne 0 ]; then
               echo "❌ $label — curl a échoué (exit ${curl_exit})"
