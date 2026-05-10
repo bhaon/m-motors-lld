@@ -46,7 +46,7 @@ describe("Navbar", () => {
     expect(screen.getByRole("menu", { name: /menu utilisateur/i })).toBeInTheDocument();
     const profileItem = screen.getByRole("menuitem", { name: "Profile" });
     const dossiersItem = screen.getByRole("menuitem", { name: "Mes dossiers" });
-    expect(profileItem).toHaveAttribute("href", "/espace-client");
+    expect(profileItem.tagName).toBe("BUTTON");
     expect(dossiersItem).toHaveAttribute("href", "/mes-dossiers");
     expect(screen.getByRole("menuitem", { name: "Déconnexion" })).toBeInTheDocument();
   });

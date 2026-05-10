@@ -1,7 +1,5 @@
-import Navbar from "@/components/Navbar";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import ProfileManagementClient from "./ProfileManagementClient";
 
 /**
  * Résout l'URL backend de l'endpoint d'authentification courante.
@@ -44,13 +42,11 @@ async function ensureAuthenticatedOrRedirect(): Promise<CurrentUser> {
   return (await response.json()) as CurrentUser;
 }
 
+/**
+ * L’édition du profil se fait dans une modale (navbar) ; cette route garde les anciens liens
+ * et ouvre le profil sur l’accueil.
+ */
 export default async function EspaceClientPage() {
-  const currentUser = await ensureAuthenticatedOrRedirect();
-
-  return (
-    <main>
-      <Navbar />
-      <ProfileManagementClient initialUser={currentUser} />
-    </main>
-  );
+  await ensureAuthenticatedOrRedirect();
+  redirect("/?profil=1");
 }
