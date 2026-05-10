@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Navbar from "@/components/Navbar";
 
 /**
  * Résout l'URL backend de confirmation email.
@@ -74,9 +75,32 @@ export default function ConfirmEmailPage() {
   }, []);
 
   return (
-    <main style={{ maxWidth: 720, margin: "4rem auto", padding: "1.5rem", textAlign: "center" }}>
-      <h1 style={{ fontFamily: "Syne, sans-serif", marginBottom: "1rem" }}>Confirmation de l&apos;email</h1>
-      <p style={{ color: isError ? "#b91c1c" : "#166534" }}>{message}</p>
-    </main>
+    <>
+      <Navbar />
+      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem 1.5rem" }}>
+        <h1
+          style={{
+            fontSize: "1.6rem",
+            fontWeight: 800,
+            color: "var(--navy)",
+            fontFamily: "Syne, sans-serif",
+            marginBottom: "1rem",
+          }}
+        >
+          Confirmation de l&apos;email
+        </h1>
+        <p
+          role="status"
+          aria-live="polite"
+          style={{
+            color: isError ? "#b91c1c" : "#166534",
+            fontSize: "1rem",
+            lineHeight: 1.6,
+          }}
+        >
+          {message}
+        </p>
+      </main>
+    </>
   );
 }
