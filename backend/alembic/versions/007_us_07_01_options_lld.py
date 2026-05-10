@@ -22,7 +22,8 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("dossier_id", sa.Integer(), nullable=False),
         sa.Column("code", sa.String(length=40), nullable=False),
-        sa.Column("selected", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        # PostgreSQL refuse DEFAULT 0 sur une colonne BOOLEAN ; SQLite accepte false également.
+        sa.Column("selected", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("surcout_mensuel_ht", sa.Numeric(10, 2), nullable=False),
         sa.ForeignKeyConstraint(["dossier_id"], ["dossiers.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
