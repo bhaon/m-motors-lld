@@ -1,11 +1,11 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from datetime import date, datetime
 from typing import Literal
 
-LldEditContext = Literal["brouillon", "contrat_actif", "readonly"]
-from datetime import date, datetime
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.dossier import DossierTypeEnum
 
+LldEditContext = Literal["brouillon", "contrat_actif", "readonly"]
 PieceType = Literal["cni", "permis", "revenus", "domicile", "rib"]
 
 
