@@ -1,4 +1,52 @@
 ---
+# ============================================================
+# INGRESS — HTTP → HTTPS redirect (production)
+# Même logique que staging : redirect explicite via middleware,
+# pas de redirectTo global Traefik (bloquerait les challenges ACME).
+# ============================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: http-redirect-ingress
+  namespace: production
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-redirect-to-https@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http
+    - host: www.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http
+    - host: s3.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  number: 9000
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

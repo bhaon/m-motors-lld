@@ -13,12 +13,15 @@ metadata:
 spec:
   valuesContent: |-
     # ── Entrypoints ─────────────────────────────────────────
+    # IMPORTANT : le redirect HTTP→HTTPS est géré par middleware sur chaque
+    # Ingress applicatif (voir http-redirect-ingress dans chaque overlay).
+    # Ne PAS utiliser redirectTo ici : cela bloque les challenges ACME
+    # HTTP-01 de cert-manager qui utilisent /.well-known/acme-challenge/
+    # et ont besoin d'accéder au port 80 sans redirection.
     ports:
       web:
         port: 8000
         exposedPort: 80
-        redirectTo:
-          port: websecure          # Forcer HTTPS sur tout le trafic HTTP
       websecure:
         port: 8443
         exposedPort: 443
