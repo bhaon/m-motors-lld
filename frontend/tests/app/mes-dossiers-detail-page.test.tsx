@@ -60,6 +60,17 @@ const DOSSIER_COMPLET = {
   can_submit: true,
 };
 
+/** Dossier avec contrat généré (US-06-07). */
+const DOSSIER_EN_SIGNATURE = {
+  ...BASE_DOSSIER,
+  status: "en_signature",
+  contrat: {
+    reference: "CTR-2026-00013",
+    signed_at: null as string | null,
+    can_sign: true,
+  },
+};
+
 describe("DossierDetailPage", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
@@ -658,5 +669,138 @@ describe("DossierDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/validation du document impossible/i)).toBeInTheDocument();
     });
+  });
+
+  // ── Contrat & signature (US-06-07) ─────────────────────────────────────
+
+  it("charge et affiche le contrat lorsque l'API renvoie contrat + markdown", async () => {
+    jest.spyOn(global, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/contrat") && !u.includes("demander-signature")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            markdown: "# Contrat\n\nCorps **markdown**.",
+            reference: "CTR-2026-00013",
+            signed_at: null,
+          }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => DOSSIER_EN_SIGNATURE,
+      } as Response);
+    });
+
+    render(<DossierDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /^Contrat$/i })).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/# Contrat/i)).toBeInTheDocument();
+      expect(screen.getByText(/Corps \*\*markdown\*\*\./i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /^Signer le contrat$/i })).toBeInTheDocument();
+  });
+
+  it("affiche une erreur si le chargement du contrat échoue", async () => {
+    jest.spyOn(global, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/contrat") && !u.includes("demander-signature")) {
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({ detail: "Accès refusé." }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => DOSSIER_EN_SIGNATURE,
+      } as Response);
+    });
+
+    render(<DossierDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/accès refusé/i)).toBeInTheDocument();
+    });
+  });
+
+  it("ouvre la modale et envoie la demande de signature (POST)", async () => {
+    jest.spyOn(global, "fetch").mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (init?.method === "POST" && u.includes("demander-signature")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ message: "Un email avec le lien vous a été envoyé." }),
+        } as Response);
+      }
+      if (u.includes("/contrat") && !u.includes("demander-signature")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            markdown: "# C",
+            reference: "CTR-2026-00013",
+            signed_at: null,
+          }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => DOSSIER_EN_SIGNATURE,
+      } as Response);
+    });
+
+    render(<DossierDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^Signer le contrat$/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^Signer le contrat$/i }));
+
+    const dialog = await screen.findByRole("dialog");
+
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: /recevoir le lien par email/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/un email avec le lien vous a été envoyé/i)).toBeInTheDocument();
+    });
+  });
+
+  it("n'affiche pas le bouton signer si le contrat est déjà signé", async () => {
+    jest.spyOn(global, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/contrat") && !u.includes("demander-signature")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            markdown: "# OK",
+            reference: "CTR-X",
+            signed_at: "2026-05-10T12:00:00Z",
+          }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          ...DOSSIER_EN_SIGNATURE,
+          status: "attente_livraison",
+          contrat: {
+            reference: "CTR-X",
+            signed_at: "2026-05-10T12:00:00Z",
+            can_sign: false,
+          },
+        }),
+      } as Response);
+    });
+
+    render(<DossierDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/signé le/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: /^Signer le contrat$/i })).not.toBeInTheDocument();
   });
 });
