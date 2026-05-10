@@ -36,6 +36,15 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Supprimer npm et corepack : inutiles en production (on lance `node server.js`)
+# et sources de CVE dans leurs dépendances internes (picomatch, brace-expansion, ip-address).
+RUN rm -rf \
+    /usr/local/lib/node_modules/npm \
+    /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm \
+    /usr/local/bin/npx \
+    /usr/local/bin/corepack
+
 # Utilisateur non-root pour la sécurité
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 nextjs

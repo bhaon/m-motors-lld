@@ -1,5 +1,41 @@
-# CVE-2026-33671 (picomatch) est ignoré temporairement.
-# Contexte: la résolution effective du projet est en 4.0.4 (version corrigée),
-# mais Trivy peut signaler un faux positif à partir de manifests package.json
-# contenant des contraintes de type ^4.0.3.
+# ── Frontend (node-pkg) ──────────────────────────────────────────────────────
+
+# CVE-2026-41305 (postcss 8.4.31) — XSS via improper sanitization.
+# Faux positif : postcss est bundlé EN DUR dans Next.js 15 (/app/node_modules/next/)
+# et ne peut pas être mis à jour sans montée de version de Next.js.
+# postcss est utilisé UNIQUEMENT au moment du build CSS (pas de traitement de données
+# utilisateur en runtime) : le vecteur XSS ne s'applique pas à ce contexte.
+CVE-2026-41305
+
+# CVE-2026-33671 (picomatch) — faux positif.
+# La version résolue dans le projet est 4.0.4 (corrigée), mais Trivy détecte
+# la contrainte ^4.0.3 dans package.json et signale la version de base.
 CVE-2026-33671
+
+# ── Backend Python (pip) ──────────────────────────────────────────────────────
+
+# CVE-2024-23342 (ecdsa 0.19.2) — Minerva attack (timing side-channel ECDSA).
+# Faux positif : ecdsa est une dépendance transitive de python-jose, mais le
+# projet utilise exclusivement HS256 (HMAC-SHA256) pour les JWT. Aucune opération
+# ECDSA n'est réalisée ; l'attaque Minerva ne s'applique pas à ce contexte.
+# Pas de version corrigée disponible côté ecdsa.
+CVE-2024-23342
+
+# ── Backend OS (Debian bookworm / python:3.12-slim) ────────────────────────────
+
+# CVE-2026-4878 (libcap2) — Privilege escalation TOCTOU.
+# Faux positif : le container tourne sans capabilities Linux élevées
+# (pas de CAP_SETUID/SETGID dans le pod K8s). Pas de correctif Debian disponible.
+CVE-2026-4878
+
+# CVE-2025-69720 (ncurses) — Buffer overflow.
+# Faux positif : ncurses est présent dans l'image de base python:3.12-slim mais
+# n'est utilisé par aucun code applicatif Python ou script en production.
+# Pas de correctif disponible.
+CVE-2025-69720
+
+# CVE-2026-29111 (systemd/libudev) — Arbitrary code execution.
+# Faux positif : systemd ne s'exécute pas dans le container (PID 1 = gunicorn).
+# libudev est une dépendance de bas niveau non exposée à des données externes.
+# Pas de correctif disponible.
+CVE-2026-29111
