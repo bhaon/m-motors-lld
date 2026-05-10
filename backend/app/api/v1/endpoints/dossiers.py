@@ -57,7 +57,8 @@ from app.services.emailing import send_status_change_email
 from app.services import audit as audit_service
 from app.services.lld_options_catalog import (
     build_lld_options_state,
-    dossier_allows_option_edit,
+    contrat_lld_est_actif,
+    dossier_allows_lld_option_edit,
     ensure_option_rows_for_lld_dossier,
     validate_selection_keys,
 )
@@ -169,6 +170,7 @@ def _client_dossier_detail_out(db: DbSession, dossier: Dossier) -> DossierDetail
             options_supplement_ht=state.options_supplement_ht,
             total_mensualite_ht=state.total_mensualite_ht,
             editable=state.editable,
+            edit_context=state.edit_context,
             items=[
                 LldOptionRowOut(
                     code=str(i["code"]),
@@ -879,10 +881,11 @@ def list_my_contrats(
 def patch_lld_options(
     dossier_id: int,
     payload: LldOptionsPatchIn,
+    request: Request,
     db: DbSession,
     access_token: str | None = Cookie(default=None),
 ) -> LldOptionsPricingOut:
-    """Met à jour les options LLD cochées (dossier brouillon uniquement, US-07-01)."""
+    """Met à jour les options LLD (brouillon ou contrat actif validé, US-07-01 / US-07-02)."""
     user = _resolve_user_from_cookie(access_token, db)
     dossier = _get_owned_dossier(db, dossier_id=dossier_id, user_id=user.id)
     if dossier.type != DossierTypeEnum.lld:
@@ -890,29 +893,85 @@ def patch_lld_options(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Les options LLD ne s'appliquent qu'aux dossiers de type LLD.",
         )
-    if not dossier_allows_option_edit(dossier):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Les options ne peuvent plus être modifiées après dépôt du dossier.",
-        )
+    if not dossier_allows_lld_option_edit(dossier):
+        detail = "Les options ne sont pas modifiables pour ce dossier."
+        if (
+            dossier.status == DossierStatusEnum.valide
+            and dossier.type == DossierTypeEnum.lld
+            and not contrat_lld_est_actif(dossier)
+        ):
+            detail = "Les options ne peuvent plus être modifiées : le contrat est terminé."
+        elif dossier.status not in (DossierStatusEnum.brouillon, DossierStatusEnum.valide):
+            detail = (
+                "Les options ne peuvent être modifiées qu'en brouillon ou sur un contrat LLD actif déjà validé."
+            )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
     try:
         validate_selection_keys(payload.selections)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     ensure_option_rows_for_lld_dossier(db, dossier)
-    for row in db.query(OptionLld).filter(OptionLld.dossier_id == dossier.id).all():
-        if row.code in payload.selections:
+    rows = db.query(OptionLld).filter(OptionLld.dossier_id == dossier.id).all()
+    state_before = build_lld_options_state(db, dossier)
+    if not state_before:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="État LLD incohérent.")
+    sel_before = {str(i["code"]): bool(i["selected"]) for i in state_before.items}
+    changed = False
+    for row in rows:
+        if row.code in payload.selections and row.selected != payload.selections[row.code]:
             row.selected = payload.selections[row.code]
+            changed = True
+    db.flush()
+    state_after = build_lld_options_state(db, dossier)
+    if not state_after:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="État LLD incohérent.")
+    if not changed:
+        db.commit()
+        db.refresh(dossier)
+        return LldOptionsPricingOut(
+            base_mensualite_ht=state_after.base_mensualite_ht,
+            options_supplement_ht=state_after.options_supplement_ht,
+            total_mensualite_ht=state_after.total_mensualite_ht,
+            editable=state_after.editable,
+            edit_context=state_after.edit_context,
+            items=[
+                LldOptionRowOut(
+                    code=str(i["code"]),
+                    label=str(i["label"]),
+                    description=str(i["description"]),
+                    surcout_mensuel_ht=float(i["surcout_mensuel_ht"]),
+                    selected=bool(i["selected"]),
+                )
+                for i in state_after.items
+            ],
+        )
+
+    audit_service.record(
+        db,
+        action=audit_service.LLD_OPTIONS_UPDATED,
+        entity_type="dossier",
+        entity_id=dossier.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state={
+            "selections": sel_before,
+            "total_mensuel_ht": state_before.total_mensualite_ht,
+            "options_supplement_ht": state_before.options_supplement_ht,
+        },
+        after_state={
+            "selections": {str(i["code"]): bool(i["selected"]) for i in state_after.items},
+            "total_mensuel_ht": state_after.total_mensualite_ht,
+            "options_supplement_ht": state_after.options_supplement_ht,
+        },
+    )
     db.commit()
     db.refresh(dossier)
-    state = build_lld_options_state(db, dossier)
-    if not state:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="État LLD incohérent.")
     return LldOptionsPricingOut(
-        base_mensualite_ht=state.base_mensualite_ht,
-        options_supplement_ht=state.options_supplement_ht,
-        total_mensualite_ht=state.total_mensualite_ht,
-        editable=state.editable,
+        base_mensualite_ht=state_after.base_mensualite_ht,
+        options_supplement_ht=state_after.options_supplement_ht,
+        total_mensualite_ht=state_after.total_mensualite_ht,
+        editable=state_after.editable,
+        edit_context=state_after.edit_context,
         items=[
             LldOptionRowOut(
                 code=str(i["code"]),
@@ -921,7 +980,7 @@ def patch_lld_options(
                 surcout_mensuel_ht=float(i["surcout_mensuel_ht"]),
                 selected=bool(i["selected"]),
             )
-            for i in state.items
+            for i in state_after.items
         ],
     )
 

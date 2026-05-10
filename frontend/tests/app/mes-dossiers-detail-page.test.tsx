@@ -30,6 +30,7 @@ const BASE_DOSSIER = {
     options_supplement_ht: 0,
     total_mensualite_ht: 199,
     editable: true,
+    edit_context: "brouillon" as const,
     items: [
       { code: "assurance", label: "Assurance tous risques", description: "Couv.", surcout_mensuel_ht: 39, selected: false },
       { code: "assistance", label: "Assistance & dépannage", description: "Aide.", surcout_mensuel_ht: 9, selected: false },

@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Literal
+
+LldEditContext = Literal["brouillon", "contrat_actif", "readonly"]
 from datetime import date, datetime
 
 from app.models.dossier import DossierTypeEnum
@@ -108,6 +110,7 @@ class LldOptionsPricingOut(BaseModel):
     options_supplement_ht: float
     total_mensualite_ht: float
     editable: bool
+    edit_context: LldEditContext = "readonly"
     items: list[LldOptionRowOut]
 
 

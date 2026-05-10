@@ -6,6 +6,7 @@ const basePricing = {
   options_supplement_ht: 0,
   total_mensualite_ht: 200,
   editable: true,
+  edit_context: "brouillon" as const,
   items: [
     {
       code: "assurance",
@@ -51,12 +52,13 @@ describe("LldOptionsSection", () => {
     expect(screen.getByText(/Total mensuel HT/i)).toBeInTheDocument();
   });
 
-  it("appelle PATCH et onPricingUpdated au clic sur une option", async () => {
+  it("ouvre la confirmation puis appelle PATCH au validate (US-07-02)", async () => {
     const onUp = jest.fn();
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: async () => ({
         ...basePricing,
+        edit_context: "brouillon",
         options_supplement_ht: 39,
         total_mensualite_ht: 239,
         items: basePricing.items.map((it) =>
@@ -68,6 +70,13 @@ describe("LldOptionsSection", () => {
     render(<LldOptionsSection dossierId="7" pricing={basePricing} onPricingUpdated={onUp} />);
     const cb = screen.getByRole("checkbox", { name: /Assurance tous risques/i });
     fireEvent.click(cb);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /enregistrer les modifications/i }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^confirmer$/i }));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(

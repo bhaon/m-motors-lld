@@ -154,6 +154,7 @@ export default function MesContratsPage() {
                   <th style={{ padding: "10px 14px" }}>Date de début</th>
                   <th style={{ padding: "10px 14px" }}>Fin prévue</th>
                   <th style={{ padding: "10px 14px" }}>Statut</th>
+                  <th style={{ padding: "10px 14px" }}>Options</th>
                 </tr>
               </thead>
               <tbody>
@@ -206,6 +207,23 @@ export default function MesContratsPage() {
                     </td>
                     <td style={{ padding: "12px 14px" }}>
                       <ActiveBadge isActive={contrat.is_active} />
+                    </td>
+                    <td style={{ padding: "12px 14px" }}>
+                      {contrat.is_active ? (
+                        <Link
+                          href={`/mes-dossiers/${contrat.id}#lld-options-section`}
+                          style={{
+                            color: "#0C447C",
+                            fontWeight: 600,
+                            fontSize: ".85rem",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          Adapter les options
+                        </Link>
+                      ) : (
+                        <span style={{ color: "#9ca3af", fontSize: ".85rem" }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

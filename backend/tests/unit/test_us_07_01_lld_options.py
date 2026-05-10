@@ -54,6 +54,7 @@ def test_get_dossier_detail_includes_lld_pricing(client: TestClient, db: Session
     assert body["type"] == "lld"
     lp = body["lld_pricing"]
     assert lp["editable"] is True
+    assert lp["edit_context"] == "brouillon"
     assert lp["base_mensualite_ht"] == 200.0
     assert len(lp["items"]) == 4
     assert lp["options_supplement_ht"] == 0.0

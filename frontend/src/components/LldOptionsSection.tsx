@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiUrl } from "@/lib/api";
 
 export interface LldOptionRow {
@@ -11,11 +11,14 @@ export interface LldOptionRow {
   selected: boolean;
 }
 
+export type LldEditContext = "brouillon" | "contrat_actif" | "readonly";
+
 export interface LldPricing {
   base_mensualite_ht: number | null;
   options_supplement_ht: number;
   total_mensualite_ht: number;
   editable: boolean;
+  edit_context?: LldEditContext;
   items: LldOptionRow[];
 }
 
@@ -25,8 +28,17 @@ interface LldOptionsSectionProps {
   onPricingUpdated: (next: LldPricing) => void;
 }
 
+function selectionsFromItems(items: LldOptionRow[]): Record<string, boolean> {
+  const m: Record<string, boolean> = {};
+  for (const it of items) {
+    m[it.code] = it.selected;
+  }
+  return m;
+}
+
 /**
- * Bloc options LLD (US-07-01) : cases à cocher indépendantes et total mensuel dynamique.
+ * Options LLD (US-07-01 souscription, US-07-02 contrat actif) : brouillon éditable,
+ * contrat validé actif éditable avec confirmation du nouveau montant avant envoi.
  */
 export default function LldOptionsSection({
   dossierId,
@@ -35,21 +47,29 @@ export default function LldOptionsSection({
 }: Readonly<LldOptionsSectionProps>) {
   const [pending, setPending] = useState(false);
   const [localError, setLocalError] = useState("");
+  /** Sélection en cours (non persistée tant que l'utilisateur n'a pas validé). */
+  const [draftSelections, setDraftSelections] = useState<Record<string, boolean>>({});
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const selections = useMemo(() => {
-    const m: Record<string, boolean> = {};
-    for (const it of pricing.items) {
-      m[it.code] = it.selected;
-    }
-    return m;
+  useEffect(() => {
+    setDraftSelections(selectionsFromItems(pricing.items));
   }, [pricing.items]);
+
+  const dirty = useMemo(() => {
+    const saved = selectionsFromItems(pricing.items);
+    const codes = new Set([...Object.keys(saved), ...Object.keys(draftSelections)]);
+    for (const c of codes) {
+      if (!!saved[c] !== !!draftSelections[c]) return true;
+    }
+    return false;
+  }, [pricing.items, draftSelections]);
 
   const supplementPreview = useMemo(() => {
     return pricing.items.reduce(
-      (acc, it) => acc + (selections[it.code] ? it.surcout_mensuel_ht : 0),
+      (acc, it) => acc + (draftSelections[it.code] ? it.surcout_mensuel_ht : 0),
       0,
     );
-  }, [pricing.items, selections]);
+  }, [pricing.items, draftSelections]);
 
   const totalPreview = useMemo(() => {
     const base = pricing.base_mensualite_ht ?? 0;
@@ -76,8 +96,10 @@ export default function LldOptionsSection({
           options_supplement_ht: payload.options_supplement_ht,
           total_mensualite_ht: payload.total_mensualite_ht,
           editable: payload.editable,
+          edit_context: payload.edit_context,
           items: payload.items,
         });
+        setConfirmOpen(false);
       } catch (e) {
         setLocalError(e instanceof Error ? e.message : "Erreur réseau.");
       } finally {
@@ -87,10 +109,9 @@ export default function LldOptionsSection({
     [dossierId, onPricingUpdated],
   );
 
-  async function toggle(code: string) {
+  function toggle(code: string) {
     if (!pricing.editable || pending) return;
-    const next = { ...selections, [code]: !selections[code] };
-    await persist(next);
+    setDraftSelections((prev) => ({ ...prev, [code]: !prev[code] }));
   }
 
   function formatEUR(n: number): string {
@@ -101,8 +122,12 @@ export default function LldOptionsSection({
     }).format(n);
   }
 
+  const editCtx = pricing.edit_context ?? "readonly";
+  const savedTotal = pricing.total_mensualite_ht;
+
   return (
     <div
+      id="lld-options-section"
       style={{
         background: "#fff",
         border: "1px solid var(--border)",
@@ -116,6 +141,12 @@ export default function LldOptionsSection({
       </h2>
       <p style={{ margin: "0 0 1rem", fontSize: ".88rem", color: "var(--muted)", lineHeight: 1.5 }}>
         Personnalisez votre contrat : chaque option s&apos;ajoute au montant mensuel de base (HT).
+        {pricing.editable && editCtx === "contrat_actif" && (
+          <span>
+            {" "}
+            <strong>Contrat actif</strong> — vous pouvez adapter vos options à tout moment.
+          </span>
+        )}
       </p>
 
       {localError && (
@@ -142,7 +173,7 @@ export default function LldOptionsSection({
             <input
               type="checkbox"
               id={`lld-opt-${it.code}`}
-              checked={!!selections[it.code]}
+              checked={!!draftSelections[it.code]}
               disabled={!pricing.editable || pending}
               onChange={() => toggle(it.code)}
               style={{ marginTop: 4, width: 18, height: 18, cursor: pricing.editable ? "pointer" : "not-allowed" }}
@@ -186,10 +217,109 @@ export default function LldOptionsSection({
         </div>
       </div>
 
+      {pricing.editable && dirty && (
+        <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={() => setConfirmOpen(true)}
+            disabled={pending}
+            style={{
+              background: "var(--navy)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: ".55rem 1.2rem",
+              fontWeight: 600,
+              cursor: pending ? "wait" : "pointer",
+              fontSize: ".9rem",
+            }}
+          >
+            Enregistrer les modifications
+          </button>
+        </div>
+      )}
+
       {!pricing.editable && (
         <p style={{ margin: ".85rem 0 0", fontSize: ".82rem", color: "var(--muted)" }}>
-          Les options ne sont plus modifiables après dépôt du dossier.
+          {editCtx === "readonly"
+            ? "Les options ne sont plus modifiables pour ce dossier (dossier non brouillon ou contrat terminé)."
+            : null}
         </p>
+      )}
+
+      {confirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="lld-confirm-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 300,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            background: "rgba(0,0,0,.45)",
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 12,
+              maxWidth: 420,
+              width: "100%",
+              padding: "1.25rem 1.5rem",
+              boxShadow: "0 20px 50px rgba(0,0,0,.25)",
+            }}
+          >
+            <h3 id="lld-confirm-title" style={{ margin: "0 0 .75rem", fontFamily: "Syne, sans-serif", color: "var(--navy)" }}>
+              Confirmer la nouvelle mensualité
+            </h3>
+            <p style={{ margin: "0 0 1rem", fontSize: ".9rem", lineHeight: 1.5, color: "#374151" }}>
+              Vous validez un total mensuel HT de <strong>{formatEUR(totalPreview)}</strong>
+              {savedTotal !== totalPreview && (
+                <>
+                  {" "}
+                  (anciennement {formatEUR(savedTotal)}).
+                </>
+              )}
+            </p>
+            <div style={{ display: "flex", gap: ".75rem", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                disabled={pending}
+                style={{
+                  padding: ".45rem 1rem",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => persist(draftSelections)}
+                disabled={pending}
+                style={{
+                  padding: ".45rem 1rem",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "var(--navy)",
+                  color: "#fff",
+                  cursor: pending ? "wait" : "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                {pending ? "…" : "Confirmer"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
