@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Mapping, cast
 
 import yaml
 
@@ -10,18 +11,19 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _load_workflow(name: str) -> dict:
+def _load_workflow(name: str) -> Mapping[Any, Any]:
     """Charge un fichier workflow GitHub Actions en YAML."""
     path = REPO_ROOT / ".github" / "workflows" / name
     text = path.read_text(encoding="utf-8")
-    return yaml.safe_load(text)
+    data = yaml.safe_load(text)
+    return cast(Mapping[Any, Any], data)
 
 
-def _workflow_triggers(wf: dict) -> dict:
+def _workflow_triggers(wf: Mapping[Any, Any]) -> Mapping[Any, Any]:
     """Retourne le bloc `on` ; PyYAML 1.1 peut mapper la clé `on` au booléen True."""
     if "on" in wf:
-        return wf["on"]
-    return wf.get(True, {})
+        return cast(Mapping[Any, Any], wf["on"])
+    return cast(Mapping[Any, Any], wf.get(True, {}))
 
 
 def test_sonarqube_pr_workflow_existe_et_contient_sonar_scan() -> None:
@@ -34,7 +36,10 @@ def test_sonarqube_pr_workflow_existe_et_contient_sonar_scan() -> None:
     steps = jobs["sonarqube"].get("steps", [])
     kinds = [s.get("uses") for s in steps if isinstance(s, dict)]
     assert any(s and "SonarSource/sonarqube-scan-action" in s for s in kinds)
-    checkout = next((s for s in steps if s.get("uses") == "actions/checkout@v5"), {})
+    checkout: dict[str, Any] = next(
+        (s for s in steps if isinstance(s, dict) and s.get("uses") == "actions/checkout@v5"),
+        {},
+    )
     assert checkout.get("with", {}).get("fetch-depth") == 0
 
 
