@@ -239,6 +239,13 @@ jobs:
           cache-to: type=gha,mode=max,scope=backend-${{ inputs.environment }}
           provenance: false
 
+      - name: Vérifier python-multipart dans l'image backend buildée
+        run: |
+          IMAGE_REF="ghcr.io/${{ github.repository }}-backend@${{ steps.build-backend.outputs.digest }}"
+          echo "Image scannée: $IMAGE_REF"
+          docker run --rm "$IMAGE_REF" \
+            pip show python-multipart 2>/dev/null | grep -E "^(Name|Version):" || echo "python-multipart=absent"
+
       # ── Cache base de vulnérabilités Trivy (partagée entre tous les scans) ──
       - name: Cache Trivy DB
         uses: actions/cache@v4
