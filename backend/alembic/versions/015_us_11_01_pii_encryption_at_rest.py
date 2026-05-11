@@ -42,7 +42,10 @@ def _drop_unique_on_email(bind: sa.engine.Connection) -> None:
     inspector = sa.inspect(bind)
     for uc in list(inspector.get_unique_constraints("users")):
         if tuple(uc.get("column_names") or ()) == ("email",):
-            op.drop_constraint(uc["name"], "users", type_="unique")
+            name = uc.get("name")
+            if not name:
+                continue
+            op.drop_constraint(name, "users", type_="unique")
 
 
 def _drop_nonunique_index_on_email(bind: sa.engine.Connection) -> None:
@@ -50,7 +53,10 @@ def _drop_nonunique_index_on_email(bind: sa.engine.Connection) -> None:
     inspector = sa.inspect(bind)
     for ix in list(inspector.get_indexes("users")):
         if tuple(ix.get("column_names") or ()) == ("email",) and not ix.get("unique", False):
-            op.drop_index(ix["name"], table_name="users")
+            name = ix.get("name")
+            if not name:
+                continue
+            op.drop_index(name, table_name="users")
 
 
 def _backfill_email_hash_sqlite(conn: sa.engine.Connection) -> None:
