@@ -36,6 +36,7 @@ jobs:
     with:
       environment: staging
       image_tag: staging-${{ github.sha }}
+      run_integration_tests: true
 
   deploy:
     name: Deploy to STAGING
@@ -153,14 +154,10 @@ jobs:
           path: security-report-dast-staging.md
           retention-days: 90
 
-      - name: Run integration tests
+      - name: Vérifier résultat tests d'intégration (exécutés dans le job CI)
         run: |
-          # Optionnel : lancer des tests d'intégration Postman/Newman
-          # npm install -g newman
-          # newman run tests/integration/staging.postman_collection.json \
-          #   --environment tests/integration/staging.environment.json
-          echo "Tests d'intégration à configurer selon votre stack"
-        continue-on-error: true
+          echo "✅ Les tests d'intégration backend ont été exécutés dans le job 'CI → Integration Tests'."
+          echo "   Résultats disponibles dans les logs du job ci (integration-tests)."
 
       - name: Rollback si déploiement échoué
         if: failure()
