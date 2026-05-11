@@ -44,6 +44,9 @@ export default function ProfileManagementClient({
   const [passwordError, setPasswordError] = useState("");
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [erasureMessage, setErasureMessage] = useState("");
+  const [erasureError, setErasureError] = useState("");
+  const [erasureLoading, setErasureLoading] = useState(false);
 
   /**
    * Sauvegarde les informations du profil client.
@@ -71,6 +74,34 @@ export default function ProfileManagementClient({
   /**
    * Met à jour le mot de passe en imposant l'ancien mot de passe.
    */
+  /**
+   * Demande le droit à l'effacement (RGPD) : soft delete côté serveur et email de confirmation.
+   */
+  async function onRequestDataErasure() {
+    if (initialUser.role !== "client") return;
+    const ok = window.confirm(
+      "Confirmez-vous la demande de suppression de vos données personnelles ? Votre compte sera desactive et cette action est irreversible depuis l'espace client.",
+    );
+    if (!ok) return;
+    setErasureError("");
+    setErasureMessage("");
+    setErasureLoading(true);
+    try {
+      const response = await fetch(resolveAuthUrl("/api/v1/auth/request-data-erasure"), {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = (await response.json()) as { message?: string; detail?: string };
+      if (!response.ok) throw new Error(payload.detail || "Demande impossible pour le moment.");
+      setErasureMessage(payload.message || "Demande enregistree.");
+      onProfileUpdated?.();
+    } catch (e) {
+      setErasureError(e instanceof Error ? e.message : "Erreur technique.");
+    } finally {
+      setErasureLoading(false);
+    }
+  }
+
   async function onChangePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPasswordError("");
@@ -155,6 +186,42 @@ export default function ProfileManagementClient({
           {passwordMessage ? <p style={{ color: "#166534" }}>{passwordMessage}</p> : null}
         </form>
       </section>
+
+      {initialUser.role === "client" ? (
+        <section
+          style={
+            variant === "modal"
+              ? { marginBottom: 0, padding: 0, background: "transparent", maxWidth: "100%" }
+              : { maxWidth: 720, margin: "1rem auto 2rem", padding: "1.5rem", background: "#fff", borderRadius: 12 }
+          }
+        >
+          <h2 style={{ fontFamily: "Syne, sans-serif", marginBottom: "1rem", fontSize: variant === "modal" ? "1.05rem" : undefined }}>
+            Donnees personnelles (RGPD)
+          </h2>
+          <p style={{ marginBottom: "1rem", color: "#4b5563", fontSize: "0.95rem" }}>
+            Vous pouvez demander la suppression de vos donnees (droit a l&apos;effacement). Votre compte sera desactive
+            immediatement ; une confirmation vous sera envoyee par e-mail, avec traitement sous 30 jours maximum conformement au RGPD.
+            Certaines informations peuvent etre conservees le temps des obligations legales avant purge definitive.
+          </p>
+          <button
+            type="button"
+            disabled={erasureLoading}
+            onClick={() => void onRequestDataErasure()}
+            style={{
+              background: "#7f1d1d",
+              color: "#fff",
+              border: 0,
+              padding: ".75rem 1rem",
+              borderRadius: 8,
+              cursor: erasureLoading ? "wait" : "pointer",
+            }}
+          >
+            {erasureLoading ? "Envoi en cours..." : "Demander la suppression de mes donnees"}
+          </button>
+          {erasureError ? <p style={{ color: "#b91c1c", marginTop: "0.75rem" }}>{erasureError}</p> : null}
+          {erasureMessage ? <p style={{ color: "#166534", marginTop: "0.75rem" }}>{erasureMessage}</p> : null}
+        </section>
+      ) : null}
     </>
   );
 }

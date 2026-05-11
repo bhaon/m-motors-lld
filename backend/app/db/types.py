@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 
-from sqlalchemy import String, TypeDecorator, func, literal, type_coerce
+from datetime import date
+
+from sqlalchemy import Date, String, TypeDecorator, cast, func, literal, type_coerce
 from sqlalchemy.dialects.postgresql import BYTEA
 from app.core.config import settings
 
@@ -51,3 +53,39 @@ class PgcryptoEncryptedText(TypeDecorator[str]):
         if not is_pgcrypto_runtime_enabled():
             return column
         return func.pgp_sym_decrypt(column, literal(self._encryption_key)).cast(String())
+
+
+class PgcryptoEncryptedDate(TypeDecorator[date]):
+    """Chiffre/déchiffre une date (stockée comme texte ISO « YYYY-MM-DD ») via pgcrypto côté PostgreSQL."""
+
+    impl = Date
+    cache_ok = True
+
+    def __init__(self, encryption_key: str, *args, **kwargs) -> None:
+        """Initialise le type avec la clé de chiffrement applicative."""
+        super().__init__(*args, **kwargs)
+        self._encryption_key = encryption_key
+
+    def load_dialect_impl(self, dialect):
+        """Utilise BYTEA sur PostgreSQL, type date ailleurs (tests SQLite)."""
+        if dialect.name == "postgresql" and is_pgcrypto_runtime_enabled():
+            return dialect.type_descriptor(BYTEA())
+        return dialect.type_descriptor(Date())
+
+    def bind_expression(self, bindvalue):
+        """Chiffre la date sous forme de chaîne ISO à l'écriture sur PostgreSQL."""
+        if not is_pgcrypto_runtime_enabled():
+            return bindvalue
+        plaintext = func.to_char(type_coerce(bindvalue, Date()), "YYYY-MM-DD")
+        return func.pgp_sym_encrypt(
+            plaintext,
+            literal(self._encryption_key),
+            literal("cipher-algo=aes256"),
+        )
+
+    def column_expression(self, column):
+        """Déchiffre et recaste en date à la lecture sur PostgreSQL."""
+        if not is_pgcrypto_runtime_enabled():
+            return column
+        decrypted = func.pgp_sym_decrypt(column, literal(self._encryption_key))
+        return cast(cast(decrypted, String()), Date())

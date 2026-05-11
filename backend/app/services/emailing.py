@@ -146,6 +146,78 @@ def send_password_reset_email(*, to_email: str, reset_link: str) -> None:
     )
 
 
+def _build_data_erasure_confirmation_html(*, requested_at_display: str, response_deadline_display: str) -> str:
+    """Construit le HTML de confirmation de demande d'effacement (RGPD)."""
+    return f"""
+    <div style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+        <tr>
+          <td style="background:#0f172a;padding:20px 24px;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:.04em;">
+            M-<span style="color:#06b6d4;">MOTORS</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 24px 18px;">
+            <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">Demande de suppression de vos données</h1>
+            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+              Nous avons bien enregistré votre demande d&apos;effacement de vos données personnelles (droit à l&apos;effacement, RGPD).
+            </p>
+            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+              <strong>Date de la demande :</strong> {requested_at_display}
+            </p>
+            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+              Vous recevrez une confirmation écrite du traitement de votre demande au plus tard le <strong>{response_deadline_display}</strong>
+              (délai maximal de 30 jours conformément au RGPD).
+            </p>
+            <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#4b5563;">
+              Votre compte est désormais désactivé (traitement en soft delete) : les obligations légales de conservation
+              (ex. pièces comptables, contrats) peuvent imposer de conserver certaines informations pendant une durée fixée par la loi
+              avant purge définitive ou anonymisation.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.6;">
+            Cet email a été envoyé automatiquement, merci de ne pas y répondre.<br />
+            © M-Motors
+          </td>
+        </tr>
+      </table>
+    </div>
+    """.strip()
+
+
+def send_data_erasure_confirmation_email(
+    *,
+    to_email: str,
+    requested_at_display: str,
+    response_deadline_display: str,
+) -> None:
+    """Envoie la confirmation de demande d'effacement au client (US-11-05)."""
+    if resend is None:
+        logger.warning("Package resend absent : email effacement données non envoyé pour %s", to_email)
+        return
+    if not settings.RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY absente : email effacement données non envoyé pour %s", to_email)
+        return
+
+    resend.api_key = settings.RESEND_API_KEY
+    try:
+        resend.Emails.send(
+            {
+                "from": settings.RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": "Confirmation de votre demande de suppression des données — M-Motors",
+                "html": _build_data_erasure_confirmation_html(
+                    requested_at_display=requested_at_display,
+                    response_deadline_display=response_deadline_display,
+                ),
+            }
+        )
+    except Exception:  # pragma: no cover - dépend du réseau / API Resend
+        logger.exception("Echec Resend email confirmation effacement pour %s", to_email)
+
+
 def _build_dossier_submission_email_html(*, dossier_reference: str, submitted_at_utc_iso: str) -> str:
     """Construit le HTML de confirmation de dépôt de dossier côté client."""
     return f"""

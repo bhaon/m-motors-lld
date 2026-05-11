@@ -46,6 +46,7 @@ def _normalize_state(state: dict[str, Any] | None) -> dict[str, Any] | None:
 # Constantes d'action — seules valeurs admises dans AuditTrail.action
 USER_CREATED = "USER_CREATED"
 USER_DELETED = "USER_DELETED"
+CLIENT_DATA_ERASURE_REQUESTED = "CLIENT_DATA_ERASURE_REQUESTED"
 USER_ROLE_CHANGED = "USER_ROLE_CHANGED"
 VEHICLE_CREATED = "VEHICLE_CREATED"
 VEHICLE_UPDATED = "VEHICLE_UPDATED"

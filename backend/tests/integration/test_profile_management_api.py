@@ -35,10 +35,11 @@ def test_update_profile_and_change_password_end_to_end() -> None:
         # L'email doit être confirmé avant la connexion.
         from app.db.session import SessionLocal  # noqa: WPS433
         from app.models.user import User  # noqa: WPS433
+        from app.utils.client_pii import client_email_search_hash  # noqa: WPS433
 
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.email == email).first()
+            user = db.query(User).filter(User.email_hash == client_email_search_hash(email)).first()
             assert user is not None
             user.email_verified = True
             db.commit()
@@ -93,10 +94,11 @@ def test_profile_email_change_requires_new_validation() -> None:
         # L'email doit être confirmé avant la connexion.
         from app.db.session import SessionLocal  # noqa: WPS433
         from app.models.user import User  # noqa: WPS433
+        from app.utils.client_pii import client_email_search_hash  # noqa: WPS433
 
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.email == old_email).first()
+            user = db.query(User).filter(User.email_hash == client_email_search_hash(old_email)).first()
             assert user is not None
             user.email_verified = True
             db.commit()

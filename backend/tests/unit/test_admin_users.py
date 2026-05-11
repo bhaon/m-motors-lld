@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.user import RoleEnum, User
+from app.utils.client_pii import client_email_search_hash
 from tests.conftest import create_user
 
 
@@ -61,7 +62,7 @@ def test_admin_can_create_superviseur(client: TestClient, db: Session) -> None:
     assert body["role"] == "superviseur"
     assert "message" in body
 
-    created = db.query(User).filter(User.email == "nouveau.sup@example.com").first()
+    created = db.query(User).filter(User.email_hash == client_email_search_hash("nouveau.sup@example.com")).first()
     assert created is not None
     assert created.role == RoleEnum.superviseur
     assert created.email_verified is True

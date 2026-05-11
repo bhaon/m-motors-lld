@@ -128,6 +128,7 @@ def create_admin(
     from app.core.security import hash_password
     from app.db.session import SessionLocal
     from app.models.user import RoleEnum, User
+    from app.utils.client_pii import client_email_search_hash
 
     try:
         _validate_password(password)
@@ -137,7 +138,7 @@ def create_admin(
 
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.email == email).first()
+        existing = db.query(User).filter(User.email_hash == client_email_search_hash(email)).first()
 
         if existing:
             if existing.deleted_at is not None:

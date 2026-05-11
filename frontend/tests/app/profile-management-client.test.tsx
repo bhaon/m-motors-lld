@@ -102,4 +102,107 @@ describe("ProfileManagementClient", () => {
       expect(screen.getByText(/erreur technique/i)).toBeInTheDocument();
     });
   });
+
+  it("n'affiche pas la demande d'effacement RGPD pour un non-client", () => {
+    render(<ProfileManagementClient initialUser={{ ...baseUser, role: "gestionnaire" }} />);
+    expect(screen.queryByRole("button", { name: /demander la suppression/i })).not.toBeInTheDocument();
+  });
+
+  it("soumet la demande d'effacement RGPD apres confirmation", async () => {
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ message: "Demande enregistree." }),
+    } as Response);
+    try {
+      render(<ProfileManagementClient initialUser={baseUser} />);
+      fireEvent.click(screen.getByRole("button", { name: /demander la suppression/i }));
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          expect.stringMatching(/request-data-erasure$/),
+          expect.objectContaining({ method: "POST", credentials: "include" }),
+        );
+        expect(screen.getByText(/demande enregistree/i)).toBeInTheDocument();
+      });
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  it("n'appelle pas l'API d'effacement si l'utilisateur annule la confirmation", () => {
+    const originalConfirm = window.confirm;
+    window.confirm = () => false;
+    const fetchSpy = jest.spyOn(global, "fetch");
+    try {
+      render(<ProfileManagementClient initialUser={baseUser} />);
+      fireEvent.click(screen.getByRole("button", { name: /demander la suppression/i }));
+      const erasureCalls = fetchSpy.mock.calls.filter((c) => String(c[0]).includes("request-data-erasure"));
+      expect(erasureCalls).toHaveLength(0);
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  it("affiche le detail d'erreur si la demande d'effacement est refusee", async () => {
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    jest.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ detail: "Deja supprime." }),
+    } as Response);
+    try {
+      render(<ProfileManagementClient initialUser={baseUser} />);
+      fireEvent.click(screen.getByRole("button", { name: /demander la suppression/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/deja supprime/i)).toBeInTheDocument();
+      });
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  it("affiche une erreur technique si la demande d'effacement leve", async () => {
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    jest.spyOn(global, "fetch").mockRejectedValueOnce("boom");
+    try {
+      render(<ProfileManagementClient initialUser={baseUser} />);
+      fireEvent.click(screen.getByRole("button", { name: /demander la suppression/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/erreur technique/i)).toBeInTheDocument();
+      });
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  it("utilise le message serveur par defaut pour l'effacement si absent", async () => {
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    jest.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({}),
+    } as Response);
+    try {
+      render(<ProfileManagementClient initialUser={baseUser} />);
+      fireEvent.click(screen.getByRole("button", { name: /demander la suppression/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/demande enregistree/i)).toBeInTheDocument();
+      });
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  it("affiche l'etat email non verifie et le titre Mon profil en mode page", () => {
+    render(<ProfileManagementClient initialUser={{ ...baseUser, email_verified: false }} variant="page" />);
+    expect(screen.getByText(/etat email: a confirmer/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: /mon profil/i })).toBeInTheDocument();
+  });
+
+  it("affiche la section RGPD en variante modale", () => {
+    render(<ProfileManagementClient initialUser={baseUser} variant="modal" />);
+    expect(screen.getByRole("heading", { name: /donnees personnelles/i })).toBeInTheDocument();
+  });
 });

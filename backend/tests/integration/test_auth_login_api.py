@@ -36,10 +36,11 @@ def test_login_then_me_end_to_end() -> None:
         # On force l'état côté base via l'endpoint de confirmation (token simulé en DB).
         from app.db.session import SessionLocal  # noqa: WPS433
         from app.models.user import User  # noqa: WPS433
+        from app.utils.client_pii import client_email_search_hash  # noqa: WPS433
 
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.email == email).first()
+            user = db.query(User).filter(User.email_hash == client_email_search_hash(email)).first()
             assert user is not None
             user.email_verified = True
             db.commit()

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 from jose import JWTError
@@ -28,6 +29,7 @@ from app.schemas.auth import (
     LogoutResponse,
     RegisterRequest,
     RegisterResponse,
+    RequestDataErasureResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
     ResendVerificationEmailRequest,
@@ -36,11 +38,23 @@ from app.schemas.auth import (
     UpdateProfileResponse,
 )
 from app.services import audit as audit_service
-from app.services.emailing import send_password_reset_email, send_verification_email
+from app.services.emailing import (
+    send_data_erasure_confirmation_email,
+    send_password_reset_email,
+    send_verification_email,
+)
+from app.utils.client_pii import client_email_search_hash
 from app.services.lld_avenant_flow import finalize_avenant_signature
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 GENERIC_LOGIN_ERROR = "Email ou mot de passe invalide."
+RGPD_DATA_ERASURE_RESPONSE_DAYS = 30
+
+
+def _format_erasure_dt_display(dt: datetime) -> str:
+    """Formate une date UTC pour l'email client (fuseau Europe/Paris)."""
+    aware = dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    return aware.astimezone(ZoneInfo("Europe/Paris")).strftime("%d/%m/%Y à %H:%M (heure de Paris)")
 EMAIL_NOT_VERIFIED_ERROR = (
     "Votre email n'est pas confirme. Veuillez valider votre email via le lien recu par mail."
 )
@@ -138,7 +152,11 @@ def _issue_password_reset(user: User, *, now: datetime) -> None:
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 def register_client(payload: RegisterRequest, db: DbSession) -> RegisterResponse:
     """Crée un compte client inactif tant que l'email n'est pas confirmé."""
-    existing = db.query(User).filter(User.email == payload.email, User.deleted_at.is_(None)).first()
+    existing = (
+        db.query(User)
+        .filter(User.email_hash == client_email_search_hash(payload.email), User.deleted_at.is_(None))
+        .first()
+    )
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Un compte existe déjà avec cet email.")
 
@@ -176,7 +194,11 @@ def register_client(payload: RegisterRequest, db: DbSession) -> RegisterResponse
 @router.post("/login", response_model=LoginResponse)
 def login_client(payload: LoginRequest, response: Response, db: DbSession) -> LoginResponse:
     """Authentifie un client par email/mot de passe et pose un cookie JWT HTTP-only."""
-    user = db.query(User).filter(User.email == payload.email, User.deleted_at.is_(None)).first()
+    user = (
+        db.query(User)
+        .filter(User.email_hash == client_email_search_hash(payload.email), User.deleted_at.is_(None))
+        .first()
+    )
     if not user or not user.is_active or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_LOGIN_ERROR)
     if not user.email_verified:
@@ -202,10 +224,76 @@ def logout_client(response: Response) -> LogoutResponse:
     return LogoutResponse(message="Deconnexion reussie.")
 
 
+@router.post("/request-data-erasure", response_model=RequestDataErasureResponse)
+def request_data_erasure(
+    request: Request,
+    response: Response,
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> RequestDataErasureResponse:
+    """
+    Demande d'effacement des données personnelles (client uniquement) : soft delete + email de confirmation.
+
+    Délai de réponse réglementaire porté à la connaissance du client dans l'email (30 jours).
+    """
+    user = _resolve_user_from_token(access_token, db)
+    if user.role != RoleEnum.client:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seuls les comptes clients peuvent demander la suppression depuis cet espace.",
+        )
+    if user.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Une demande de suppression a deja ete enregistree pour ce compte.",
+        )
+
+    now = datetime.now(timezone.utc)
+    before_state = {"deleted_at": None, "is_active": user.is_active}
+    user.deleted_at = now
+    user.is_active = False
+    user.email_verification_token = None
+    user.email_verification_sent_at = None
+    user.email_verification_expires_at = None
+    user.password_reset_token = None
+    user.password_reset_sent_at = None
+    user.password_reset_expires_at = None
+
+    audit_service.record(
+        db,
+        action=audit_service.CLIENT_DATA_ERASURE_REQUESTED,
+        entity_type="user",
+        entity_id=user.id,
+        operator=user,
+        ip_address=request.client.host if request.client else None,
+        before_state=before_state,
+        after_state={"deleted_at": user.deleted_at.isoformat(), "is_active": False},
+    )
+
+    deadline = now + timedelta(days=RGPD_DATA_ERASURE_RESPONSE_DAYS)
+    send_data_erasure_confirmation_email(
+        to_email=user.email,
+        requested_at_display=_format_erasure_dt_display(now),
+        response_deadline_display=_format_erasure_dt_display(deadline),
+    )
+    db.commit()
+    response.delete_cookie(key="access_token", path="/")
+    return RequestDataErasureResponse(
+        message=(
+            "Votre demande de suppression a ete enregistree. Vous recevrez une confirmation par email "
+            f"(traitement sous {RGPD_DATA_ERASURE_RESPONSE_DAYS} jours maximum, RGPD). Votre compte est desactive."
+        )
+    )
+
+
 @router.post("/resend-confirmation", response_model=ResendVerificationEmailResponse)
 def resend_confirmation_email(payload: ResendVerificationEmailRequest, db: DbSession) -> ResendVerificationEmailResponse:
     """Réémet l'email de confirmation quand l'utilisateur n'a pas encore validé son email."""
-    user = db.query(User).filter(User.email == payload.email, User.deleted_at.is_(None)).first()
+    user = (
+        db.query(User)
+        .filter(User.email_hash == client_email_search_hash(payload.email), User.deleted_at.is_(None))
+        .first()
+    )
     if not user or not user.is_active or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_LOGIN_ERROR)
     if user.email_verified:
@@ -220,7 +308,11 @@ def resend_confirmation_email(payload: ResendVerificationEmailRequest, db: DbSes
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
 def forgot_password(payload: ForgotPasswordRequest, db: DbSession) -> ForgotPasswordResponse:
     """Déclenche l'envoi d'un email de réinitialisation sans révéler l'existence du compte."""
-    user = db.query(User).filter(User.email == payload.email, User.deleted_at.is_(None)).first()
+    user = (
+        db.query(User)
+        .filter(User.email_hash == client_email_search_hash(payload.email), User.deleted_at.is_(None))
+        .first()
+    )
     if not user or not user.is_active:
         return ForgotPasswordResponse(message=FORGOT_PASSWORD_MESSAGE)
 
@@ -280,7 +372,15 @@ def update_profile(
 
     email_changed = payload.email != user.email
     if email_changed:
-        existing = db.query(User).filter(User.email == payload.email, User.id != user.id, User.deleted_at.is_(None)).first()
+        existing = (
+            db.query(User)
+            .filter(
+                User.email_hash == client_email_search_hash(payload.email),
+                User.id != user.id,
+                User.deleted_at.is_(None),
+            )
+            .first()
+        )
         if existing:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Un compte existe déjà avec cet email.")
 
