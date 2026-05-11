@@ -356,9 +356,8 @@ export default function Navbar() {
             Connexion
           </button>
         ) : null}
-        {/* Lien placeholder en attendant une page "À propos" dédiée. */}
         <Link
-          href="#"
+          href="/a-propos"
           style={{
             color: "rgba(255,255,255,.7)",
             textDecoration: "none",
