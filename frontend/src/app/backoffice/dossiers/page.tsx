@@ -3,7 +3,7 @@
 /**
  * US-06-01 / US-06-02 — Tableau de bord gestionnaire : dossiers en attente.
  *
- * US-06-01 : filtres (statut, type, dates), tri, pagination.
+ * US-06-01 : filtres (statut, type, dates), tri et pagination appliqués en direct (sans bouton « Appliquer »).
  * US-06-02 : bouton "Prendre en charge" sur les dossiers au statut "Déposé".
  * US-06-10 : bouton "Planifier une livraison" + modale date/heure pour ``attente_livraison``.
  * US-06-09 : bouton "Livraison" pour ``livraison_planifiee`` → LLD : contrat en cours ; achat : clôturé.
@@ -128,11 +128,17 @@ const INITIAL_FILTERS: FilterState = {
   sort: "submitted_asc",
 };
 
+/** Libellés courts pour le tri immédiat (sans menu déroulant long). */
+const SORT_CHOICES: { value: SortOption; label: string }[] = [
+  { value: "submitted_asc", label: "Dépôt : plus anciens d'abord" },
+  { value: "submitted_desc", label: "Dépôt : plus récents d'abord" },
+  { value: "created_desc", label: "Création : plus récents" },
+];
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function BackofficeDossiersPage() {
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
-  const [pendingFilters, setPendingFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [data, setData] = useState<DossierBoList | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -167,6 +173,15 @@ export default function BackofficeDossiersPage() {
   useEffect(() => {
     fetchDossiers(filters, page);
   }, [fetchDossiers, filters, page]);
+
+  /**
+   * Met à jour les critères et repasse à la page 1 : la liste se recharge tout de suite
+   * (plus de bouton « Appliquer »).
+   */
+  function setFiltersFromUser(next: FilterState | ((prev: FilterState) => FilterState)) {
+    setPage(1);
+    setFilters(next);
+  }
 
   /** US-06-10 — Envoie la date/heure de livraison, met à jour la liste. */
   async function handlePlanifierLivraison() {
@@ -293,19 +308,13 @@ export default function BackofficeDossiersPage() {
     }
   }
 
-  function applyFilters() {
-    setFilters(pendingFilters);
-    setPage(1);
-  }
-
   function resetFilters() {
-    setPendingFilters(INITIAL_FILTERS);
     setFilters(INITIAL_FILTERS);
     setPage(1);
   }
 
   function toggleStatut(s: DossierStatus) {
-    setPendingFilters((prev) => ({
+    setFiltersFromUser((prev) => ({
       ...prev,
       statuts: prev.statuts.includes(s)
         ? prev.statuts.filter((x) => x !== s)
@@ -348,6 +357,9 @@ export default function BackofficeDossiersPage() {
           aria-label="Filtres"
           style={{ background: "var(--off)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.2rem 1.4rem", marginBottom: "1.5rem" }}
         >
+          <p style={{ margin: "0 0 1rem", fontSize: ".82rem", color: "var(--muted)", lineHeight: 1.45 }}>
+            La liste se met à jour dès que vous changez un statut, le type, les dates ou l&apos;ordre d&apos;affichage.
+          </p>
           {/* Statuts */}
           <div style={{ marginBottom: "1rem" }}>
             <p style={{ fontWeight: 700, fontSize: ".82rem", color: "var(--navy)", marginBottom: ".5rem", textTransform: "uppercase", letterSpacing: ".06em" }}>
@@ -355,7 +367,7 @@ export default function BackofficeDossiersPage() {
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: ".5rem" }}>
               {ALL_STATUTS.map((s) => {
-                const active = pendingFilters.statuts.includes(s.value);
+                const active = filters.statuts.includes(s.value);
                 return (
                   <button
                     key={s.value}
@@ -388,8 +400,10 @@ export default function BackofficeDossiersPage() {
               </label>
               <select
                 id="bo-type"
-                value={pendingFilters.type_contrat}
-                onChange={(e) => setPendingFilters((p) => ({ ...p, type_contrat: e.target.value as DossierType | "" }))}
+                value={filters.type_contrat}
+                onChange={(e) =>
+                  setFiltersFromUser((p) => ({ ...p, type_contrat: e.target.value as DossierType | "" }))
+                }
                 style={{ width: "100%", padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: ".88rem" }}
               >
                 <option value="">Tous</option>
@@ -406,8 +420,8 @@ export default function BackofficeDossiersPage() {
               <input
                 id="bo-date-from"
                 type="date"
-                value={pendingFilters.date_from}
-                onChange={(e) => setPendingFilters((p) => ({ ...p, date_from: e.target.value }))}
+                value={filters.date_from}
+                onChange={(e) => setFiltersFromUser((p) => ({ ...p, date_from: e.target.value }))}
                 style={{ width: "100%", padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: ".88rem", boxSizing: "border-box" }}
               />
             </div>
@@ -420,45 +434,60 @@ export default function BackofficeDossiersPage() {
               <input
                 id="bo-date-to"
                 type="date"
-                value={pendingFilters.date_to}
-                onChange={(e) => setPendingFilters((p) => ({ ...p, date_to: e.target.value }))}
+                value={filters.date_to}
+                onChange={(e) => setFiltersFromUser((p) => ({ ...p, date_to: e.target.value }))}
                 style={{ width: "100%", padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: ".88rem", boxSizing: "border-box" }}
               />
             </div>
+          </div>
 
-            {/* Tri */}
-            <div>
-              <label htmlFor="bo-sort" style={{ display: "block", fontWeight: 700, fontSize: ".82rem", color: "var(--navy)", marginBottom: 4, textTransform: "uppercase", letterSpacing: ".06em" }}>
-                Tri
-              </label>
-              <select
-                id="bo-sort"
-                value={pendingFilters.sort}
-                onChange={(e) => setPendingFilters((p) => ({ ...p, sort: e.target.value as SortOption }))}
-                style={{ width: "100%", padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: ".88rem" }}
-              >
-                <option value="submitted_asc">Dépôt — plus anciens en premier</option>
-                <option value="submitted_desc">Dépôt — plus récents en premier</option>
-                <option value="created_desc">Création — plus récents en premier</option>
-              </select>
+          {/* Tri immédiat : boutons plutôt qu'un menu déroulant */}
+          <div style={{ marginBottom: "1rem" }}>
+            <p
+              id="bo-sort-label"
+              style={{ fontWeight: 700, fontSize: ".82rem", color: "var(--navy)", marginBottom: ".5rem", textTransform: "uppercase", letterSpacing: ".06em" }}
+            >
+              Ordre d&apos;affichage
+            </p>
+            <div
+              role="group"
+              aria-labelledby="bo-sort-label"
+              style={{ display: "flex", flexWrap: "wrap", gap: ".5rem" }}
+            >
+              {SORT_CHOICES.map((opt) => {
+                const active = filters.sort === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setFiltersFromUser((p) => ({ ...p, sort: opt.value }))}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 8,
+                      border: active ? "2px solid var(--navy)" : "1.5px solid #d1d5db",
+                      background: active ? "#e8edf8" : "#fff",
+                      color: active ? "var(--navy)" : "#475569",
+                      fontWeight: active ? 700 : 500,
+                      fontSize: ".8rem",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Actions */}
-          <div style={{ display: "flex", gap: ".75rem" }}>
-            <button
-              type="button"
-              onClick={applyFilters}
-              style={{ padding: "8px 22px", background: "var(--navy)", color: "#fff", border: 0, borderRadius: 7, fontWeight: 700, fontSize: ".88rem", cursor: "pointer" }}
-            >
-              Appliquer
-            </button>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button
               type="button"
               onClick={resetFilters}
               style={{ padding: "8px 18px", background: "#fff", color: "var(--navy)", border: "1px solid var(--navy)", borderRadius: 7, fontWeight: 600, fontSize: ".88rem", cursor: "pointer" }}
             >
-              Réinitialiser
+              Réinitialiser les filtres
             </button>
           </div>
         </div>

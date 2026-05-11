@@ -167,13 +167,11 @@ describe("BackofficeDossiersPage — erreur API", () => {
 // ── Filtres ───────────────────────────────────────────────────────────────────
 
 describe("BackofficeDossiersPage — filtres", () => {
-  it("toggle le statut Validé et appelle Appliquer", async () => {
+  it("active le statut Validé et recharge la liste immédiatement", async () => {
     render(<BackofficeDossiersPage />);
 
     fireEvent.click(screen.getByRole("button", { name: /validé/i }));
     expect(screen.getByRole("button", { name: /validé/i })).toHaveAttribute("aria-pressed", "true");
-
-    fireEvent.click(screen.getByRole("button", { name: /appliquer/i }));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
@@ -187,7 +185,6 @@ describe("BackofficeDossiersPage — filtres", () => {
     render(<BackofficeDossiersPage />);
 
     fireEvent.change(screen.getByLabelText(/type/i), { target: { value: "lld" } });
-    fireEvent.click(screen.getByRole("button", { name: /appliquer/i }));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
@@ -201,7 +198,6 @@ describe("BackofficeDossiersPage — filtres", () => {
     render(<BackofficeDossiersPage />);
 
     fireEvent.change(screen.getByLabelText(/déposé depuis/i), { target: { value: "2026-01-01" } });
-    fireEvent.click(screen.getByRole("button", { name: /appliquer/i }));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
@@ -216,7 +212,7 @@ describe("BackofficeDossiersPage — filtres", () => {
 
     // Active un filtre
     fireEvent.click(screen.getByRole("button", { name: /validé/i }));
-    fireEvent.click(screen.getByRole("button", { name: /réinitialiser/i }));
+    fireEvent.click(screen.getByRole("button", { name: /réinitialiser les filtres/i }));
 
     expect(screen.getByRole("button", { name: /déposé/i })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /en instruction/i })).toHaveAttribute("aria-pressed", "true");
@@ -228,8 +224,7 @@ describe("BackofficeDossiersPage — filtres", () => {
   it("change le tri", async () => {
     render(<BackofficeDossiersPage />);
 
-    fireEvent.change(screen.getByLabelText(/tri/i), { target: { value: "submitted_desc" } });
-    fireEvent.click(screen.getByRole("button", { name: /appliquer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /dépôt : plus récents d'abord/i }));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
