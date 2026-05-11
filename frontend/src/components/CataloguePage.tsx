@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { Vehicle } from "@/types";
 import { useFilters } from "@/hooks/useFilters";
 import { useToast } from "@/hooks/useToast";
+import { useClientSession } from "@/hooks/useClientSession";
 import SearchBar from "@/components/SearchBar";
 import FiltersRow from "@/components/FiltersRow";
 import VehicleCard from "@/components/VehicleCard";
 import VehicleModal from "@/components/VehicleModal";
 import DossierConfirmModal from "@/components/DossierConfirmModal";
+import AuthModal from "@/components/AuthModal";
 import Toast from "@/components/Toast";
 
 interface CataloguePageProps {
@@ -72,6 +74,8 @@ export default function CataloguePage({
   const { filters, filtered, marques, modeles, setType, setField, reset } =
     useFilters(vehicles);
   const { toast, showToast } = useToast();
+  const { sessionReady, isAuthenticated, refreshSession } = useClientSession();
+  const [depositAuthOpen, setDepositAuthOpen] = useState(false);
 
   /**
    * Résout l'URL backend de création de dossier depuis le catalogue.
@@ -95,6 +99,18 @@ export default function CataloguePage({
    */
   function cancelPendingDossier() {
     setPendingDossier(null);
+  }
+
+  /**
+   * Au clic sur « Confirmer le dépôt » : ouvre la connexion si besoin, sinon crée le dossier.
+   */
+  async function handleConfirmDepositClick() {
+    if (!sessionReady || !pendingDossier) return;
+    if (!isAuthenticated) {
+      setDepositAuthOpen(true);
+      return;
+    }
+    await confirmPendingDossier();
   }
 
   /**
@@ -136,6 +152,21 @@ export default function CataloguePage({
     }
   }
 
+  const depositAuthModal = (
+    <AuthModal
+      open={depositAuthOpen}
+      onClose={() => setDepositAuthOpen(false)}
+      defaultTab="login"
+      redirectAfterLogin={false}
+      onAuthenticated={async () => {
+        await refreshSession();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("m-motors-auth-session-changed"));
+        }
+      }}
+    />
+  );
+
   if (vehicles.length === 0) {
     return (
       <>
@@ -145,6 +176,7 @@ export default function CataloguePage({
           onClose={() => setSelectedVehicle(null)}
           onDossier={handleDossier}
         />
+        {depositAuthModal}
         <Toast message={toast.message} visible={toast.visible} />
       </>
     );
@@ -199,6 +231,7 @@ export default function CataloguePage({
         </div>
       ) : (
         <div
+          className="vehicle-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
@@ -221,10 +254,13 @@ export default function CataloguePage({
         <DossierConfirmModal
           vehicle={pendingDossier.vehicle}
           type={pendingDossier.type}
-          onConfirm={confirmPendingDossier}
+          onConfirm={() => void handleConfirmDepositClick()}
           onCancel={cancelPendingDossier}
+          confirmLocked={!sessionReady}
         />
       ) : null}
+
+      {depositAuthModal}
 
       <Toast message={toast.message} visible={toast.visible} />
     </>

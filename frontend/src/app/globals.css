@@ -73,6 +73,136 @@ body {
   transition: opacity 0.2s;
 }
 
+/* ══════════════════════════════════════════════
+   RESPONSIVE — Mobile first (breakpoint : 768 px)
+   ══════════════════════════════════════════════ */
+
+/* Navbar ---------------------------------------- */
+.nav-hamburger-btn { display: none !important; }
+.nav-mobile-panel  { display: none; }
+
+@media (max-width: 768px) {
+  /* Cache les liens desktop, montre le hamburger */
+  .nav-right          { display: none !important; }
+  .nav-hamburger-btn  {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--white);
+    padding: .25rem;
+  }
+
+  /* Panel de navigation mobile (fond navy, colonne) */
+  .nav-mobile-panel {
+    display: flex;
+    flex-direction: column;
+    background: #0d1b4b;
+    padding: .75rem 1.25rem 1.25rem;
+    border-top: 1px solid rgba(255,255,255,.1);
+    position: sticky;
+    top: 60px;
+    z-index: 99;
+  }
+  .nav-mobile-panel a,
+  .nav-mobile-panel button {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .75rem 0;
+    color: var(--white);
+    text-decoration: none;
+    font-size: .9rem;
+    font-weight: 500;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+  }
+  .nav-mobile-panel a:last-child,
+  .nav-mobile-panel button:last-child { border-bottom: none; }
+  .nav-mobile-panel .mobile-section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.4);
+    padding: .8rem 0 .3rem;
+    border-bottom: none;
+  }
+  .nav-mobile-panel .mobile-danger { color: #f87171; }
+
+  /* SearchBar ------------------------------------ */
+  .search-bar {
+    margin: 0 1rem !important;
+    grid-template-columns: 1fr !important;
+    top: -.8rem !important;
+  }
+  .search-fields {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .search-btn { width: 100%; }
+
+  /* Catalogue grid ------------------------------- */
+  .vehicle-grid {
+    padding: 0 1rem 2rem !important;
+  }
+  .filters-row {
+    padding: .75rem 1rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .search-fields {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── VehicleModal ─────────────────────────────── */
+@media (max-width: 640px) {
+  .modal-wrapper {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+  .modal-panel {
+    border-radius: 16px 16px 0 0 !important;
+    max-width: 100% !important;
+    max-height: 95dvh !important;
+  }
+  .modal-hero { height: 180px !important; }
+  .modal-body { padding: 1rem !important; }
+  .modal-body-grid { grid-template-columns: 1fr !important; }
+  .modal-options-grid { grid-template-columns: 1fr !important; }
+  .modal-cta { flex-direction: column !important; }
+  .modal-cta button { width: 100% !important; }
+}
+
+/* ── Mes dossiers — table ─────────────────────── */
+.dossier-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 640px) {
+  .dossier-col-type   { display: none !important; }
+  .dossier-col-date   { display: none !important; }
+  /* Réduit le padding des cellules pour gagner de la place */
+  .dossier-table-wrapper td,
+  .dossier-table-wrapper th { padding: .6rem .5rem !important; }
+}
+
+/* ── Upload checklist (dossier detail) ───────── */
+@media (max-width: 640px) {
+  .upload-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: .5rem !important;
+    align-items: stretch !important;
+  }
+  .upload-row input[type="file"] { width: 100%; font-size: .82rem; }
+  .upload-row button { align-self: flex-start; }
+}
+
 /* ──────────────────────────────
    Animations d'affichage des toasts
    ────────────────────────────── */

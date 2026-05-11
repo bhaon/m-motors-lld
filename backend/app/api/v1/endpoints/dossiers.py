@@ -253,6 +253,10 @@ def _client_dossier_detail_out(db: DbSession, dossier: Dossier) -> DossierDetail
         for h in dossier.historique
     ]
     lld_pricing: LldOptionsPricingOut | None = None
+    achat_prix_ht: float | None = None
+    if dossier.type == DossierTypeEnum.achat and dossier.vehicle:
+        # Le champ `prix` est stocké sur le véhicule (HT côté application).
+        achat_prix_ht = float(dossier.vehicle.prix)
     state = build_lld_options_state(db, dossier)
     if state:
         lld_pricing = _lld_options_pricing_out(state)
@@ -271,6 +275,7 @@ def _client_dossier_detail_out(db: DbSession, dossier: Dossier) -> DossierDetail
         can_submit=can_submit,
         vehicle=vehicle_out,
         historique=historique_out,
+        achat_prix_ht=achat_prix_ht,
         lld_pricing=lld_pricing,
         contrat=_contrat_summary_for_detail(dossier),
         livraison=_livraison_info_out(dossier),

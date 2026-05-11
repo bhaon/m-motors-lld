@@ -60,6 +60,17 @@ const DOSSIER_COMPLET = {
   can_submit: true,
 };
 
+const DOSSIER_ACHAT_COMPLET = {
+  ...BASE_DOSSIER,
+  type: "achat" as const,
+  // US-02 : lld_pricing n'est pas utilisé en mode achat.
+  lld_pricing: null,
+  achat_prix_ht: 19990,
+  missing_pieces: [],
+  can_submit: true,
+  status: "brouillon" as const,
+};
+
 /** Dossier avec contrat généré (US-06-07). */
 const DOSSIER_EN_SIGNATURE = {
   ...BASE_DOSSIER,
@@ -486,6 +497,8 @@ describe("DossierDetailPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /voir le récapitulatif/i }));
     expect(screen.getByText(/récapitulatif avant confirmation/i)).toBeInTheDocument();
+    expect(screen.getByText(/location \/ mois ht/i)).toBeInTheDocument();
+    expect(screen.getByText(/options supplémentaires \/ mois ht/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /confirmer la soumission/i }));
 
     await waitFor(() => {
@@ -536,7 +549,25 @@ describe("DossierDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Soumission impossible.");
       expect(screen.getByText(/récapitulatif avant confirmation/i)).toBeInTheDocument();
+      expect(screen.getByText(/location \/ mois ht/i)).toBeInTheDocument();
     });
+  });
+
+  it("affiche le prix de l'achat dans le récapitulatif pour un dossier achat", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => DOSSIER_ACHAT_COMPLET,
+    } as Response);
+
+    render(<DossierDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /voir le récapitulatif/i })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /voir le récapitulatif/i }));
+    expect(screen.getByText(/récapitulatif avant confirmation/i)).toBeInTheDocument();
+    expect(screen.getByText(/prix de l'achat/i)).toBeInTheDocument();
   });
 
   it("permet d'annuler le récapitulatif de soumission", async () => {

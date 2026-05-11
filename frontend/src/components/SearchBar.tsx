@@ -54,6 +54,7 @@ export default function SearchBar({
 }: Readonly<SearchBarProps>) {
   return (
     <div
+      className="search-bar"
       style={{
         background: "var(--white)",
         borderRadius: "var(--radius)",
@@ -70,6 +71,7 @@ export default function SearchBar({
       }}
     >
       <div
+        className="search-fields"
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr",
@@ -178,6 +180,7 @@ export default function SearchBar({
 
       <button
         type="button"
+        className="search-btn"
         onClick={onSearch}
         style={{
           background: "var(--cyan)",

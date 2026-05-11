@@ -67,6 +67,7 @@ describe("CataloguePage callbacks", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
     mockPush.mockClear();
+    global.fetch = jest.fn(() => Promise.resolve({ ok: true, json: async () => [] }));
   });
 
   it("couvre le callback onClose du VehicleModal avec catalogue vide", () => {
@@ -76,9 +77,30 @@ describe("CataloguePage callbacks", () => {
   });
 
   it("après création dossier déclenche la navigation vers Mes dossiers", async () => {
-    jest.spyOn(global, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 12, reference: "DOS-2026-00012" }),
+    global.fetch = jest.fn((url, init) => {
+      const u = typeof url === "string" ? url : String(url);
+      const method = (init?.method || "GET").toUpperCase();
+      if (u.includes("/api/v1/auth/me")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 9,
+            email: "a@b",
+            role: "client",
+            first_name: "A",
+            last_name: "B",
+            phone: null,
+            email_verified: true,
+          }),
+        });
+      }
+      if (method === "POST" && u.includes("/api/v1/dossiers")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ id: 12, reference: "DOS-2026-00012" }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
     });
 
     render(
@@ -86,6 +108,13 @@ describe("CataloguePage callbacks", () => {
         vehicles={[{ id: 1, marque: "A", modele: "B", prix: 1, energie: "Essence", km: 10, boite: "Manuelle", lld: true, image_url: "" }]}
       />,
     );
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/auth/me"),
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
 
     fireEvent.click(screen.getByRole("button", { name: /ouvrir véhicule/i }));
     fireEvent.click(screen.getByRole("button", { name: "Demander dossier" }));

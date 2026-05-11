@@ -22,8 +22,10 @@ export type AuthModalProps = {
   onClose: () => void;
   /** Onglet affiché à l’ouverture (resynchronisé quand `open` passe à true). */
   defaultTab: AuthTab;
-  /** Appelé après une connexion réussie (ex. rafraîchir la navbar). */
-  onAuthenticated?: () => void;
+  /** Appelé après une connexion réussie (ex. rafraîchir la navbar). Attendu avant fermeture de la modale. */
+  onAuthenticated?: () => void | Promise<void>;
+  /** Si false, ne redirige pas vers `/` après connexion (ex. dépôt catalogue avec modale ouverte). */
+  redirectAfterLogin?: boolean;
 };
 
 function resolveLoginUrl(): string {
@@ -67,12 +69,19 @@ const EMAIL_NOT_VERIFIED_ERROR =
 /**
  * Modale unique : connexion (cookie session) et inscription (formulaire complet).
  */
-export default function AuthModal({ open, onClose, defaultTab, onAuthenticated }: AuthModalProps) {
+export default function AuthModal({
+  open,
+  onClose,
+  defaultTab,
+  onAuthenticated,
+  redirectAfterLogin = true,
+}: AuthModalProps) {
   const router = useRouter();
   const [tab, setTab] = useState<AuthTab>(defaultTab);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [showResend, setShowResend] = useState(false);
@@ -92,11 +101,17 @@ export default function AuthModal({ open, onClose, defaultTab, onAuthenticated }
   const [registerSuccess, setRegisterSuccess] = useState("");
   const [registerLoading, setRegisterLoading] = useState(false);
 
+  const passwordsMatch = useMemo(() => {
+    return !!confirmPassword && form.password === confirmPassword;
+  }, [confirmPassword, form.password]);
+
   const isSubmitDisabled = useMemo(() => {
     return (
       registerLoading ||
       !form.email ||
       !form.password ||
+      !confirmPassword ||
+      !passwordsMatch ||
       !form.first_name ||
       !form.last_name ||
       !form.birth_date ||
@@ -104,7 +119,7 @@ export default function AuthModal({ open, onClose, defaultTab, onAuthenticated }
       !form.accepted_privacy_policy ||
       !isPasswordStrong(form.password)
     );
-  }, [form, registerLoading]);
+  }, [confirmPassword, form, isPasswordStrong, passwordsMatch, registerLoading]);
 
   useEffect(() => {
     if (!open) return;
@@ -142,9 +157,11 @@ export default function AuthModal({ open, onClose, defaultTab, onAuthenticated }
         }
         throw new Error(detail);
       }
-      onAuthenticated?.();
+      await Promise.resolve(onAuthenticated?.());
       onClose();
-      router.push("/");
+      if (redirectAfterLogin) {
+        router.push("/");
+      }
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : "Email ou mot de passe invalide.");
     } finally {
@@ -181,6 +198,10 @@ export default function AuthModal({ open, onClose, defaultTab, onAuthenticated }
     setRegisterSuccess("");
     setRegisterLoading(true);
     try {
+      if (!passwordsMatch) {
+        setRegisterError("Les mots de passe doivent correspondre.");
+        return;
+      }
       const response = await fetch(resolveRegisterUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -348,6 +369,13 @@ export default function AuthModal({ open, onClose, defaultTab, onAuthenticated }
               required
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+            <input
+              placeholder="Confirmer le mot de passe"
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
             />
             <input placeholder="Prenom" required value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
             <input placeholder="Nom" required value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />

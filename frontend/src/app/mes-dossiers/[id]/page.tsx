@@ -55,6 +55,7 @@ interface DossierDetail {
   can_submit: boolean;
   historique?: HistoriqueItem[];
   lld_pricing?: LldPricing | null;
+  achat_prix_ht?: number | null;
   contrat?: DossierContratSummary | null;
   livraison?: LivraisonInfo | null;
 }
@@ -102,6 +103,11 @@ function formatDate(value?: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+/** Formate un montant monétaire en EUR (avec décimales). */
+function formatEUR(n: number): string {
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 }).format(n);
 }
 
 
@@ -541,6 +547,7 @@ export default function DossierDetailPage() {
                 {detail.checklist.map((item) => (
                   <div
                     key={item.type_piece}
+                    className="upload-row"
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 8,
@@ -650,6 +657,26 @@ export default function DossierDetailPage() {
                     <p style={{ margin: ".25rem 0" }}>
                       Pièces uploadées : {detail.checklist.filter((item) => item.uploaded).length}/5
                     </p>
+                    {detail.type === "achat" ? (
+                      <p style={{ margin: ".25rem 0" }}>
+                        Prix de l&apos;achat :{" "}
+                        <strong style={{ color: "var(--navy)" }}>{detail.achat_prix_ht != null ? formatEUR(detail.achat_prix_ht) : "—"}</strong>
+                      </p>
+                    ) : null}
+                    {detail.type === "lld" && detail.lld_pricing ? (
+                      <>
+                        <p style={{ margin: ".25rem 0" }}>
+                          Location / mois HT :{" "}
+                          <strong style={{ color: "var(--navy)" }}>
+                            {detail.lld_pricing.base_mensualite_ht != null ? formatEUR(detail.lld_pricing.base_mensualite_ht) : "—"}
+                          </strong>
+                        </p>
+                        <p style={{ margin: ".25rem 0" }}>
+                          Options supplémentaires / mois HT :{" "}
+                          <strong style={{ color: "var(--navy)" }}>{formatEUR(detail.lld_pricing.options_supplement_ht)}</strong>
+                        </p>
+                      </>
+                    ) : null}
                     <div style={{ display: "flex", gap: ".6rem", marginTop: ".9rem" }}>
                       <button
                         type="button"

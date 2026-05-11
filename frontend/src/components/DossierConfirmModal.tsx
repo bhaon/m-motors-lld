@@ -8,6 +8,8 @@ interface DossierConfirmModalProps {
   type: "lld" | "achat";
   onConfirm: () => void;
   onCancel: () => void;
+  /** Désactive le bouton de confirmation pendant la lecture de la session (cookie `/me`). */
+  confirmLocked?: boolean;
 }
 
 /**
@@ -18,6 +20,7 @@ export default function DossierConfirmModal({
   type,
   onConfirm,
   onCancel,
+  confirmLocked = false,
 }: Readonly<DossierConfirmModalProps>) {
   useEffect(() => {
     /**
@@ -105,18 +108,19 @@ export default function DossierConfirmModal({
           <button
             type="button"
             onClick={onConfirm}
+            disabled={confirmLocked}
             style={{
               flex: 1,
-              background: "var(--navy)",
+              background: confirmLocked ? "#9ca3af" : "var(--navy)",
               color: "#fff",
               border: 0,
               padding: ".75rem",
               borderRadius: 8,
               fontWeight: 600,
-              cursor: "pointer",
+              cursor: confirmLocked ? "not-allowed" : "pointer",
             }}
           >
-            Confirmer le dépôt
+            {confirmLocked ? "Vérification de la session…" : "Confirmer le dépôt"}
           </button>
         </div>
       </div>

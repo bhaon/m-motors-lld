@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
@@ -590,11 +591,22 @@ export default function BackofficeDossierDetailPage() {
                   style={{ width: "100%", height: "70vh", border: "none" }}
                 />
               ) : getFileType(viewer.filename) === "image" ? (
-                <img
-                  src={viewer.url}
-                  alt={viewer.filename}
-                  style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain" }}
-                />
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    height: "70vh",
+                    maxHeight: "70vh",
+                  }}
+                >
+                  <Image
+                    src={viewer.url}
+                    alt={viewer.filename}
+                    fill
+                    sizes="(max-width: 1200px) 100vw, min(90vw, 960px)"
+                    style={{ objectFit: "contain" }}
+                  />
+                </div>
               ) : (
                 <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted)" }}>
                   <p>Aperçu non disponible pour ce format.</p>

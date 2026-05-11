@@ -208,6 +208,8 @@ class DossierDetailOut(BaseModel):
     can_submit: bool
     vehicle: VehicleSummaryOut | None = None
     historique: list[HistoriqueItemOut] = []
+    # Achat : prix du véhicule (HT). None pour les dossiers LLD.
+    achat_prix_ht: float | None = None
     lld_pricing: LldOptionsPricingOut | None = None
     contrat: DossierContratSummaryOut | None = None
     livraison: LivraisonInfoOut | None = None
