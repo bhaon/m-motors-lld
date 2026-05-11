@@ -157,27 +157,27 @@ jobs:
           # --retry-connrefused + retry étendu remplace le sleep fixe de stabilisation.
           echo "Smoke tests sur: $PRODUCTION_PUBLIC_URL"
 
+          # -fsS : échec sur HTTP ≥400 (ex. 503 readyz), erreurs TLS/réseau visibles (-S).
+          # --http1.1 : évite des cas HTTP/2 + Ingress où une coupure pendant le corps → exit 23 (write error) avec -o /dev/null.
+          # readyz interroge la DB : max-time plus long qu’healthz pour absorber le pic post-rollout.
           _check() {
-            local label="$1" url="$2"
-            local status curl_exit
-            status=$(curl -o /dev/null -s -w "%{http_code}" \
-              "$url" \
-              --max-time 20 --retry 18 --retry-delay 10 --retry-connrefused \
-              -H "User-Agent: GitHub-Actions-ProdSmokeTest") || curl_exit=$?
-            if [ "${curl_exit:-0}" -ne 0 ]; then
-              echo "❌ $label — curl a échoué (exit ${curl_exit})"
+            local label="$1" url="$2" maxt="${3:-25}"
+            local curl_exit=0
+            curl -fsS -o /dev/null --http1.1 \
+              --max-time "$maxt" --connect-timeout 15 \
+              --retry 18 --retry-delay 10 --retry-connrefused \
+              -H "User-Agent: GitHub-Actions-ProdSmokeTest" \
+              "$url" || curl_exit=$?
+            if [ "$curl_exit" -ne 0 ]; then
+              echo "❌ $label — curl a échoué (exit $curl_exit)"
               return 1
             fi
-            if [ "$status" != "200" ]; then
-              echo "❌ $label → HTTP $status"
-              return 1
-            fi
-            echo "✅ $label → HTTP $status"
+            echo "✅ $label → HTTP OK"
           }
 
-          _check "/api/healthz" "${PRODUCTION_PUBLIC_URL}/api/healthz"
-          _check "/api/readyz"  "${PRODUCTION_PUBLIC_URL}/api/readyz"
-          _check "/"            "${PRODUCTION_PUBLIC_URL}/"
+          _check "/api/healthz" "${PRODUCTION_PUBLIC_URL}/api/healthz" 25
+          _check "/api/readyz"  "${PRODUCTION_PUBLIC_URL}/api/readyz" 60
+          _check "/"            "${PRODUCTION_PUBLIC_URL}/" 25
 
           echo "✅ Tous les smoke tests production passés"
 
