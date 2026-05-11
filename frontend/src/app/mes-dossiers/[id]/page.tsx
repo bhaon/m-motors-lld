@@ -9,6 +9,7 @@ import type { DossierStatus } from "@/types";
 import { apiUrl } from "@/lib/api";
 import { useFileUpload, PieceType } from "@/hooks/useFileUpload";
 import LldOptionsSection, { type LldPricing } from "@/components/LldOptionsSection";
+import MarkdownBody from "@/components/MarkdownBody";
 
 interface ChecklistItem {
   type_piece: PieceType;
@@ -66,6 +67,22 @@ const PIECE_LABELS: Record<PieceType, string> = {
   rib: "RIB",
 };
 
+/** Du passage en signature jusqu'à la clôture : plus de dépôt de pièces ni de bouton de soumission sur la fiche client. */
+const STATUTS_SANS_PIECES_NI_SOUMISSION: ReadonlySet<DossierStatus> = new Set([
+  "en_signature",
+  "attente_livraison",
+  "livraison_planifiee",
+  "contrat_en_cours",
+  "cloture",
+]);
+
+/**
+ * Retourne true si la section pièces justificatives et la soumission doivent rester visibles.
+ */
+function doitAfficherPiecesEtSoumission(status: string): boolean {
+  return !STATUTS_SANS_PIECES_NI_SOUMISSION.has(status as DossierStatus);
+}
+
 const dossierUrl = (id: string) => apiUrl(`/api/v1/dossiers/${id}`);
 const dossierSubmitUrl = (id: string) => apiUrl(`/api/v1/dossiers/${id}/submit`);
 const pieceDownloadUrl = (dossierId: string, typePiece: PieceType) =>
@@ -115,8 +132,11 @@ export default function DossierDetailPage() {
     [detail],
   );
 
-  const loadDetail = useCallback(async () => {
-    setLoading(true);
+  const loadDetail = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (!silent) {
+      setLoading(true);
+    }
     setError("");
     try {
       const response = await fetch(dossierUrl(params.id || ""), {
@@ -132,7 +152,9 @@ export default function DossierDetailPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur technique.");
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [params.id]);
 
@@ -179,11 +201,12 @@ export default function DossierDetailPage() {
     }
   }
 
-  function handleUploadPiece(type: PieceType, file: File) {
+  /** Rafraîchit le détail en arrière-plan après upload pour ne pas masquer la page (scroll, enchaînement des fichiers). */
+  async function handleUploadPiece(type: PieceType, file: File) {
     setUploadMessage("");
-    uploadPiece(type, file, async (done) => {
+    await uploadPiece(type, file, async (done) => {
       setUploadMessage(`${PIECE_LABELS[done]} uploadée avec succès.`);
-      await loadDetail();
+      await loadDetail({ silent: true });
     });
   }
 
@@ -293,7 +316,7 @@ export default function DossierDetailPage() {
           <p style={{ color: "#166534", marginBottom: "1rem" }}>{uploadMessage}</p>
         )}
 
-        {!loading && !error && detail && (
+        {!loading && detail && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
 
             {/* ── En-tête dossier ─────────────────────────────── */}
@@ -425,11 +448,8 @@ export default function DossierDetailPage() {
                 )}
                 {contractLoading && <p style={{ color: "var(--muted)" }}>Chargement du contrat…</p>}
                 {!contractLoading && contractMarkdown !== null && (
-                  <pre
+                  <div
                     style={{
-                      whiteSpace: "pre-wrap",
-                      fontSize: ".8rem",
-                      lineHeight: 1.45,
                       maxHeight: 360,
                       overflow: "auto",
                       padding: "1rem",
@@ -437,11 +457,10 @@ export default function DossierDetailPage() {
                       borderRadius: 8,
                       border: "1px solid var(--border)",
                       margin: "0 0 1rem",
-                      fontFamily: "ui-monospace, monospace",
                     }}
                   >
-                    {contractMarkdown}
-                  </pre>
+                    <MarkdownBody source={contractMarkdown} />
+                  </div>
                 )}
                 {detail.contrat.can_sign && (
                   <button
@@ -468,7 +487,8 @@ export default function DossierDetailPage() {
               </article>
             )}
 
-            {/* ── Checklist pièces ────────────────────────────── */}
+            {/* ── Checklist pièces (masquée en signature → clôture) ───────────── */}
+            {doitAfficherPiecesEtSoumission(detail.status) && (
             <div
               style={{
                 background: "#fff",
@@ -578,10 +598,15 @@ export default function DossierDetailPage() {
                       aria-label={`Uploader ${PIECE_LABELS[item.type_piece]}`}
                       accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                       disabled={uploadingType === item.type_piece || detail.status === "depose"}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
+                      onChange={async (event) => {
+                        const input = event.currentTarget;
+                        const file = input.files?.[0];
                         if (!file) return;
-                        handleUploadPiece(item.type_piece, file);
+                        try {
+                          await handleUploadPiece(item.type_piece, file);
+                        } finally {
+                          input.value = "";
+                        }
                       }}
                     />
                   </div>
@@ -664,6 +689,7 @@ export default function DossierDetailPage() {
                 )}
               </div>
             </div>
+            )}
 
             {/* ── Historique des statuts ───────────────────────── */}
             {detail.historique && detail.historique.length > 0 && (

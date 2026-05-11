@@ -21,8 +21,8 @@ def _auth_cookie_header(client: TestClient, *, email: str, password: str) -> dic
     return {"Cookie": f"access_token={access_token}"}
 
 
-def test_create_dossier_achat_returns_unique_reference(client: TestClient, db: Session) -> None:
-    """Crée un dossier Achat et retourne une référence lisible unique."""
+def test_create_dossier_achat_then_duplicate_rejected(client: TestClient, db: Session) -> None:
+    """Crée un dossier Achat puis refuse un second dossier Achat identique (même client et véhicule)."""
     user = create_user(db, email="client.dossier@example.com")
     vehicle = create_vehicle(db, lld=False)
     headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
@@ -39,13 +39,60 @@ def test_create_dossier_achat_returns_unique_reference(client: TestClient, db: S
     )
 
     assert first.status_code == 201
-    assert second.status_code == 201
+    assert second.status_code == 409
     body1 = first.json()
-    body2 = second.json()
     assert body1["reference"].startswith("DOS-")
-    assert body2["reference"].startswith("DOS-")
-    assert body1["reference"] != body2["reference"]
     assert body1["type"] == "achat"
+    detail = second.json()["detail"]
+    assert body1["reference"] in detail
+    assert "Mes dossiers" in detail
+
+
+def test_create_dossier_allows_second_type_same_vehicle(client: TestClient, db: Session) -> None:
+    """Même client et véhicule : un dossier LLD et un dossier Achat peuvent coexister."""
+    user = create_user(db, email="client.dossier.dual@example.com")
+    vehicle = create_vehicle(db, lld=True)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    achat = client.post(
+        "/api/v1/dossiers",
+        json={"vehicle_id": vehicle.id, "type": "achat"},
+        headers=headers,
+    )
+    lld = client.post(
+        "/api/v1/dossiers",
+        json={"vehicle_id": vehicle.id, "type": "lld"},
+        headers=headers,
+    )
+
+    assert achat.status_code == 201
+    assert lld.status_code == 201
+    assert achat.json()["type"] == "achat"
+    assert lld.json()["type"] == "lld"
+
+
+def test_create_dossier_allowed_after_annulation(client: TestClient, db: Session) -> None:
+    """Après annulation d’un dossier, une nouvelle création pour le même couple client-véhicule-type est permise."""
+    user = create_user(db, email="client.dossier.annule@example.com")
+    vehicle = create_vehicle(db, lld=False)
+    headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
+
+    first = client.post(
+        "/api/v1/dossiers",
+        json={"vehicle_id": vehicle.id, "type": "achat"},
+        headers=headers,
+    ).json()
+    d = db.query(Dossier).filter(Dossier.id == first["id"]).one()
+    d.status = DossierStatusEnum.annule
+    db.commit()
+
+    second = client.post(
+        "/api/v1/dossiers",
+        json={"vehicle_id": vehicle.id, "type": "achat"},
+        headers=headers,
+    )
+    assert second.status_code == 201
+    assert second.json()["reference"] != first["reference"]
 
 
 def test_create_dossier_lld_for_non_lld_vehicle_rejected(client: TestClient, db: Session) -> None:
@@ -474,11 +521,16 @@ def test_list_my_dossiers_empty_for_new_client(client: TestClient, db: Session) 
 def test_list_my_dossiers_ordered_most_recent_first(client: TestClient, db: Session) -> None:
     """GET /me retourne les dossiers du plus récent au plus ancien."""
     user = create_user(db, email="client.dashboard.order@example.com")
-    vehicle = create_vehicle(db, lld=False)
+    vehicle_a = create_vehicle(db, lld=False)
+    vehicle_b = create_vehicle(db, lld=False)
     headers = _auth_cookie_header(client, email=user.email, password="SecretMotDePasse1!")
 
-    first = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers).json()
-    second = client.post("/api/v1/dossiers", json={"vehicle_id": vehicle.id, "type": "achat"}, headers=headers).json()
+    first = client.post(
+        "/api/v1/dossiers", json={"vehicle_id": vehicle_a.id, "type": "achat"}, headers=headers
+    ).json()
+    second = client.post(
+        "/api/v1/dossiers", json={"vehicle_id": vehicle_b.id, "type": "achat"}, headers=headers
+    ).json()
 
     response = client.get("/api/v1/dossiers/me", headers=headers)
 

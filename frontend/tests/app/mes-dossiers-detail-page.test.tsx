@@ -463,6 +463,8 @@ describe("DossierDetailPage", () => {
       );
       expect(screen.getByText(/uploadée avec succès/i)).toBeInTheDocument();
     });
+
+    expect(screen.queryByText(/chargement du dossier/i)).not.toBeInTheDocument();
   });
 
   it("affiche le récapitulatif puis soumet avec succès", async () => {
@@ -533,7 +535,7 @@ describe("DossierDetailPage", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Soumission impossible.");
-      expect(screen.queryByText(/récapitulatif avant confirmation/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/récapitulatif avant confirmation/i)).toBeInTheDocument();
     });
   });
 
@@ -673,6 +675,34 @@ describe("DossierDetailPage", () => {
 
   // ── Contrat & signature (US-06-07) ─────────────────────────────────────
 
+  it("masque pièces et soumission lorsque le dossier est en signature", async () => {
+    jest.spyOn(global, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/contrat") && !u.includes("demander-signature")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            markdown: "# C",
+            reference: "CTR-2026-00013",
+            signed_at: null,
+          }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => DOSSIER_EN_SIGNATURE,
+      } as Response);
+    });
+
+    render(<DossierDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^Signer le contrat$/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("heading", { name: /pièces justificatives/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /voir le récapitulatif avant soumission/i })).not.toBeInTheDocument();
+  });
+
   it("charge et affiche le contrat lorsque l'API renvoie contrat + markdown", async () => {
     jest.spyOn(global, "fetch").mockImplementation((input: RequestInfo | URL) => {
       const u = typeof input === "string" ? input : input.toString();
@@ -695,11 +725,9 @@ describe("DossierDetailPage", () => {
     render(<DossierDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /^Contrat$/i })).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText(/# Contrat/i)).toBeInTheDocument();
-      expect(screen.getByText(/Corps \*\*markdown\*\*\./i)).toBeInTheDocument();
+      const md = screen.getByTestId("markdown-body");
+      expect(md).toHaveTextContent("# Contrat");
+      expect(md).toHaveTextContent("Corps **markdown**.");
     });
     expect(screen.getByRole("button", { name: /^Signer le contrat$/i })).toBeInTheDocument();
   });
@@ -829,5 +857,6 @@ describe("DossierDetailPage", () => {
     });
     expect(screen.getByText(/garage gaudin/i)).toBeInTheDocument();
     expect(screen.getByText(/date et heure/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /pièces justificatives/i })).not.toBeInTheDocument();
   });
 });

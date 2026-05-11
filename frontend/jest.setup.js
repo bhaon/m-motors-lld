@@ -28,3 +28,16 @@ jest.mock("next/navigation", () => ({
   usePathname: () => "/",
   useSearchParams: () => new URLSearchParams(),
 }));
+
+/** react-markdown est en ESM : le mock évite d’étendre indéfiniment transpilePackages pour Jest. */
+jest.mock("@/components/MarkdownBody", () => ({
+  __esModule: true,
+  default: function MarkdownBodyMock({ source }) {
+    const React = require("react");
+    return React.createElement(
+      "div",
+      { "data-testid": "markdown-body", style: { whiteSpace: "pre-wrap" } },
+      source,
+    );
+  },
+}));

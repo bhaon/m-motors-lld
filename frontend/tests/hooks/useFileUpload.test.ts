@@ -53,6 +53,31 @@ describe("useFileUpload", () => {
     expect(result.current.error).toBe("");
   });
 
+  it("attend la fin d'un onSuccess asynchrone avant de libérer uploadingType", async () => {
+    global.fetch = makeFetch([
+      { ok: true, json: async () => ({ upload_url: "https://minio/put", s3_key: "k", headers: { "Content-Type": "application/pdf" } }) },
+      { ok: true, json: async () => ({}) },
+      { ok: true, json: async () => ({}) },
+    ] as Response[]);
+
+    let ranAsyncBody = false;
+    const onSuccess = jest.fn(async () => {
+      await Promise.resolve();
+      ranAsyncBody = true;
+    });
+
+    const { result } = renderHook(() => useFileUpload("42"));
+    const file = new File(["pdf"], "doc.pdf", { type: "application/pdf" });
+
+    await act(async () => {
+      await result.current.uploadPiece("cni", file, onSuccess);
+    });
+
+    expect(onSuccess).toHaveBeenCalled();
+    expect(ranAsyncBody).toBe(true);
+    expect(result.current.uploadingType).toBeNull();
+  });
+
   it("expose une erreur si l'init échoue", async () => {
     global.fetch = makeFetch([
       { ok: false, json: async () => ({ detail: "Quota dépassé." }) },

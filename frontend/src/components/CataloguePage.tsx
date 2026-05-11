@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Vehicle } from "@/types";
 import { useFilters } from "@/hooks/useFilters";
 import { useToast } from "@/hooks/useToast";
@@ -9,7 +10,6 @@ import FiltersRow from "@/components/FiltersRow";
 import VehicleCard from "@/components/VehicleCard";
 import VehicleModal from "@/components/VehicleModal";
 import DossierConfirmModal from "@/components/DossierConfirmModal";
-import DossierPiecesModal from "@/components/DossierPiecesModal";
 import Toast from "@/components/Toast";
 
 interface CataloguePageProps {
@@ -68,10 +68,7 @@ export default function CataloguePage({
     vehicle: Vehicle;
     type: "lld" | "achat";
   } | null>(null);
-  const [createdDossier, setCreatedDossier] = useState<{
-    id: number;
-    reference: string;
-  } | null>(null);
+  const router = useRouter();
   const { filters, filtered, marques, modeles, setType, setField, reset } =
     useFilters(vehicles);
   const { toast, showToast } = useToast();
@@ -125,9 +122,15 @@ export default function CataloguePage({
       }
       const createdReference = payload.reference || "DOS-EN-ATTENTE";
       const createdId = Number(payload.id || 0);
+      const typeLabel = pendingDossier.type.toUpperCase();
       setPendingDossier(null);
-      setCreatedDossier({ id: createdId, reference: createdReference });
-      showToast(`Dossier ${pendingDossier.type.toUpperCase()} créé (${createdReference})`);
+      const qs = new URLSearchParams({
+        cree: "1",
+        ref: createdReference,
+        id: String(createdId),
+        type: typeLabel,
+      });
+      router.push(`/mes-dossiers?${qs.toString()}`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Erreur technique lors du dépôt.");
     }
@@ -220,13 +223,6 @@ export default function CataloguePage({
           type={pendingDossier.type}
           onConfirm={confirmPendingDossier}
           onCancel={cancelPendingDossier}
-        />
-      ) : null}
-      {createdDossier ? (
-        <DossierPiecesModal
-          dossierId={createdDossier.id}
-          dossierReference={createdDossier.reference}
-          onClose={() => setCreatedDossier(null)}
         />
       ) : null}
 

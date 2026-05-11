@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import MesDossiersPage from "@/app/mes-dossiers/page";
 
 const DOSSIER_LLD_BROUILLON = {
@@ -26,9 +26,18 @@ const DOSSIER_ACHAT_DEPOSE = {
 describe("MesDossiersPage", () => {
   const originalEnv = { ...process.env };
 
+  /** Fixe l’URL vue par `window.location` (happy-dom : `replaceState` ne met pas à jour `search`). */
+  function setPageUrl(pathWithQuery: string) {
+    const path = pathWithQuery.startsWith("/") ? pathWithQuery : `/${pathWithQuery}`;
+    (window as unknown as { happyDOM: { setURL: (u: string) => void } }).happyDOM.setURL(
+      `http://localhost${path}`,
+    );
+  }
+
   beforeEach(() => {
     jest.restoreAllMocks();
     process.env = { ...originalEnv };
+    setPageUrl("/mes-dossiers");
   });
 
   afterAll(() => {
@@ -288,6 +297,189 @@ describe("MesDossiersPage", () => {
         "https://api.example.com/api/v1/dossiers/me",
         expect.objectContaining({ method: "GET", credentials: "include" }),
       );
+    });
+  });
+
+  it("utilise l'URL absolue pour DELETE quand NEXT_PUBLIC_API_URL est défini", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "https://api.example.com/";
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [DOSSIER_LLD_BROUILLON],
+      } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) } as Response);
+
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Supprimer" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenLastCalledWith(
+        "https://api.example.com/api/v1/dossiers/1",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
+  // ── Bannière après redirection catalogue (?cree=1) ─────────────────────────
+
+  it("affiche la bannière de dossier créé avec id valide et nettoie la query", async () => {
+    const replaceSpy = jest.spyOn(window.history, "replaceState");
+    setPageUrl("/mes-dossiers?cree=1&ref=DOS-2026-NEW&id=1&type=LLD");
+
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [DOSSIER_LLD_BROUILLON],
+    } as Response);
+
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      const banner = screen.getByRole("region", { name: /confirmation de création/i });
+      expect(banner).toHaveTextContent(/DOS-2026-NEW/);
+      expect(banner).toHaveTextContent(/Cliquez sur la référence/);
+    });
+    expect(replaceSpy).toHaveBeenCalled();
+    replaceSpy.mockRestore();
+  });
+
+  it("bannière sans id valide : message alternatif et type DOSSIER par défaut", async () => {
+    setPageUrl("/mes-dossiers?cree=1&ref=DOS-SANS-ID&id=xyz");
+
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [DOSSIER_LLD_BROUILLON],
+    } as Response);
+
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      const banner = screen.getByRole("region", { name: /confirmation de création/i });
+      expect(banner).toHaveTextContent(/DOSSIER/);
+      expect(banner).toHaveTextContent(/Retrouvez-le dans le tableau/);
+    });
+  });
+
+  it("conserve les autres paramètres d'URL après nettoyage de cree/ref/id/type", async () => {
+    const replaceSpy = jest.spyOn(window.history, "replaceState");
+    setPageUrl("/mes-dossiers?cree=1&ref=R1&id=1&type=LLD&keep=oui");
+
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [DOSSIER_LLD_BROUILLON],
+    } as Response);
+
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: /confirmation de création/i }),
+      ).toBeInTheDocument();
+    });
+    expect(replaceSpy).toHaveBeenCalledWith(
+      {},
+      "",
+      expect.stringContaining("keep=oui"),
+    );
+    replaceSpy.mockRestore();
+  });
+
+  it("ferme la bannière de création au clic sur Fermer", async () => {
+    setPageUrl("/mes-dossiers?cree=1&ref=DOS-X&id=1&type=ACHAT");
+
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [DOSSIER_LLD_BROUILLON],
+    } as Response);
+
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: /confirmation de création/i }),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Fermer" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("region", { name: /confirmation de création/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("sans cree=1, aucune bannière de création", async () => {
+    setPageUrl("/mes-dossiers?ref=only");
+
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [DOSSIER_LLD_BROUILLON],
+    } as Response);
+
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("DOS-2026-00042")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("region", { name: /confirmation de création/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("applique le surlignage de ligne au survol quand l'id correspond à la query", async () => {
+    setPageUrl("/mes-dossiers?cree=1&ref=DOS-2026-00042&id=1&type=LLD");
+
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [DOSSIER_LLD_BROUILLON],
+    } as Response);
+
+    render(<MesDossiersPage />);
+
+    const row = await screen.findByText("DOS-2026-00042").then((el) => el.closest("tr"));
+    expect(row).not.toBeNull();
+    fireEvent.mouseEnter(row!);
+    fireEvent.mouseLeave(row!);
+    expect(row).toBeInTheDocument();
+  });
+
+  it("affiche une date — pour une date de création invalide", async () => {
+    const badDate = { ...DOSSIER_LLD_BROUILLON, created_at: "pas-une-date" };
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [badDate],
+    } as Response);
+
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("DOS-2026-00042")).toBeInTheDocument();
+    });
+    const table = screen.getByRole("table", { name: /liste de mes dossiers/i });
+    expect(within(table).getByText("—")).toBeInTheDocument();
+  });
+
+  it("affiche le type en majuscules pour un type métier inconnu", async () => {
+    const weird = {
+      ...DOSSIER_LLD_BROUILLON,
+      id: 99,
+      reference: "DOS-2026-0099",
+      type: "leasing_special",
+    };
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      // Réponse API atypique : couverture du repli `TYPE_LABEL ?? .toUpperCase()`.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      json: async () => [weird] as any,
+    } as Response);
+
+    render(<MesDossiersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("LEASING_SPECIAL")).toBeInTheDocument();
     });
   });
 });
