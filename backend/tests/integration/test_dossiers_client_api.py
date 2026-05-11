@@ -6,12 +6,9 @@ from fastapi.testclient import TestClient
 
 from app.db.session import SessionLocal
 from app.main import application
-from app.models.user import RoleEnum
 from tests.integration.conftest import (
-    create_staff_user,
     create_vehicle_in_db,
     register_and_login,
-    staff_cookie,
     unique_email,
 )
 
@@ -278,7 +275,7 @@ def test_submit_dossier_sans_pieces_retourne_erreur() -> None:
 def test_submit_dossier_avec_pieces_retourne_depose() -> None:
     """POST /dossiers/{id}/submit avec toutes les pièces passe le statut à depose."""
     from datetime import datetime, timezone
-    from app.models.dossier import Dossier, PieceJustificative
+    from app.models.dossier import PieceJustificative
 
     with TestClient(application) as client:
         email = unique_email("sub_ok")

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
 from app.db.session import SessionLocal
 from app.main import application
-from app.models.dossier import Dossier, DossierStatusEnum, PieceJustificative
+from app.models.dossier import PieceJustificative
 from app.models.user import RoleEnum
 from tests.integration.conftest import (
     create_staff_user,
