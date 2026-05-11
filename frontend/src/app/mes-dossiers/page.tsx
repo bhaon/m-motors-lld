@@ -168,7 +168,8 @@ export default function MesDossiersPage() {
 
         {creationNotice && (
           <div
-            role="status"
+            role="region"
+            aria-label="Confirmation de création de dossier"
             style={{
               background: "#ecfdf5",
               border: "1px solid #6ee7b7",
