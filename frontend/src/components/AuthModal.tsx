@@ -81,6 +81,7 @@ export default function AuthModal({
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [showResend, setShowResend] = useState(false);
@@ -100,11 +101,17 @@ export default function AuthModal({
   const [registerSuccess, setRegisterSuccess] = useState("");
   const [registerLoading, setRegisterLoading] = useState(false);
 
+  const passwordsMatch = useMemo(() => {
+    return !!confirmPassword && form.password === confirmPassword;
+  }, [confirmPassword, form.password]);
+
   const isSubmitDisabled = useMemo(() => {
     return (
       registerLoading ||
       !form.email ||
       !form.password ||
+      !confirmPassword ||
+      !passwordsMatch ||
       !form.first_name ||
       !form.last_name ||
       !form.birth_date ||
@@ -112,7 +119,7 @@ export default function AuthModal({
       !form.accepted_privacy_policy ||
       !isPasswordStrong(form.password)
     );
-  }, [form, registerLoading]);
+  }, [confirmPassword, form, isPasswordStrong, passwordsMatch, registerLoading]);
 
   useEffect(() => {
     if (!open) return;
@@ -191,6 +198,10 @@ export default function AuthModal({
     setRegisterSuccess("");
     setRegisterLoading(true);
     try {
+      if (!passwordsMatch) {
+        setRegisterError("Les mots de passe doivent correspondre.");
+        return;
+      }
       const response = await fetch(resolveRegisterUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -358,6 +369,13 @@ export default function AuthModal({
               required
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+            <input
+              placeholder="Confirmer le mot de passe"
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
             />
             <input placeholder="Prenom" required value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
             <input placeholder="Nom" required value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />

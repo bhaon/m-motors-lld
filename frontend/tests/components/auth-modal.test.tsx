@@ -258,6 +258,9 @@ describe("AuthModal", () => {
       fireEvent.change(screen.getByPlaceholderText("Mot de passe"), {
         target: { value: "StrongPassword123!" },
       });
+      fireEvent.change(screen.getByPlaceholderText("Confirmer le mot de passe"), {
+        target: { value: "StrongPassword123!" },
+      });
       fireEvent.change(screen.getByPlaceholderText("Prenom"), {
         target: { value: "Alice" },
       });
@@ -286,6 +289,9 @@ describe("AuthModal", () => {
         target: { value: "new.user@example.com" },
       });
       fireEvent.change(screen.getByPlaceholderText("Mot de passe"), {
+        target: { value: "StrongPassword123!" },
+      });
+      fireEvent.change(screen.getByPlaceholderText("Confirmer le mot de passe"), {
         target: { value: "StrongPassword123!" },
       });
       fireEvent.change(screen.getByPlaceholderText("Prenom"), {
@@ -322,6 +328,9 @@ describe("AuthModal", () => {
       fireEvent.change(screen.getByPlaceholderText("Mot de passe"), {
         target: { value: "StrongPassword123!" },
       });
+      fireEvent.change(screen.getByPlaceholderText("Confirmer le mot de passe"), {
+        target: { value: "StrongPassword123!" },
+      });
       fireEvent.change(screen.getByPlaceholderText("Prenom"), {
         target: { value: "Bob" },
       });
@@ -351,6 +360,7 @@ describe("AuthModal", () => {
       render(<AuthModal open defaultTab="register" onClose={noop} />);
       fireEvent.change(screen.getByPlaceholderText("Email"), { target: { value: "new.user@example.com" } });
       fireEvent.change(screen.getByPlaceholderText("Mot de passe"), { target: { value: "StrongPassword123!" } });
+      fireEvent.change(screen.getByPlaceholderText("Confirmer le mot de passe"), { target: { value: "StrongPassword123!" } });
       fireEvent.change(screen.getByPlaceholderText("Prenom"), { target: { value: "Alice" } });
       fireEvent.change(screen.getByPlaceholderText("Nom"), { target: { value: "Martin" } });
       const birthDateInput = document.querySelector('input[type="date"]');
@@ -378,6 +388,7 @@ describe("AuthModal", () => {
       render(<AuthModal open defaultTab="register" onClose={noop} />);
       fireEvent.change(screen.getByPlaceholderText("Email"), { target: { value: "new.user@example.com" } });
       fireEvent.change(screen.getByPlaceholderText("Mot de passe"), { target: { value: "StrongPassword123!" } });
+      fireEvent.change(screen.getByPlaceholderText("Confirmer le mot de passe"), { target: { value: "StrongPassword123!" } });
       fireEvent.change(screen.getByPlaceholderText("Prenom"), { target: { value: "Alice" } });
       fireEvent.change(screen.getByPlaceholderText("Nom"), { target: { value: "Martin" } });
       const birthDateInput = document.querySelector('input[type="date"]');
@@ -397,6 +408,7 @@ describe("AuthModal", () => {
       render(<AuthModal open defaultTab="register" onClose={noop} />);
       fireEvent.change(screen.getByPlaceholderText("Email"), { target: { value: "new.user@example.com" } });
       fireEvent.change(screen.getByPlaceholderText("Mot de passe"), { target: { value: "StrongPassword123!" } });
+      fireEvent.change(screen.getByPlaceholderText("Confirmer le mot de passe"), { target: { value: "StrongPassword123!" } });
       fireEvent.change(screen.getByPlaceholderText("Prenom"), { target: { value: "Alice" } });
       fireEvent.change(screen.getByPlaceholderText("Nom"), { target: { value: "Martin" } });
       const birthDateInput = document.querySelector('input[type="date"]');
@@ -408,6 +420,26 @@ describe("AuthModal", () => {
       await waitFor(() => {
         expect(screen.getByText("Erreur technique.")).toBeInTheDocument();
       });
+    });
+
+    it("désactive l'inscription si les mots de passe ne correspondent pas", () => {
+      render(<AuthModal open defaultTab="register" onClose={noop} />);
+
+      fireEvent.change(screen.getByPlaceholderText("Email"), { target: { value: "new.user@example.com" } });
+      fireEvent.change(screen.getByPlaceholderText("Mot de passe"), { target: { value: "StrongPassword123!" } });
+      fireEvent.change(screen.getByPlaceholderText("Confirmer le mot de passe"), {
+        target: { value: "StrongPassword123!Different" },
+      });
+      fireEvent.change(screen.getByPlaceholderText("Prenom"), { target: { value: "Alice" } });
+      fireEvent.change(screen.getByPlaceholderText("Nom"), { target: { value: "Martin" } });
+      const birthDateInput = document.querySelector('input[type="date"]');
+      expect(birthDateInput).not.toBeNull();
+      fireEvent.change(birthDateInput as HTMLInputElement, { target: { value: "1990-01-01" } });
+
+      fireEvent.click(screen.getByLabelText(/J.accepte les CGU/i));
+      fireEvent.click(screen.getByLabelText(/J.accepte la politique/i));
+
+      expect(screen.getByRole("button", { name: /s'inscrire/i })).toBeDisabled();
     });
   });
 });
