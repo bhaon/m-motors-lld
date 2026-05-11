@@ -547,6 +547,7 @@ export default function DossierDetailPage() {
                 {detail.checklist.map((item) => (
                   <div
                     key={item.type_piece}
+                    className="upload-row"
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 8,

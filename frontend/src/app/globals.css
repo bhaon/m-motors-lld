@@ -161,6 +161,48 @@ body {
   }
 }
 
+/* ── VehicleModal ─────────────────────────────── */
+@media (max-width: 640px) {
+  .modal-wrapper {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+  .modal-panel {
+    border-radius: 16px 16px 0 0 !important;
+    max-width: 100% !important;
+    max-height: 95dvh !important;
+  }
+  .modal-hero { height: 180px !important; }
+  .modal-body { padding: 1rem !important; }
+  .modal-body-grid { grid-template-columns: 1fr !important; }
+  .modal-options-grid { grid-template-columns: 1fr !important; }
+  .modal-cta { flex-direction: column !important; }
+  .modal-cta button { width: 100% !important; }
+}
+
+/* ── Mes dossiers — table ─────────────────────── */
+.dossier-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 640px) {
+  .dossier-col-type   { display: none !important; }
+  .dossier-col-date   { display: none !important; }
+  /* Réduit le padding des cellules pour gagner de la place */
+  .dossier-table-wrapper td,
+  .dossier-table-wrapper th { padding: .6rem .5rem !important; }
+}
+
+/* ── Upload checklist (dossier detail) ───────── */
+@media (max-width: 640px) {
+  .upload-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: .5rem !important;
+    align-items: stretch !important;
+  }
+  .upload-row input[type="file"] { width: 100%; font-size: .82rem; }
+  .upload-row button { align-self: flex-start; }
+}
+
 /* ──────────────────────────────
    Animations d'affichage des toasts
    ────────────────────────────── */

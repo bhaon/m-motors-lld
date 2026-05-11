@@ -122,6 +122,7 @@ export default function VehicleModal({
 
   return (
     <div
+      className="modal-wrapper"
       style={{
         position: "fixed",
         inset: 0,
@@ -150,6 +151,7 @@ export default function VehicleModal({
       />
       {/* Modal panel */}
       <div
+        className="modal-panel"
         style={{
           position: "relative",
           zIndex: 1,
@@ -164,6 +166,7 @@ export default function VehicleModal({
       >
         {/* Header image */}
         <div
+          className="modal-hero"
           style={{
             position: "relative",
             height: "280px",
@@ -376,8 +379,9 @@ export default function VehicleModal({
         )}
 
         {/* Body */}
-        <div style={{ padding: "1.5rem" }}>
+        <div className="modal-body" style={{ padding: "1.5rem" }}>
           <div
+            className="modal-body-grid"
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
@@ -548,6 +552,7 @@ export default function VehicleModal({
               ) : null}
               {!lldCatalogLoading && lldCatalog && lldCatalog.length > 0 ? (
                 <div
+                  className="modal-options-grid"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "1fr 1fr",
@@ -587,6 +592,7 @@ export default function VehicleModal({
               ) : null}
               {!lldCatalogLoading && (!lldCatalog || lldCatalog.length === 0) && v.options.length > 0 ? (
                 <div
+                  className="modal-options-grid"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "1fr 1fr",
@@ -622,7 +628,7 @@ export default function VehicleModal({
           )}
 
           {/* CTA buttons */}
-          <div style={{ display: "flex", gap: ".75rem" }}>
+          <div className="modal-cta" style={{ display: "flex", gap: ".75rem" }}>
             <button
               type="button"
               onClick={() => onDossier(v, v.lld ? "lld" : "achat")}

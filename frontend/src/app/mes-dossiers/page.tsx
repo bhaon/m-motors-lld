@@ -246,6 +246,7 @@ export default function MesDossiersPage() {
               </div>
             ) : (
               <div
+                className="dossier-table-wrapper"
                 style={{
                   background: "#fff",
                   borderRadius: 12,
@@ -265,11 +266,18 @@ export default function MesDossiersPage() {
                         borderBottom: "1px solid var(--border)",
                       }}
                     >
-                      {["Référence", "Véhicule", "Type", "Date de création", "Statut", "Actions"].map(
-                        (col) => (
+                      {[
+                        { label: "Référence",        cls: "" },
+                        { label: "Véhicule",         cls: "" },
+                        { label: "Type",             cls: "dossier-col-type" },
+                        { label: "Date de création", cls: "dossier-col-date" },
+                        { label: "Statut",           cls: "" },
+                        { label: "Actions",          cls: "" },
+                      ].map(({ label, cls }) => (
                           <th
-                            key={col}
+                            key={label}
                             scope="col"
+                            className={cls}
                             style={{
                               textAlign: "left",
                               padding: ".85rem 1rem",
@@ -282,10 +290,9 @@ export default function MesDossiersPage() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {col}
+                            {label}
                           </th>
-                        )
-                      )}
+                        ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -347,8 +354,8 @@ export default function MesDossiersPage() {
                             </span>
                           </td>
 
-                          {/* Type */}
-                          <td style={{ padding: ".85rem 1rem" }}>
+                          {/* Type — masqué sur mobile (statut prend sa place) */}
+                          <td className="dossier-col-type" style={{ padding: ".85rem 1rem" }}>
                             <span
                               style={{
                                 display: "inline-block",
@@ -364,8 +371,9 @@ export default function MesDossiersPage() {
                             </span>
                           </td>
 
-                          {/* Date de création */}
+                          {/* Date de création — masquée sur mobile */}
                           <td
+                            className="dossier-col-date"
                             style={{
                               padding: ".85rem 1rem",
                               color: "var(--muted)",
