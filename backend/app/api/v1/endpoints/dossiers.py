@@ -314,6 +314,27 @@ def _notify_status_change(
         )
 
 
+def _existing_active_dossier_same_client_vehicle_type(
+    db: DbSession,
+    *,
+    client_id: int,
+    vehicle_id: int,
+    dossier_type: DossierTypeEnum,
+) -> Dossier | None:
+    """Retourne un dossier encore actif (hors rejet / annulation) pour le même client, véhicule et type."""
+    terminaux = (DossierStatusEnum.rejete, DossierStatusEnum.annule)
+    return (
+        db.query(Dossier)
+        .filter(
+            Dossier.client_id == client_id,
+            Dossier.vehicle_id == vehicle_id,
+            Dossier.type == dossier_type,
+            Dossier.status.not_in(terminaux),
+        )
+        .first()
+    )
+
+
 @router.post("", response_model=DossierCreateOut, status_code=status.HTTP_201_CREATED)
 def create_dossier(
     payload: DossierCreateIn,
@@ -335,6 +356,18 @@ def create_dossier(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Véhicule introuvable")
     if payload.type.value == "lld" and not vehicle.lld:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ce véhicule n'accepte pas la LLD")
+
+    doublon = _existing_active_dossier_same_client_vehicle_type(
+        db, client_id=user.id, vehicle_id=vehicle.id, dossier_type=payload.type
+    )
+    if doublon is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Vous avez déjà un dossier {payload.type.value.upper()} en cours pour ce véhicule "
+                f"({doublon.reference}). Ouvrez-le depuis « Mes dossiers » pour poursuivre la démarche."
+            ),
+        )
 
     dossier = Dossier(
         reference=_build_dossier_reference(db, now=datetime.now(timezone.utc)),

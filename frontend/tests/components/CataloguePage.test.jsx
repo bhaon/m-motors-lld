@@ -2,12 +2,23 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import CataloguePage from "@/components/CataloguePage";
 import { SAMPLE_VEHICLES } from "../fixtures/vehicles";
 
+const mockPush = jest.fn();
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mockPush,
+    replace: jest.fn(),
+    prefetch: jest.fn(),
+  }),
+}));
+
 describe("CataloguePage", () => {
   const fetchMock = jest.fn();
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
     jest.resetAllMocks();
+    mockPush.mockClear();
     global.fetch = fetchMock;
     // Réponse par défaut : galerie vide (appelée à chaque ouverture de VehicleModal)
     fetchMock.mockResolvedValue({ ok: true, json: async () => [] });
@@ -56,14 +67,11 @@ describe("CataloguePage", () => {
         credentials: "include",
       }),
     );
-    await waitFor(() =>
-      expect(
-        screen.getByText("Dossier LLD créé (DOS-2026-00042)"),
-      ).toBeInTheDocument(),
-    );
-    expect(
-      screen.getByText("Dépôt des pièces justificatives"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(
+        "/mes-dossiers?cree=1&ref=DOS-2026-00042&id=42&type=LLD",
+      );
+    });
   });
 
   it("met à jour les filtres via la barre de recherche", () => {
@@ -132,14 +140,14 @@ describe("CataloguePage", () => {
     fireEvent.click(screen.getByText("Déposer un dossier Achat"));
     fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
 
-    await waitFor(() =>
-      expect(
-        screen.getByText("Dossier ACHAT créé (DOS-2026-00077)"),
-      ).toBeInTheDocument(),
-    );
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(
+        "/mes-dossiers?cree=1&ref=DOS-2026-00077&id=77&type=ACHAT",
+      );
+    });
   });
 
-  it("uploade une pièce et affiche le checkmark vert", async () => {
+  it("après création LLD redirige vers Mes dossiers (pièces sur la fiche dossier)", async () => {
     const v = SAMPLE_VEHICLES[0];
     const lldCatalogJson = {
       items: [
@@ -150,30 +158,11 @@ describe("CataloguePage", () => {
       ],
     };
     fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => [] }) // galerie
-      .mockResolvedValueOnce({ ok: true, json: async () => lldCatalogJson }) // catalogue LLD (VehicleModal)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+      .mockResolvedValueOnce({ ok: true, json: async () => lldCatalogJson })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ id: 55, reference: "DOS-2026-00055" }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          upload_url: "https://minio.local/upload",
-          s3_key: "dossiers/55/cni/file.pdf",
-          headers: {
-            "Content-Type": "application/pdf",
-            "x-amz-checksum-sha256": "expected-checksum-base64",
-          },
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({}),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ message: "Pièce uploadée et validée" }),
       });
 
     render(<CataloguePage vehicles={[v]} />);
@@ -181,14 +170,11 @@ describe("CataloguePage", () => {
     fireEvent.click(screen.getByText("Déposer un dossier LLD"));
     fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
 
-    await screen.findByText("Dépôt des pièces justificatives");
-    const fileInput = screen.getByLabelText("CNI");
-    const file = new File(["dummy-pdf"], "cni.pdf", { type: "application/pdf" });
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    await waitFor(() =>
-      expect(screen.getByText("✓ Uploadé")).toBeInTheDocument(),
-    );
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(
+        "/mes-dossiers?cree=1&ref=DOS-2026-00055&id=55&type=LLD",
+      );
+    });
   });
 
   it("réinitialise les filtres depuis la ligne de chips", () => {
@@ -225,7 +211,9 @@ describe("CataloguePage", () => {
         "https://api.example.com/api/v1/dossiers",
         expect.objectContaining({ method: "POST" }),
       );
-      expect(screen.getByText("Dossier LLD créé (DOS-EN-ATTENTE)")).toBeInTheDocument();
+      expect(mockPush).toHaveBeenCalledWith(
+        "/mes-dossiers?cree=1&ref=DOS-EN-ATTENTE&id=0&type=LLD",
+      );
     });
   });
 

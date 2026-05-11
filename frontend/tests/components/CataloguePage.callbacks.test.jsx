@@ -1,6 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import CataloguePage from "@/components/CataloguePage";
 
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mockPush,
+    replace: jest.fn(),
+    prefetch: jest.fn(),
+  }),
+}));
+
 jest.mock("@/components/SearchBar", () => () => <div>SearchBar</div>);
 jest.mock("@/components/FiltersRow", () => () => <div>FiltersRow</div>);
 jest.mock("@/components/Toast", () => ({ message }) => <div>{message}</div>);
@@ -54,18 +63,10 @@ jest.mock("@/components/DossierConfirmModal", () => ({ onConfirm, onCancel }) =>
   </div>
 ));
 
-jest.mock("@/components/DossierPiecesModal", () => ({ dossierReference, onClose }) => (
-  <div>
-    <span>{dossierReference}</span>
-    <button type="button" onClick={onClose}>
-      Fermer pièces
-    </button>
-  </div>
-));
-
 describe("CataloguePage callbacks", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+    mockPush.mockClear();
   });
 
   it("couvre le callback onClose du VehicleModal avec catalogue vide", () => {
@@ -74,7 +75,7 @@ describe("CataloguePage callbacks", () => {
     expect(screen.getByText("Catalogue vide")).toBeInTheDocument();
   });
 
-  it("couvre le callback onClose du DossierPiecesModal après création", async () => {
+  it("après création dossier déclenche la navigation vers Mes dossiers", async () => {
     jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({ id: 12, reference: "DOS-2026-00012" }),
@@ -91,12 +92,9 @@ describe("CataloguePage callbacks", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirmer dossier" }));
 
     await waitFor(() => {
-      expect(screen.getByText("DOS-2026-00012")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Fermer pièces" }));
-    await waitFor(() => {
-      expect(screen.queryByText("DOS-2026-00012")).not.toBeInTheDocument();
+      expect(mockPush).toHaveBeenCalledWith(
+        "/mes-dossiers?cree=1&ref=DOS-2026-00012&id=12&type=LLD",
+      );
     });
   });
 });

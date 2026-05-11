@@ -45,6 +45,12 @@ export default function MesDossiersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [creationNotice, setCreationNotice] = useState<{
+    reference: string;
+    dossierType: string;
+    dossierId: number;
+  } | null>(null);
+  const [highlightDossierId, setHighlightDossierId] = useState<number | null>(null);
 
   async function loadMyDossiers() {
     setLoading(true);
@@ -70,6 +76,24 @@ export default function MesDossiersPage() {
 
   useEffect(() => {
     loadMyDossiers();
+  }, []);
+
+  /** Affiche la confirmation de création après redirection depuis le catalogue, puis nettoie l’URL. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("cree") !== "1") return;
+    const reference = (sp.get("ref") || "").trim() || "—";
+    const dossierType = (sp.get("type") || "").trim() || "DOSSIER";
+    const idRaw = sp.get("id");
+    const parsedId = idRaw ? Number.parseInt(idRaw, 10) : NaN;
+    const dossierId = Number.isFinite(parsedId) ? parsedId : 0;
+    setCreationNotice({ reference, dossierType, dossierId });
+    if (dossierId > 0) setHighlightDossierId(dossierId);
+    const url = new URL(window.location.href);
+    ["cree", "ref", "id", "type"].forEach((k) => url.searchParams.delete(k));
+    const next = url.searchParams.toString();
+    window.history.replaceState({}, "", next ? `${url.pathname}?${next}` : url.pathname);
   }, []);
 
   async function deleteDossier(dossierId: number) {
@@ -140,6 +164,58 @@ export default function MesDossiersPage() {
           >
             {error}
           </p>
+        )}
+
+        {creationNotice && (
+          <div
+            role="status"
+            style={{
+              background: "#ecfdf5",
+              border: "1px solid #6ee7b7",
+              borderRadius: 10,
+              padding: "1rem 1.1rem",
+              marginBottom: "1.25rem",
+              color: "#065f46",
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: ".75rem",
+            }}
+          >
+            <p style={{ margin: 0, lineHeight: 1.55, maxWidth: "52rem" }}>
+              <strong>Votre dossier {creationNotice.dossierType}</strong> ({creationNotice.reference}
+              ) a été créé.{" "}
+              {creationNotice.dossierId > 0 ? (
+                <>
+                  Cliquez sur la référence ou sur «&nbsp;Voir&nbsp;» dans la ligne correspondante pour continuer à le
+                  compléter (pièces justificatives, options, etc.).
+                </>
+              ) : (
+                <>Retrouvez-le dans le tableau ci-dessous et ouvrez-le pour poursuivre la démarche.</>
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setCreationNotice(null);
+                setHighlightDossierId(null);
+              }}
+              style={{
+                flexShrink: 0,
+                border: "1px solid #059669",
+                background: "#fff",
+                color: "#047857",
+                borderRadius: 8,
+                padding: ".35rem .75rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                fontSize: ".82rem",
+              }}
+            >
+              Fermer
+            </button>
+          </div>
         )}
 
         {/* Contenu principal */}
@@ -220,13 +296,22 @@ export default function MesDossiersPage() {
                           style={{
                             borderTop: "1px solid var(--border)",
                             transition: "background .15s",
+                            background:
+                              highlightDossierId !== null && item.id === highlightDossierId
+                                ? "rgba(14,116,144,0.1)"
+                                : undefined,
                           }}
                           onMouseEnter={(e) => {
                             (e.currentTarget as HTMLTableRowElement).style.background =
-                              "rgba(13,27,75,.02)";
+                              highlightDossierId !== null && item.id === highlightDossierId
+                                ? "rgba(14,116,144,0.14)"
+                                : "rgba(13,27,75,.02)";
                           }}
                           onMouseLeave={(e) => {
-                            (e.currentTarget as HTMLTableRowElement).style.background = "";
+                            (e.currentTarget as HTMLTableRowElement).style.background =
+                              highlightDossierId !== null && item.id === highlightDossierId
+                                ? "rgba(14,116,144,0.1)"
+                                : "";
                           }}
                         >
                           {/* Référence */}
