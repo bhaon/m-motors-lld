@@ -36,7 +36,8 @@ test.describe("Mes dossiers — état vide", () => {
   test("affiche un lien vers le catalogue pour créer un premier dossier", async ({ page }) => {
     await page.goto("/mes-dossiers");
 
-    const catalogueLink = page.getByRole("link", { name: /catalogue/i });
+    // Deux liens "catalogue" peuvent exister (Navbar + message) → prendre le premier
+    const catalogueLink = page.getByRole("link", { name: /catalogue/i }).first();
     await expect(catalogueLink).toBeVisible({ timeout: 5000 });
   });
 

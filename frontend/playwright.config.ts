@@ -43,7 +43,7 @@ export default defineConfig({
      * En local : next dev pour un démarrage plus rapide.
      */
     command: process.env.CI
-      ? "npm run build && npm run start"
+      ? "npm run build && PORT=3000 node .next/standalone/server.js"
       : "npm run dev",
     url: "http://localhost:3000/healthz",
     timeout: 180_000,
