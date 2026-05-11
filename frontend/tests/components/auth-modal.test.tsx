@@ -40,6 +40,23 @@ describe("AuthModal", () => {
       });
     });
 
+    it("ne redirige pas vers / lorsque redirectAfterLogin vaut false", async () => {
+      jest.spyOn(global, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => ({ message: "Connexion reussie." }),
+      } as Response);
+
+      render(<AuthModal open defaultTab="login" onClose={noop} redirectAfterLogin={false} />);
+
+      fireEvent.change(screen.getByPlaceholderText("Email"), { target: { value: "client@example.com" } });
+      fireEvent.change(screen.getByPlaceholderText("Mot de passe"), { target: { value: "UltraSecure123!" } });
+      fireEvent.click(screen.getByRole("button", { name: /se connecter/i }));
+
+      await waitFor(() => {
+        expect(pushMock).not.toHaveBeenCalled();
+      });
+    });
+
     it("affiche le lien Mot de passe oublié", () => {
       render(<AuthModal open defaultTab="login" onClose={noop} />);
       expect(screen.getByRole("link", { name: /mot de passe oublié/i })).toHaveAttribute("href", "/mot-de-passe-oublie");

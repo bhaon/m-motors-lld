@@ -22,8 +22,10 @@ export type AuthModalProps = {
   onClose: () => void;
   /** Onglet affiché à l’ouverture (resynchronisé quand `open` passe à true). */
   defaultTab: AuthTab;
-  /** Appelé après une connexion réussie (ex. rafraîchir la navbar). */
-  onAuthenticated?: () => void;
+  /** Appelé après une connexion réussie (ex. rafraîchir la navbar). Attendu avant fermeture de la modale. */
+  onAuthenticated?: () => void | Promise<void>;
+  /** Si false, ne redirige pas vers `/` après connexion (ex. dépôt catalogue avec modale ouverte). */
+  redirectAfterLogin?: boolean;
 };
 
 function resolveLoginUrl(): string {
@@ -67,7 +69,13 @@ const EMAIL_NOT_VERIFIED_ERROR =
 /**
  * Modale unique : connexion (cookie session) et inscription (formulaire complet).
  */
-export default function AuthModal({ open, onClose, defaultTab, onAuthenticated }: AuthModalProps) {
+export default function AuthModal({
+  open,
+  onClose,
+  defaultTab,
+  onAuthenticated,
+  redirectAfterLogin = true,
+}: AuthModalProps) {
   const router = useRouter();
   const [tab, setTab] = useState<AuthTab>(defaultTab);
 
@@ -142,9 +150,11 @@ export default function AuthModal({ open, onClose, defaultTab, onAuthenticated }
         }
         throw new Error(detail);
       }
-      onAuthenticated?.();
+      await Promise.resolve(onAuthenticated?.());
       onClose();
-      router.push("/");
+      if (redirectAfterLogin) {
+        router.push("/");
+      }
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : "Email ou mot de passe invalide.");
     } finally {

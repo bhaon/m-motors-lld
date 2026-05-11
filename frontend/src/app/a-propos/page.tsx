@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 
 export const metadata = {
@@ -373,7 +374,7 @@ export default function APropos() {
         <p style={{ color: "rgba(255,255,255,.65)", marginBottom: "1.8rem", fontSize: ".95rem" }}>
           Consultez notre catalogue et déposez votre dossier en quelques minutes.
         </p>
-        <a
+        <Link
           href="/"
           style={{
             display: "inline-block",
@@ -388,7 +389,7 @@ export default function APropos() {
           }}
         >
           Voir le catalogue
-        </a>
+        </Link>
       </section>
     </main>
   );

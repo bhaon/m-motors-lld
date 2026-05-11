@@ -48,4 +48,20 @@ describe("DossierConfirmModal", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
   });
+
+  it("désactive le bouton de confirmation lorsque confirmLocked", () => {
+    const onConfirm = jest.fn();
+    render(
+      <DossierConfirmModal
+        vehicle={SAMPLE_VEHICLES[0]}
+        type="lld"
+        onCancel={jest.fn()}
+        onConfirm={onConfirm}
+        confirmLocked
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Vérification de la session…" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Vérification de la session…" }));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
 });

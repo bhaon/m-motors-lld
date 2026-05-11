@@ -12,6 +12,67 @@ jest.mock("next/navigation", () => ({
   }),
 }));
 
+const CLIENT_ME = {
+  id: 1,
+  email: "client@test.fr",
+  role: "client",
+  first_name: "Cli",
+  last_name: "Ent",
+  phone: null,
+  email_verified: true,
+};
+
+/**
+ * Mock `fetch` aligné sur CataloguePage : session `/auth/me`, galerie, `lld-catalog`, POST `/dossiers`.
+ */
+function createCatalogueFetchMock(options = {}) {
+  const {
+    sessionAuthenticated = true,
+    sessionBody = CLIENT_ME,
+    dossierOk = true,
+    dossierJson = { id: 42, reference: "DOS-2026-00042" },
+    dossierErrorDetail = "Authentification requise.",
+    lldCatalogJson = { items: [] },
+    dossierReject = null,
+  } = options;
+
+  return (url, init) => {
+    const u = typeof url === "string" ? url : String(url);
+    const method = (init?.method || "GET").toUpperCase();
+
+    if (u.includes("/api/v1/auth/me")) {
+      if (!sessionAuthenticated) {
+        return Promise.resolve({ ok: false, json: async () => ({ detail: "Session absente." }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => sessionBody });
+    }
+
+    if (method === "POST" && /\/api\/v1\/dossiers\/?($|\?)/.test(u)) {
+      if (dossierReject != null) {
+        return Promise.reject(dossierReject);
+      }
+      return Promise.resolve({
+        ok: dossierOk,
+        json: async () => (dossierOk ? dossierJson : { detail: dossierErrorDetail }),
+      });
+    }
+
+    if (u.includes("/lld-catalog")) {
+      return Promise.resolve({ ok: true, json: async () => lldCatalogJson });
+    }
+
+    return Promise.resolve({ ok: true, json: async () => [] });
+  };
+}
+
+/** Attend que la session ait été lue et que le bouton de confirmation soit utilisable. */
+async function waitForConfirmDepositButton() {
+  await waitFor(() => {
+    const btn = screen.getByRole("button", { name: "Confirmer le dépôt" });
+    expect(btn).toBeEnabled();
+  });
+}
+
 describe("CataloguePage", () => {
   const fetchMock = jest.fn();
   const originalEnv = { ...process.env };
@@ -20,8 +81,7 @@ describe("CataloguePage", () => {
     jest.resetAllMocks();
     mockPush.mockClear();
     global.fetch = fetchMock;
-    // Réponse par défaut : galerie vide (appelée à chaque ouverture de VehicleModal)
-    fetchMock.mockResolvedValue({ ok: true, json: async () => [] });
+    fetchMock.mockImplementation(createCatalogueFetchMock());
     process.env = { ...originalEnv };
   });
 
@@ -45,16 +105,13 @@ describe("CataloguePage", () => {
 
   it("ouvre une confirmation puis crée le dossier LLD après validation", async () => {
     const v = SAMPLE_VEHICLES[0];
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 42, reference: "DOS-2026-00042" }),
-    });
     render(<CataloguePage vehicles={[v]} />);
 
     fireEvent.click(document.querySelector(".vehicle-card"));
     fireEvent.click(screen.getByText("Déposer un dossier LLD"));
 
     expect(screen.getByText("Confirmer le dépôt du dossier")).toBeInTheDocument();
+    await waitForConfirmDepositButton();
     expect(fetchMock).not.toHaveBeenCalledWith(
       expect.stringContaining("/dossiers"),
       expect.anything(),
@@ -95,14 +152,14 @@ describe("CataloguePage", () => {
 
   it("déclenche un message d'erreur si la création dossier échoue", async () => {
     const v = SAMPLE_VEHICLES[0];
-    fetchMock.mockResolvedValue({
-      ok: false,
-      json: async () => ({ detail: "Authentification requise." }),
-    });
+    fetchMock.mockImplementation(
+      createCatalogueFetchMock({ dossierOk: false, dossierErrorDetail: "Authentification requise." }),
+    );
     render(<CataloguePage vehicles={[v]} />);
 
     fireEvent.click(document.querySelector(".vehicle-card"));
     fireEvent.click(screen.getByText("Déposer un dossier LLD"));
+    await waitForConfirmDepositButton();
     fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
 
     expect(await screen.findByText("Authentification requise.")).toBeInTheDocument();
@@ -130,14 +187,14 @@ describe("CataloguePage", () => {
   it("crée aussi un dossier achat après confirmation", async () => {
     const v = SAMPLE_VEHICLES.find((x) => !x.lld);
     expect(v).toBeDefined();
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 77, reference: "DOS-2026-00077" }),
-    });
+    fetchMock.mockImplementation(
+      createCatalogueFetchMock({ dossierJson: { id: 77, reference: "DOS-2026-00077" } }),
+    );
     render(<CataloguePage vehicles={[v]} />);
 
     fireEvent.click(document.querySelector(".vehicle-card"));
     fireEvent.click(screen.getByText("Déposer un dossier Achat"));
+    await waitForConfirmDepositButton();
     fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
 
     await waitFor(() => {
@@ -157,17 +214,17 @@ describe("CataloguePage", () => {
         { code: "controle_technique", label: "Contrôle technique", surcout_mensuel_ht: 5, enabled: true },
       ],
     };
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => [] })
-      .mockResolvedValueOnce({ ok: true, json: async () => lldCatalogJson })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 55, reference: "DOS-2026-00055" }),
-      });
+    fetchMock.mockImplementation(
+      createCatalogueFetchMock({
+        lldCatalogJson,
+        dossierJson: { id: 55, reference: "DOS-2026-00055" },
+      }),
+    );
 
     render(<CataloguePage vehicles={[v]} />);
     fireEvent.click(document.querySelector(".vehicle-card"));
     fireEvent.click(screen.getByText("Déposer un dossier LLD"));
+    await waitForConfirmDepositButton();
     fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
 
     await waitFor(() => {
@@ -196,14 +253,12 @@ describe("CataloguePage", () => {
   it("utilise NEXT_PUBLIC_API_URL et les valeurs fallback de dossier", async () => {
     process.env.NEXT_PUBLIC_API_URL = "https://api.example.com/";
     const v = SAMPLE_VEHICLES[0];
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({}),
-    });
+    fetchMock.mockImplementation(createCatalogueFetchMock({ dossierJson: {} }));
     render(<CataloguePage vehicles={[v]} />);
 
     fireEvent.click(document.querySelector(".vehicle-card"));
     fireEvent.click(screen.getByText("Déposer un dossier LLD"));
+    await waitForConfirmDepositButton();
     fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
 
     await waitFor(() => {
@@ -219,15 +274,33 @@ describe("CataloguePage", () => {
 
   it("affiche l'erreur technique si fetch échoue sans objet Error", async () => {
     const v = SAMPLE_VEHICLES[0];
-    fetchMock.mockRejectedValue("network-down");
+    fetchMock.mockImplementation(createCatalogueFetchMock({ dossierReject: "network-down" }));
     render(<CataloguePage vehicles={[v]} />);
 
     fireEvent.click(document.querySelector(".vehicle-card"));
     fireEvent.click(screen.getByText("Déposer un dossier LLD"));
+    await waitForConfirmDepositButton();
     fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
 
     await waitFor(() => {
       expect(screen.getByText("Erreur technique lors du dépôt.")).toBeInTheDocument();
     });
+  });
+
+  it("sans session ouvre la connexion au lieu de poster le dossier", async () => {
+    const v = SAMPLE_VEHICLES[0];
+    fetchMock.mockImplementation(createCatalogueFetchMock({ sessionAuthenticated: false }));
+    render(<CataloguePage vehicles={[v]} />);
+
+    fireEvent.click(document.querySelector(".vehicle-card"));
+    fireEvent.click(screen.getByText("Déposer un dossier LLD"));
+    await waitForConfirmDepositButton();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer le dépôt" }));
+
+    expect(await screen.findByRole("heading", { name: /Accès à votre espace client/i })).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/v1\/dossiers$/),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

@@ -22,7 +22,7 @@ Le projet est compose de :
 - UI: `React`, `Tailwind`
 - Rôle: interface utilisateur, appels API, pages publiques/privées
  
-### Backend
+### Backend 
 - Framework: `FastAPI`
 - ORM/migrations: `SQLAlchemy`, `Alembic`
 - Serveur: `Uvicorn/Gunicorn`

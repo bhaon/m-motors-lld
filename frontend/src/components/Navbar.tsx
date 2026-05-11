@@ -212,6 +212,15 @@ export default function Navbar() {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    function onSessionChanged() {
+      void checkAuthStatus();
+    }
+    window.addEventListener("m-motors-auth-session-changed", onSessionChanged);
+    return () => window.removeEventListener("m-motors-auth-session-changed", onSessionChanged);
+  }, [checkAuthStatus]);
+
   /**
    * Ouvre les modales depuis l’URL (`/?connexion=1`, `/?inscription=1`, `/?profil=1`).
    */
