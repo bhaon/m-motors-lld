@@ -19,6 +19,7 @@ from app.schemas.admin import (
 )
 from app.schemas.audit import AuditTrailOut
 from app.services import audit as audit_service
+from app.utils.client_pii import client_email_search_hash
 
 router = APIRouter(prefix="/admin", tags=["Administration"])
 
@@ -56,7 +57,11 @@ def create_user_admin(
     current_admin = get_user_from_cookie(access_token, db)
     enforce_role(current_admin, RoleEnum.admin)
 
-    existing = db.query(User).filter(User.email == payload.email, User.deleted_at.is_(None)).first()
+    existing = (
+        db.query(User)
+        .filter(User.email_hash == client_email_search_hash(payload.email), User.deleted_at.is_(None))
+        .first()
+    )
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

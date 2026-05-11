@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.security import verify_password
 from app.models.user import User
+from app.utils.client_pii import client_email_search_hash
 from app.api.v1.endpoints import auth as auth_endpoint
 from tests.conftest import create_user
 
@@ -28,7 +29,7 @@ def test_register_client_success(client, db) -> None:
     assert response.status_code == 201
     assert "confirmation" in response.json()["message"].lower()
 
-    user = db.query(User).filter(User.email == "new.client@example.com").first()
+    user = db.query(User).filter(User.email_hash == client_email_search_hash("new.client@example.com")).first()
     assert user is not None
     assert user.email_verified is False
     assert user.email_verification_token is not None
@@ -128,7 +129,7 @@ def test_confirm_email_success(client, db) -> None:
             "accepted_privacy_policy": True,
         },
     )
-    user = db.query(User).filter(User.email == "to.confirm@example.com").first()
+    user = db.query(User).filter(User.email_hash == client_email_search_hash("to.confirm@example.com")).first()
     assert user is not None
     raw_token = "valid-token-for-test"
     user.email_verification_token = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
@@ -164,7 +165,7 @@ def test_confirm_email_rejects_expired_token(client, db) -> None:
             "accepted_privacy_policy": True,
         },
     )
-    user = db.query(User).filter(User.email == "expired.token@example.com").first()
+    user = db.query(User).filter(User.email_hash == client_email_search_hash("expired.token@example.com")).first()
     assert user is not None
     raw_token = "expired-token-for-test"
     user.email_verification_token = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
@@ -371,7 +372,7 @@ def test_forgot_password_issues_reset_token_and_sends_email(client, db, monkeypa
     assert sent_payload["to_email"] == "forgot@example.com"
     assert "/reset-password?token=" in sent_payload["reset_link"]
 
-    user = db.query(User).filter(User.email == "forgot@example.com").first()
+    user = db.query(User).filter(User.email_hash == client_email_search_hash("forgot@example.com")).first()
     assert user is not None
     assert user.password_reset_token is not None
     assert user.password_reset_expires_at is not None

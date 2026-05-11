@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.db.session import SessionLocal
 from app.main import application
 from app.models.user import User
+from app.utils.client_pii import client_email_search_hash
 
 
 def _unique_email() -> str:
@@ -39,7 +40,7 @@ def test_forgot_then_reset_password_end_to_end() -> None:
         # Le login est protégé par email_verified, on le force pour valider la suite.
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.email == email).first()
+            user = db.query(User).filter(User.email_hash == client_email_search_hash(email)).first()
             assert user is not None
             user.email_verified = True
             db.commit()
@@ -52,7 +53,7 @@ def test_forgot_then_reset_password_end_to_end() -> None:
         raw_token = "integration-reset-token"
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.email == email).first()
+            user = db.query(User).filter(User.email_hash == client_email_search_hash(email)).first()
             assert user is not None
             user.password_reset_token = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
             user.password_reset_sent_at = datetime.now(timezone.utc)
