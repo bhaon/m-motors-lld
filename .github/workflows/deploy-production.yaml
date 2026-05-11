@@ -293,3 +293,34 @@ jobs:
             fi
           done
           echo "✅ Production stable"
+
+  # ----------------------------------------------------------
+  # JOB de nettoyage — supprime la release et son tag si le
+  # workflow échoue à n'importe quelle étape (validate, ci,
+  # deploy ou post-deploy-check).
+  # ----------------------------------------------------------
+  cleanup-on-failure:
+    name: Supprimer la release en cas d'échec
+    runs-on: ubuntu-latest
+    needs: [validate, ci, deploy, post-deploy-check]
+    if: failure()
+    permissions:
+      contents: write
+
+    steps:
+      - name: Supprimer la release GitHub et son tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Priorité : version calculée par validate ; fallback sur la ref Git (tag push).
+          VERSION="${{ needs.validate.outputs.version }}"
+          [ -z "$VERSION" ] && VERSION="${GITHUB_REF_NAME}"
+
+          echo "⚠️  Workflow échoué — suppression de la release ${VERSION}..."
+
+          gh release delete "${VERSION}" \
+            --repo "${{ github.repository }}" \
+            --yes \
+            --cleanup-tag \
+          && echo "✅ Release ${VERSION} et son tag supprimés." \
+          || echo "ℹ️  Release ${VERSION} introuvable (non créée avant l'échec)."
