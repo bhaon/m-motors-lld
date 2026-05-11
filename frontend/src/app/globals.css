@@ -73,6 +73,94 @@ body {
   transition: opacity 0.2s;
 }
 
+/* ══════════════════════════════════════════════
+   RESPONSIVE — Mobile first (breakpoint : 768 px)
+   ══════════════════════════════════════════════ */
+
+/* Navbar ---------------------------------------- */
+.nav-hamburger-btn { display: none !important; }
+.nav-mobile-panel  { display: none; }
+
+@media (max-width: 768px) {
+  /* Cache les liens desktop, montre le hamburger */
+  .nav-right          { display: none !important; }
+  .nav-hamburger-btn  {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--white);
+    padding: .25rem;
+  }
+
+  /* Panel de navigation mobile (fond navy, colonne) */
+  .nav-mobile-panel {
+    display: flex;
+    flex-direction: column;
+    background: #0d1b4b;
+    padding: .75rem 1.25rem 1.25rem;
+    border-top: 1px solid rgba(255,255,255,.1);
+    position: sticky;
+    top: 60px;
+    z-index: 99;
+  }
+  .nav-mobile-panel a,
+  .nav-mobile-panel button {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .75rem 0;
+    color: var(--white);
+    text-decoration: none;
+    font-size: .9rem;
+    font-weight: 500;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+  }
+  .nav-mobile-panel a:last-child,
+  .nav-mobile-panel button:last-child { border-bottom: none; }
+  .nav-mobile-panel .mobile-section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.4);
+    padding: .8rem 0 .3rem;
+    border-bottom: none;
+  }
+  .nav-mobile-panel .mobile-danger { color: #f87171; }
+
+  /* SearchBar ------------------------------------ */
+  .search-bar {
+    margin: 0 1rem !important;
+    grid-template-columns: 1fr !important;
+    top: -.8rem !important;
+  }
+  .search-fields {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .search-btn { width: 100%; }
+
+  /* Catalogue grid ------------------------------- */
+  .vehicle-grid {
+    padding: 0 1rem 2rem !important;
+  }
+  .filters-row {
+    padding: .75rem 1rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .search-fields {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 /* ──────────────────────────────
    Animations d'affichage des toasts
    ────────────────────────────── */

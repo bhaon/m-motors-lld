@@ -161,6 +161,8 @@ export default function Navbar() {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
+  const [isNavOpen, setIsNavOpen] = useState(false);
+
   const isGestionnaire = role !== null && GESTIONNAIRE_ROLES.has(role);
   const isAdmin = role === "admin";
   const isSuperviseurReporting = role === "superviseur" || role === "admin";
@@ -331,8 +333,26 @@ export default function Navbar() {
         M-<span style={{ color: "var(--cyan)" }}>MOTORS</span>
       </div>
 
-      {/* Liens de navigation principaux du parcours utilisateur. */}
-      <div style={{ display: "flex", gap: "1.5rem", alignItems: "center" }}>
+      {/* Hamburger — visible uniquement sur mobile via CSS */}
+      <button
+        type="button"
+        className="nav-hamburger-btn"
+        aria-label={isNavOpen ? "Fermer le menu" : "Ouvrir le menu"}
+        onClick={() => setIsNavOpen((v) => !v)}
+      >
+        {isNavOpen ? (
+          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+        ) : (
+          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+          </svg>
+        )}
+      </button>
+
+      {/* Liens de navigation principaux — cachés sur mobile via CSS (.nav-right) */}
+      <div className="nav-right" style={{ display: "flex", gap: "1.5rem", alignItems: "center" }}>
         <Link
           href="/"
           style={{
@@ -593,6 +613,108 @@ export default function Navbar() {
         ) : null}
       </div>
     </nav>
+      {/* ── Menu mobile (affiché sous la navbar quand hamburger ouvert) ── */}
+      {isNavOpen && (
+        <nav className="nav-mobile-panel" aria-label="Menu mobile">
+          <Link href="/" onClick={() => setIsNavOpen(false)}>
+            <CarIcon size={16} /> Catalogue
+          </Link>
+          <Link href="/a-propos" onClick={() => setIsNavOpen(false)}>
+            <span style={{ fontSize: "1rem" }}>ℹ️</span> À propos
+          </Link>
+
+          {!isAuthenticated ? (
+            <>
+              <span className="mobile-section-label">Mon compte</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNavOpen(false);
+                  setAuthModalTab("login");
+                  setAuthModalOpen(true);
+                }}
+              >
+                <UserIcon size={16} /> Connexion
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNavOpen(false);
+                  setAuthModalTab("register");
+                  setAuthModalOpen(true);
+                }}
+              >
+                <UserIcon size={16} /> Inscription
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="mobile-section-label">Mon compte</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNavOpen(false);
+                  setProfileModalOpen(true);
+                }}
+              >
+                <UserIcon size={16} /> Profil
+              </button>
+
+              {showClientPortfolioLinks && (
+                <>
+                  <Link href="/mes-dossiers" onClick={() => setIsNavOpen(false)}>
+                    <FolderIcon size={16} /> Mes dossiers
+                  </Link>
+                  <Link href="/mes-contrats" onClick={() => setIsNavOpen(false)}>
+                    <ContractIcon size={16} /> Mes contrats
+                  </Link>
+                </>
+              )}
+
+              {isGestionnaire && (
+                <>
+                  <span className="mobile-section-label">Back-office</span>
+                  <Link href="/backoffice/vehicules" onClick={() => setIsNavOpen(false)}>
+                    <CarIcon size={16} /> Gestion véhicules
+                  </Link>
+                  <Link href="/backoffice/options-lld" onClick={() => setIsNavOpen(false)}>
+                    <ServicesToolsIcon size={16} /> Options LLD
+                  </Link>
+                  <Link href="/backoffice/dossiers" onClick={() => setIsNavOpen(false)}>
+                    <DossierIcon size={16} /> Dossiers en attente
+                  </Link>
+                  {isSuperviseurReporting && (
+                    <Link href="/backoffice/reporting" onClick={() => setIsNavOpen(false)}>
+                      <ListIcon size={16} /> Reporting
+                    </Link>
+                  )}
+                </>
+              )}
+
+              {isAdmin && (
+                <>
+                  <span className="mobile-section-label">Administration</span>
+                  <Link href="/admin/utilisateurs" onClick={() => setIsNavOpen(false)}>
+                    <ShieldIcon size={16} /> Administration
+                  </Link>
+                </>
+              )}
+
+              <span className="mobile-section-label" />
+              <button
+                type="button"
+                className="mobile-danger"
+                onClick={() => {
+                  setIsNavOpen(false);
+                  void onLogout();
+                }}
+              >
+                <LogoutIcon size={16} /> Déconnexion
+              </button>
+            </>
+          )}
+        </nav>
+      )}
     </>
   );
 }
