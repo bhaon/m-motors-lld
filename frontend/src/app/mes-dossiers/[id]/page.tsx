@@ -67,6 +67,22 @@ const PIECE_LABELS: Record<PieceType, string> = {
   rib: "RIB",
 };
 
+/** Du passage en signature jusqu'à la clôture : plus de dépôt de pièces ni de bouton de soumission sur la fiche client. */
+const STATUTS_SANS_PIECES_NI_SOUMISSION: ReadonlySet<DossierStatus> = new Set([
+  "en_signature",
+  "attente_livraison",
+  "livraison_planifiee",
+  "contrat_en_cours",
+  "cloture",
+]);
+
+/**
+ * Retourne true si la section pièces justificatives et la soumission doivent rester visibles.
+ */
+function doitAfficherPiecesEtSoumission(status: string): boolean {
+  return !STATUTS_SANS_PIECES_NI_SOUMISSION.has(status as DossierStatus);
+}
+
 const dossierUrl = (id: string) => apiUrl(`/api/v1/dossiers/${id}`);
 const dossierSubmitUrl = (id: string) => apiUrl(`/api/v1/dossiers/${id}/submit`);
 const pieceDownloadUrl = (dossierId: string, typePiece: PieceType) =>
@@ -471,7 +487,8 @@ export default function DossierDetailPage() {
               </article>
             )}
 
-            {/* ── Checklist pièces ────────────────────────────── */}
+            {/* ── Checklist pièces (masquée en signature → clôture) ───────────── */}
+            {doitAfficherPiecesEtSoumission(detail.status) && (
             <div
               style={{
                 background: "#fff",
@@ -672,6 +689,7 @@ export default function DossierDetailPage() {
                 )}
               </div>
             </div>
+            )}
 
             {/* ── Historique des statuts ───────────────────────── */}
             {detail.historique && detail.historique.length > 0 && (

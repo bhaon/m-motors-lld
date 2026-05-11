@@ -675,6 +675,34 @@ describe("DossierDetailPage", () => {
 
   // ── Contrat & signature (US-06-07) ─────────────────────────────────────
 
+  it("masque pièces et soumission lorsque le dossier est en signature", async () => {
+    jest.spyOn(global, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input.toString();
+      if (u.includes("/contrat") && !u.includes("demander-signature")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            markdown: "# C",
+            reference: "CTR-2026-00013",
+            signed_at: null,
+          }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => DOSSIER_EN_SIGNATURE,
+      } as Response);
+    });
+
+    render(<DossierDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^Signer le contrat$/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("heading", { name: /pièces justificatives/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /voir le récapitulatif avant soumission/i })).not.toBeInTheDocument();
+  });
+
   it("charge et affiche le contrat lorsque l'API renvoie contrat + markdown", async () => {
     jest.spyOn(global, "fetch").mockImplementation((input: RequestInfo | URL) => {
       const u = typeof input === "string" ? input : input.toString();
@@ -829,5 +857,6 @@ describe("DossierDetailPage", () => {
     });
     expect(screen.getByText(/garage gaudin/i)).toBeInTheDocument();
     expect(screen.getByText(/date et heure/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /pièces justificatives/i })).not.toBeInTheDocument();
   });
 });
