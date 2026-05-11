@@ -29,7 +29,8 @@ test.describe("Navbar desktop", () => {
 
   test("le bouton Connexion ouvre la modale", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: /connexion/i }).first().click();
+    // Cibler le bouton dans .nav-right (desktop nav), pas celui du mobile panel caché
+    await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
     await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 3000 });
   });
 });

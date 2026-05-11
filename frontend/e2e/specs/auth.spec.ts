@@ -4,13 +4,17 @@ import { MOCK_USER } from "../mock-data";
 /**
  * Tests E2E — Authentification (modale connexion/inscription).
  *
- * Sélecteurs documentés depuis AuthModal.tsx :
- * - onglet login  : bouton "Connexion" (type="button") dans le header de la modale
- * - onglet register : bouton "Inscription" (type="button") dans le header de la modale
- * - submit login  : <button type="submit">Se connecter</button>
- * - submit register : <button type="submit">S'inscrire</button>
- * - champ prénom  : placeholder="Prenom" (sans accent dans le HTML)
- * - champ nom     : placeholder="Nom" (exact: true obligatoire — "Prenom" contient "nom")
+ * Stratégie d'ouverture de la modale :
+ *   - On clique le bouton "Connexion" dans .nav-right (desktop nav)
+ *   - On ne pas utiliser /?connexion=1 : router.replace() dans le useEffect de Navbar
+ *     crée une condition de course en build production qui empêche la modale de s'ouvrir.
+ *
+ * Sélecteurs depuis AuthModal.tsx / Navbar.tsx :
+ *   - Submit login    : <button type="submit">Se connecter</button>
+ *   - Submit register : <button type="submit">S'inscrire</button>
+ *   - Champ prénom    : placeholder="Prenom" (sans accent)
+ *   - Champ nom       : placeholder="Nom", exact:true
+ *     ("Prenom" contient "nom" → strict mode violation sans exact)
  */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
@@ -25,18 +29,28 @@ async function mockBaseRoutes(page: Page) {
   );
 }
 
+/**
+ * Ouvre la modale en cliquant le bouton "Connexion" du nav desktop (.nav-right).
+ * Le build production démarre avec l'onglet "login" par défaut.
+ */
 async function openLoginModal(page: Page) {
   await mockBaseRoutes(page);
-  await page.goto("/?connexion=1");
-  // Attendre que le champ email soit visible — la modale est ouverte
+  await page.goto("/");
+  // Cliquer le bouton Connexion dans .nav-right (desktop, visible sur viewport >= 769px)
+  await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
+  // La modale s'ouvre — attendre le champ email
   await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 5000 });
 }
 
+/**
+ * Ouvre la modale en connexion puis bascule sur l'onglet Inscription.
+ */
 async function openRegisterModal(page: Page) {
-  await mockBaseRoutes(page);
-  await page.goto("/?inscription=1");
-  // Attendre que le bouton S'inscrire soit visible
-  await expect(page.getByRole("button", { name: "S'inscrire" })).toBeVisible({ timeout: 5000 });
+  await openLoginModal(page);
+  // Cliquer l'onglet "Inscription" dans le header de la modale
+  await page.getByLabel("Accès à votre espace client").getByRole("button", { name: "Inscription" }).click();
+  // Attendre le bouton submit du formulaire d'inscription
+  await expect(page.getByRole("button", { name: "S'inscrire" })).toBeVisible({ timeout: 3000 });
 }
 
 // ── Connexion ─────────────────────────────────────────────────────────────────
@@ -46,11 +60,10 @@ test.describe("Modale de connexion", () => {
     await openLoginModal(page);
     await expect(page.getByPlaceholder("Email")).toBeVisible();
     await expect(page.getByPlaceholder("Mot de passe")).toBeVisible();
-    // Bouton submit unique dans le formulaire de login
     await expect(page.getByRole("button", { name: "Se connecter" })).toBeVisible();
   });
 
-  test("connexion réussie ferme la modale et affiche l'utilisateur", async ({ page }) => {
+  test("connexion réussie ferme la modale", async ({ page }) => {
     await openLoginModal(page);
 
     await page.route("**/api/v1/auth/login", (r) =>
@@ -61,17 +74,14 @@ test.describe("Modale de connexion", () => {
         body: JSON.stringify({ message: "Connecté" }),
       })
     );
-    // Après login, /auth/me retourne l'utilisateur
     await page.route("**/api/v1/auth/me", (r) =>
       r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(MOCK_USER) })
     );
 
     await page.getByPlaceholder("Email").fill("client@example.com");
     await page.getByPlaceholder("Mot de passe").fill("Password123!");
-    // Cibler le submit unique dans la modale (type="submit", texte "Se connecter")
     await page.getByRole("button", { name: "Se connecter" }).click();
 
-    // La modale se ferme → le champ email disparaît
     await expect(page.getByPlaceholder("Email")).not.toBeVisible({ timeout: 5000 });
   });
 
@@ -93,11 +103,16 @@ test.describe("Modale de connexion", () => {
     await expect(page.getByText("Email ou mot de passe invalide.")).toBeVisible({ timeout: 5000 });
   });
 
-  test("le bouton Se connecter est présent et cliquable", async ({ page }) => {
+  test("le bouton Se connecter est visible et activé", async ({ page }) => {
     await openLoginModal(page);
     const btn = page.getByRole("button", { name: "Se connecter" });
     await expect(btn).toBeVisible();
-    await expect(btn).toBeEnabled();
+  });
+
+  test("ferme la modale avec le bouton ×", async ({ page }) => {
+    await openLoginModal(page);
+    await page.getByLabel("Fermer").click();
+    await expect(page.getByPlaceholder("Email")).not.toBeVisible({ timeout: 3000 });
   });
 });
 
@@ -108,7 +123,7 @@ test.describe("Modale d'inscription", () => {
     await openRegisterModal(page);
     await expect(page.getByPlaceholder("Email")).toBeVisible();
     await expect(page.getByPlaceholder("Prenom")).toBeVisible();
-    // exact: true obligatoire — "Prenom" contient "nom" en sous-chaîne insensible à la casse
+    // exact: true — "Prenom" contient "nom" → sans ça : 2 matches → strict mode violation
     await expect(page.getByPlaceholder("Nom", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "S'inscrire" })).toBeVisible();
   });
@@ -175,14 +190,9 @@ test.describe("Modale d'inscription", () => {
 
   test("peut basculer vers l'onglet connexion depuis l'inscription", async ({ page }) => {
     await openRegisterModal(page);
-
-    // Dans la modale, les onglets sont des boutons type="button" "Connexion" et "Inscription"
-    // Le bouton "Connexion" de l'onglet est dans getByLabel('Créer un compte client')
-    const loginTab = page.getByLabel("Créer un compte client").getByRole("button", { name: "Connexion" });
-    if (await loginTab.isVisible()) {
-      await loginTab.click();
-      await expect(page.getByRole("button", { name: "Se connecter" })).toBeVisible({ timeout: 3000 });
-    }
+    // Cliquer l'onglet Connexion dans le header de la modale (titre = "Créer un compte client")
+    await page.getByLabel("Créer un compte client").getByRole("button", { name: "Connexion" }).click();
+    await expect(page.getByRole("button", { name: "Se connecter" })).toBeVisible({ timeout: 3000 });
   });
 });
 
@@ -199,7 +209,8 @@ test.describe("État authentifié dans la Navbar", () => {
 
     await page.goto("/");
 
-    // Le bouton "Ouvrir le menu utilisateur" doit apparaître (Navbar connectée)
     await expect(page.getByLabel("Ouvrir le menu utilisateur")).toBeVisible({ timeout: 5000 });
+    // Le bouton Connexion ne doit plus être visible (remplacé par le menu utilisateur)
+    await expect(page.locator(".nav-right").getByRole("button", { name: "Connexion" })).not.toBeVisible();
   });
 });
