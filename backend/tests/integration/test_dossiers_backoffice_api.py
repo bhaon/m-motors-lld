@@ -316,5 +316,5 @@ def test_get_contrat_apres_validation() -> None:
         resp = client.get(f"/api/v1/dossiers/{dossier_id}/contrat", cookies={"access_token": client_token})
         assert resp.status_code == 200
         data = resp.json()
-        assert "body_markdown" in data
-        assert len(data["body_markdown"]) > 10
+        assert "markdown" in data
+        assert len(data["markdown"]) > 10

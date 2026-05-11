@@ -203,11 +203,11 @@ def test_get_dossier_detail_200() -> None:
         data = resp.json()
         assert data["id"] == dossier_id
         assert data["status"] == "brouillon"
-        assert "pieces" in data
+        assert "checklist" in data
 
 
-def test_get_dossier_autre_client_403() -> None:
-    """GET /dossiers/{id} retourne 403 si le dossier appartient à un autre client."""
+def test_get_dossier_autre_client_404() -> None:
+    """GET /dossiers/{id} retourne 404 si le dossier n'appartient pas au client (même message qu'un id inexistant)."""
     with TestClient(application) as client:
         email_owner = unique_email("own")
         email_other = unique_email("oth")
@@ -224,7 +224,7 @@ def test_get_dossier_autre_client_403() -> None:
         dossier_id = created.json()["id"]
 
         resp = client.get(f"/api/v1/dossiers/{dossier_id}", cookies={"access_token": token_other})
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
 
 # ── US-03-04 : Suppression brouillon ─────────────────────────────────────────

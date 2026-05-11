@@ -24,8 +24,9 @@ def test_catalogue_retourne_vehicules_visibles() -> None:
         db = SessionLocal()
         try:
             v1 = create_vehicle_in_db(db, make="Peugeot", model="208", visible_catalogue=True)
-            create_vehicle_in_db(db, make="Citroën", model="C3", visible_catalogue=False)
-            create_vehicle_in_db(db, make="Toyota", model="Yaris", archived=True)
+            hidden = create_vehicle_in_db(db, make="Citroën", model="C3", visible_catalogue=False)
+            archived = create_vehicle_in_db(db, make="Toyota", model="Yaris", archived=True)
+            v1_id, hidden_id, archived_id = v1.id, hidden.id, archived.id
         finally:
             db.close()
 
@@ -34,8 +35,9 @@ def test_catalogue_retourne_vehicules_visibles() -> None:
         data = resp.json()
         assert "total" in data and "items" in data
         ids = [item["id"] for item in data["items"]]
-        assert v1.id in ids
-        assert all(item["visible_catalogue"] for item in data["items"])
+        assert v1_id in ids
+        assert hidden_id not in ids
+        assert archived_id not in ids
 
 
 def test_catalogue_filtre_par_marque() -> None:
@@ -45,13 +47,14 @@ def test_catalogue_filtre_par_marque() -> None:
         try:
             bmw = create_vehicle_in_db(db, make="BMW", model="Serie 3")
             create_vehicle_in_db(db, make="Audi", model="A4")
+            bmw_id = bmw.id
         finally:
             db.close()
 
         resp = client.get("/api/v1/vehicules", params={"marque": "BMW"})
         assert resp.status_code == 200
         items = resp.json()["items"]
-        assert any(i["id"] == bmw.id for i in items)
+        assert any(i["id"] == bmw_id for i in items)
         assert all(i["make"].upper() == "BMW" for i in items)
 
 
@@ -62,13 +65,14 @@ def test_catalogue_filtre_type_lld() -> None:
         try:
             create_vehicle_in_db(db, make="VW", model="Golf", lld=False)
             lld_v = create_vehicle_in_db(db, make="VW", model="Polo", lld=True, mensualite=299.0)
+            lld_id = lld_v.id
         finally:
             db.close()
 
         resp = client.get("/api/v1/vehicules", params={"type": "lld"})
         assert resp.status_code == 200
         items = resp.json()["items"]
-        assert any(i["id"] == lld_v.id for i in items)
+        assert any(i["id"] == lld_id for i in items)
         assert all(i["lld"] for i in items)
 
 
@@ -79,13 +83,14 @@ def test_catalogue_filtre_prix_max() -> None:
         try:
             cheap = create_vehicle_in_db(db, make="Dacia", model="Sandero", prix=12990.0)
             create_vehicle_in_db(db, make="Mercedes", model="Classe C", prix=45000.0)
+            cheap_id = cheap.id
         finally:
             db.close()
 
         resp = client.get("/api/v1/vehicules", params={"prixMax": 15000})
         assert resp.status_code == 200
         items = resp.json()["items"]
-        assert any(i["id"] == cheap.id for i in items)
+        assert any(i["id"] == cheap_id for i in items)
         assert all(float(i["prix"]) <= 15000 for i in items)
 
 
@@ -120,13 +125,14 @@ def test_get_vehicle_detail_200() -> None:
         db = SessionLocal()
         try:
             v = create_vehicle_in_db(db, make="Ford", model="Focus", year=2021, prix=22500.0)
+            vid = v.id
         finally:
             db.close()
 
-        resp = client.get(f"/api/v1/vehicules/{v.id}")
+        resp = client.get(f"/api/v1/vehicules/{vid}")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["id"] == v.id
+        assert data["id"] == vid
         assert data["make"] == "Ford"
         assert data["model"] == "Focus"
         assert float(data["prix"]) == 22500.0

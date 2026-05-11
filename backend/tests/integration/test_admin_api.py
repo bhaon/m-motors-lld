@@ -125,7 +125,13 @@ def test_create_user_refused_as_non_admin() -> None:
 
         resp = client.post(
             "/api/v1/admin/users",
-            json={"email": unique_email("x"), "password": "P123!", "first_name": "X", "last_name": "Y", "role": "gestionnaire"},
+            json={
+                "email": unique_email("x"),
+                "password": "Pass123!",
+                "first_name": "X",
+                "last_name": "Y",
+                "role": "gestionnaire",
+            },
             cookies={"access_token": token},
         )
         assert resp.status_code == 403
