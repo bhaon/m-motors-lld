@@ -9,6 +9,7 @@ import type { DossierStatus } from "@/types";
 import { apiUrl } from "@/lib/api";
 import { useFileUpload, PieceType } from "@/hooks/useFileUpload";
 import LldOptionsSection, { type LldPricing } from "@/components/LldOptionsSection";
+import MarkdownBody from "@/components/MarkdownBody";
 
 interface ChecklistItem {
   type_piece: PieceType;
@@ -431,11 +432,8 @@ export default function DossierDetailPage() {
                 )}
                 {contractLoading && <p style={{ color: "var(--muted)" }}>Chargement du contrat…</p>}
                 {!contractLoading && contractMarkdown !== null && (
-                  <pre
+                  <div
                     style={{
-                      whiteSpace: "pre-wrap",
-                      fontSize: ".8rem",
-                      lineHeight: 1.45,
                       maxHeight: 360,
                       overflow: "auto",
                       padding: "1rem",
@@ -443,11 +441,10 @@ export default function DossierDetailPage() {
                       borderRadius: 8,
                       border: "1px solid var(--border)",
                       margin: "0 0 1rem",
-                      fontFamily: "ui-monospace, monospace",
                     }}
                   >
-                    {contractMarkdown}
-                  </pre>
+                    <MarkdownBody source={contractMarkdown} />
+                  </div>
                 )}
                 {detail.contrat.can_sign && (
                   <button

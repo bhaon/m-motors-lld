@@ -697,11 +697,9 @@ describe("DossierDetailPage", () => {
     render(<DossierDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /^Contrat$/i })).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText(/# Contrat/i)).toBeInTheDocument();
-      expect(screen.getByText(/Corps \*\*markdown\*\*\./i)).toBeInTheDocument();
+      const md = screen.getByTestId("markdown-body");
+      expect(md).toHaveTextContent("# Contrat");
+      expect(md).toHaveTextContent("Corps **markdown**.");
     });
     expect(screen.getByRole("button", { name: /^Signer le contrat$/i })).toBeInTheDocument();
   });
