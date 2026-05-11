@@ -15,8 +15,9 @@ export const dynamic = "force-dynamic";
 
 // Définition du composant de page d'accueil (Next.js — Fonction asynchrone car elle attend une ressource distante)
 export default async function Home() {
-  // Récupération asynchrone de la liste des véhicules à afficher dans le catalogue
-  const vehicles = await fetchVehicles();
+  // Récupération asynchrone de la liste des véhicules à afficher dans le catalogue.
+  // .catch(() => []) : catalogue vide si le backend est indisponible (démarrage à froid, E2E, etc.)
+  const vehicles = await fetchVehicles().catch(() => []);
 
   // Rendu du contenu principal de la page
   return (

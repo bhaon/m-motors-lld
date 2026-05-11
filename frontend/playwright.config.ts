@@ -45,7 +45,7 @@ export default defineConfig({
     command: process.env.CI
       ? "npm run build && npm run start"
       : "npm run dev",
-    url: "http://localhost:3000",
+    url: "http://localhost:3000/healthz",
     timeout: 180_000,
     reuseExistingServer: !process.env.CI,
     env: {
