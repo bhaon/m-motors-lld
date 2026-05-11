@@ -102,4 +102,31 @@ describe("ProfileManagementClient", () => {
       expect(screen.getByText(/erreur technique/i)).toBeInTheDocument();
     });
   });
+
+  it("n'affiche pas la demande d'effacement RGPD pour un non-client", () => {
+    render(<ProfileManagementClient initialUser={{ ...baseUser, role: "gestionnaire" }} />);
+    expect(screen.queryByRole("button", { name: /demander la suppression/i })).not.toBeInTheDocument();
+  });
+
+  it("soumet la demande d'effacement RGPD apres confirmation", async () => {
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ message: "Demande enregistree." }),
+    } as Response);
+    try {
+      render(<ProfileManagementClient initialUser={baseUser} />);
+      fireEvent.click(screen.getByRole("button", { name: /demander la suppression/i }));
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          expect.stringMatching(/request-data-erasure$/),
+          expect.objectContaining({ method: "POST", credentials: "include" }),
+        );
+        expect(screen.getByText(/demande enregistree/i)).toBeInTheDocument();
+      });
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
 });

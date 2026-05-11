@@ -214,3 +214,9 @@ class EmailVerificationResponse(BaseModel):
 
     message: str
     model_config = ConfigDict(from_attributes=True)
+
+
+class RequestDataErasureResponse(BaseModel):
+    """Réponse après demande de suppression des données personnelles (droit à l'effacement)."""
+
+    message: str

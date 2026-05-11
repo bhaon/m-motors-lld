@@ -127,6 +127,10 @@ class Settings(BaseSettings):
         default=30,
         description="Délai (jours) après création avant envoi du rappel email pour un dossier encore en brouillon.",
     )
+    CLIENT_ACCOUNT_HARD_PURGE_AFTER_DAYS: int = Field(
+        default=2555,
+        description="Jours après soft-delete avant purge physique possible du compte client (sans dossier). À aligner sur le calendrier légal validé par le DPO.",
+    )
 
     ALLOWED_ORIGINS: str = Field(
         default="https://localhost:8443,https://127.0.0.1:8443",
