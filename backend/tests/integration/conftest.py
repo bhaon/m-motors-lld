@@ -1,7 +1,10 @@
 """Fixtures et helpers partagés pour les tests d'intégration.
 
 Ces tests tournent contre une vraie base PostgreSQL (DATABASE_URL fourni par CI).
-Chaque test utilise des emails uniques — aucun reset de schéma entre tests.
+Le ``reset_db`` du ``tests/conftest.py`` parent recrée le schéma entre chaque test
+(``drop_all`` / ``create_all``) : ne pas le remplacer par un no-op, sinon les tables
+n'existent jamais sur Postgres (relation "users" does not exist).
+Chaque test utilise en plus des emails uniques pour éviter les collisions.
 """
 
 from __future__ import annotations
@@ -9,7 +12,6 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -17,14 +19,6 @@ from app.core.security import create_access_token, hash_password
 from app.db.session import SessionLocal
 from app.models.user import RoleEnum, User
 from app.models.vehicle import MoteurEnum, Vehicle
-
-
-# ── Override du reset_db parent (SQLite) — inutile en intégration PostgreSQL ──
-
-@pytest.fixture(autouse=True)
-def reset_db():
-    """No-op : les tests d'intégration s'isolent via des données uniques."""
-    yield
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
