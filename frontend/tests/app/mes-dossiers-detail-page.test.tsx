@@ -463,6 +463,8 @@ describe("DossierDetailPage", () => {
       );
       expect(screen.getByText(/uploadée avec succès/i)).toBeInTheDocument();
     });
+
+    expect(screen.queryByText(/chargement du dossier/i)).not.toBeInTheDocument();
   });
 
   it("affiche le récapitulatif puis soumet avec succès", async () => {
@@ -533,7 +535,7 @@ describe("DossierDetailPage", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Soumission impossible.");
-      expect(screen.queryByText(/récapitulatif avant confirmation/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/récapitulatif avant confirmation/i)).toBeInTheDocument();
     });
   });
 

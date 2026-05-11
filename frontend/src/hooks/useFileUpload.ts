@@ -35,7 +35,7 @@ export function useFileUpload(dossierId: string) {
   async function uploadPiece(
     type: PieceType,
     file: File,
-    onSuccess: (type: PieceType) => void,
+    onSuccess: (type: PieceType) => void | Promise<void>,
   ): Promise<void> {
     setError("");
 
@@ -100,7 +100,7 @@ export function useFileUpload(dossierId: string) {
       const completePayload = (await completeRes.json().catch(() => ({}))) as { detail?: string };
       if (!completeRes.ok) throw new Error(completePayload.detail ?? "Validation du document impossible.");
 
-      onSuccess(type);
+      await Promise.resolve(onSuccess(type));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur d'upload.");
     } finally {

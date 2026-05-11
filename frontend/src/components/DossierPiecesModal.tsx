@@ -36,9 +36,9 @@ export default function DossierPiecesModal({
 
   const completedCount = Object.values(completed).filter(Boolean).length;
 
-  function handleFileChange(type: PieceType, file: File) {
-    uploadPiece(type, file, (done) =>
-      setCompleted((prev) => ({ ...prev, [done]: true }))
+  async function handleFileChange(type: PieceType, file: File) {
+    await uploadPiece(type, file, (done) =>
+      setCompleted((prev) => ({ ...prev, [done]: true })),
     );
   }
 
@@ -69,7 +69,16 @@ export default function DossierPiecesModal({
                 type="file"
                 accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                 disabled={uploadingType === piece.type}
-                onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileChange(piece.type, file); }}
+                onChange={async (e) => {
+                  const input = e.currentTarget;
+                  const file = input.files?.[0];
+                  if (!file) return;
+                  try {
+                    await handleFileChange(piece.type, file);
+                  } finally {
+                    input.value = "";
+                  }
+                }}
               />
             </label>
           ))}
