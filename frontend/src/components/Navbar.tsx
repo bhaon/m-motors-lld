@@ -46,7 +46,7 @@ type AuthDeeplinkResume = "login" | "register" | "profile";
  * Enregistre l’intention d’ouverture avant de retirer le paramètre d’URL, puis efface la clé
  * après un délai si aucune remontée n’a consommé la valeur (navigation « normale »).
  */
-function persistDeeplinkForPossibleRemount(intent: AuthDeeplinkIntent, paramToStrip: string): void {
+function persistDeeplinkForPossibleRemount(intent: AuthDeeplinkResume, paramToStrip: string): void {
   window.setTimeout(() => {
     try {
       sessionStorage.setItem(AUTH_DEEPLINK_RESUME_KEY, intent);
