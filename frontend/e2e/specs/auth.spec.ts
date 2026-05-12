@@ -4,33 +4,44 @@ import { MOCK_USER } from "../mock-data";
 /**
  * Tests E2E — Authentification.
  *
- * Stratégie d'attente de l'hydratation React :
- *   waitForLoadState("networkidle") attend que toutes les requêtes réseau soient
- *   terminées (500 ms de silence). À ce point React a exécuté ses useEffect et
- *   tous les onClick sont attachés. On clique ensuite sur le bouton Connexion.
+ * Les routes de base (vehicules, auth/me) sont configurées en test.beforeEach
+ * comme dans navigation.spec.ts, ce qui est le pattern éprouvé qui fonctionne.
  *
- *   NB : page.route() fulfille les requêtes avant que l'événement response ne soit
- *   émis → waitForResponse() ne fonctionne pas. L'approche /?connexion=1 ne fonctionne
- *   pas non plus car router.replace sur le même pathname ne produit pas d'événement
- *   navigation détectable. Le clic bouton est la seule voie fiable.
+ * openLoginModal utilise page.waitForFunction sur le fiber React pour garantir
+ * que React a terminé hydrateRoot() sur le bouton avant de cliquer.
+ * waitForLoadState("networkidle") ne suffit pas en CI : le réseau peut être
+ * inactif pendant que React exécute encore son cycle d'hydratation JavaScript.
+ * La présence de __reactFiber$... sur un élément DOM est la seule garantie
+ * que le handler onClick est attaché.
  */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
 const UNAUTHENTICATED = JSON.stringify({ detail: "Non authentifié" });
 
-async function mockBaseRoutes(page: Page) {
+test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/vehicules**", (r) =>
     r.fulfill({ status: 200, contentType: "application/json", body: EMPTY_CATALOGUE })
   );
   await page.route("**/api/v1/auth/me", (r) =>
     r.fulfill({ status: 401, contentType: "application/json", body: UNAUTHENTICATED })
   );
-}
+});
 
 async function openLoginModal(page: Page) {
-  await mockBaseRoutes(page);
   await page.goto("/");
   await page.waitForLoadState("networkidle");
+  // Attend que React ait hydraté le bouton Connexion : le fiber React
+  // (__reactFiber$...) n'apparaît sur un élément DOM qu'après hydrateRoot().
+  await page.waitForFunction(
+    () => {
+      const btn = document.querySelector(".nav-right button");
+      if (!btn) return false;
+      return Object.keys(btn as Element & Record<string, unknown>).some((k) =>
+        k.startsWith("__reactFiber")
+      );
+    },
+    { timeout: 15000 }
+  );
   await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
   await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 10000 });
 }
@@ -167,9 +178,7 @@ test.describe("Modale d'inscription", () => {
 
 test.describe("État authentifié dans la Navbar", () => {
   test("affiche le menu utilisateur quand connecté", async ({ page }) => {
-    await page.route("**/api/v1/vehicules**", (r) =>
-      r.fulfill({ status: 200, contentType: "application/json", body: EMPTY_CATALOGUE })
-    );
+    // Override du beforeEach : auth/me renvoie MOCK_USER → isAuthenticated = true
     await page.route("**/api/v1/auth/me", (r) =>
       r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(MOCK_USER) })
     );
