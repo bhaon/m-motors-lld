@@ -77,13 +77,12 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   res.end(JSON.stringify({ detail: "Not found" }));
 }
 
-/** Pré-charge la page d'accueil pour forcer la compilation JIT de V8 avant les tests.
- *  Sans ça, le premier test auth échoue systématiquement : networkidle se déclenche
- *  quand les téléchargements JS sont finis, mais V8 n'a pas encore parsé/exécuté
- *  le bundle React (5–15 s sur un runner CI cold). */
+/** Pré-charge l'accueil avec `?connexion=1` pour forcer la compilation JIT de V8
+ *  (Navbar + AuthModal) avant les tests. Sans ça, le premier scénario auth peut
+ *  rester lent ou fragile sur un runner CI cold. */
 function warmupNextServer(): Promise<void> {
   return new Promise((resolve) => {
-    const r = httpGet("http://localhost:3000/", (res) => {
+    const r = httpGet("http://localhost:3000/?connexion=1", (res) => {
       res.resume();
       res.on("end", resolve);
     });

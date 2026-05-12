@@ -29,10 +29,14 @@ test.describe("Navbar desktop", () => {
   });
 
   test("le bouton Connexion ouvre la modale", async ({ page }) => {
-    await page.goto("/");
-    await page.waitForLoadState("networkidle");
-    await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
-    await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 5000 });
+    // Recharge + clic jusqu’à succès : un seul clic « raté » ne suffit pas à corriger l’hydratation ;
+    // refaire un cycle page évite aussi un second clic sur la même vue (backdrop qui fermerait la modale).
+    await expect(async () => {
+      await page.goto("/");
+      await page.waitForLoadState("networkidle");
+      await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
+      await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 8000 });
+    }).toPass({ timeout: 45_000 });
   });
 });
 

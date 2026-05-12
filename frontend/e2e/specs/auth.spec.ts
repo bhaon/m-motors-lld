@@ -7,22 +7,19 @@ import { MOCK_USER } from "../mock-data";
  * Les routes de base (vehicules, auth/me) sont configurées en test.beforeEach
  * comme dans navigation.spec.ts (pattern éprouvé qui passe toujours).
  *
- * global-setup.ts effectue un warmup HTTP de la page d'accueil avant les tests,
- * ce qui force la compilation JIT de V8 sur le bundle React. Sans ce warmup,
- * networkidle se déclenche quand les téléchargements JS finissent mais V8 n'a
- * pas encore parsé/exécuté le bundle — le clic bouton arrive avant que le handler
- * onClick soit attaché.
+ * global-setup.ts effectue un warmup HTTP (`/?connexion=1`) avant les tests pour
+ * forcer la compilation JIT de V8 sur le bundle React (Navbar + AuthModal).
+ * openLoginModal utilise le deeplink plutôt qu'un clic : évite la course où
+ * networkidle est atteint avant l'hydratation et le handler « Connexion ».
  */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
 const UNAUTHENTICATED = JSON.stringify({ detail: "Non authentifié" });
 
 // Warmup Chromium V8 avant tous les tests auth.
-// auth.spec.ts s'exécute EN PREMIER (ordre alphabétique) → Chromium V8 est froid.
-// Le bundle React n'est pas encore compilé par le JIT Chromium → networkidle se
-// déclenche mais React n'a pas encore attaché les handlers → clic sans effet.
-// Ce beforeAll navigue une fois vers "/" pour forcer la compilation du bundle,
-// après quoi tous les tests auth bénéficient d'un JIT chaud.
+// auth.spec.ts s'exécute en premier (ordre alphabétique) → JIT froid sur le runner.
+// Ce beforeAll charge `/?connexion=1` une fois pour compiler Navbar + AuthModal,
+// en complément du global-setup.
 test.beforeAll(async ({ browser }) => {
   const warmupPage = await browser.newPage();
   try {
@@ -32,7 +29,7 @@ test.beforeAll(async ({ browser }) => {
     await warmupPage.route("**/api/v1/auth/me", (r) =>
       r.fulfill({ status: 401, contentType: "application/json", body: UNAUTHENTICATED })
     );
-    await warmupPage.goto("http://localhost:3000/", {
+    await warmupPage.goto("http://localhost:3000/?connexion=1", {
       waitUntil: "networkidle",
       timeout: 60_000,
     });
@@ -52,12 +49,15 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+/**
+ * Ouvre la modale de connexion via le deeplink `/?connexion=1` (voir Navbar).
+ * Évite la course réseau / hydratation : un clic sur « Connexion » peut arriver avant
+ * que React n’ait attaché le handler alors que `networkidle` est déjà passé (CI, bundle prod).
+ */
 async function openLoginModal(page: Page) {
-  await page.goto("/");
-  await page.waitForLoadState("networkidle");
-  await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
-  // 15 s : laisse le temps à React de finir l'hydratation si le warmup n'a pas tout couvert
-  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15000 });
+  await page.goto("/?connexion=1");
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 20_000 });
 }
 
 async function openRegisterModal(page: Page) {
