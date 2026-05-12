@@ -41,11 +41,12 @@ export default defineConfig({
 
   webServer: {
     /**
-     * En CI : next build puis next start (production-like).
+     * En CI : l'app est déjà buildée par le step CI → on démarre directement le serveur
+     *         standalone (évite un double build de 2–3 min et des risques d'incohérence).
      * En local : next dev pour un démarrage plus rapide.
      */
     command: process.env.CI
-      ? "npm run build && PORT=3000 node .next/standalone/server.js"
+      ? "PORT=3000 node .next/standalone/server.js"
       : "npm run dev",
     url: "http://localhost:3000/healthz",
     timeout: 180_000,

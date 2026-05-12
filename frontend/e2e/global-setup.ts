@@ -5,7 +5,7 @@
  *
  * Les tests individuels peuvent surcharger le comportement via page.route().
  */
-import { createServer, IncomingMessage, ServerResponse } from "http";
+import { createServer, get as httpGet, IncomingMessage, ServerResponse } from "http";
 import { MOCK_VEHICLES, MOCK_MARQUES, MOCK_LLD_CATALOG } from "./mock-data";
 
 const MOCK_PORT = 8001;
@@ -77,6 +77,21 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   res.end(JSON.stringify({ detail: "Not found" }));
 }
 
+/** Pré-charge la page d'accueil pour forcer la compilation JIT de V8 avant les tests.
+ *  Sans ça, le premier test auth échoue systématiquement : networkidle se déclenche
+ *  quand les téléchargements JS sont finis, mais V8 n'a pas encore parsé/exécuté
+ *  le bundle React (5–15 s sur un runner CI cold). */
+function warmupNextServer(): Promise<void> {
+  return new Promise((resolve) => {
+    const r = httpGet("http://localhost:3000/", (res) => {
+      res.resume();
+      res.on("end", resolve);
+    });
+    r.on("error", resolve);
+    r.setTimeout(30_000, () => { r.destroy(); resolve(); });
+  });
+}
+
 export default async function globalSetup(): Promise<void> {
   const server = createServer(handleRequest);
 
@@ -89,4 +104,9 @@ export default async function globalSetup(): Promise<void> {
   (global as Record<string, unknown>).__MOCK_API_SERVER__ = server;
 
   console.log(`[mock-api] Serveur mock démarré sur http://localhost:${MOCK_PORT}`);
+
+  // Warmup : force V8 à compiler le bundle Next.js avant le premier test
+  console.log("[mock-api] Warmup Next.js server (JIT compilation)...");
+  await warmupNextServer();
+  console.log("[mock-api] Warmup terminé.");
 }

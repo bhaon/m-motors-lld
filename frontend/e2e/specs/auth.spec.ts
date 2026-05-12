@@ -5,14 +5,13 @@ import { MOCK_USER } from "../mock-data";
  * Tests E2E — Authentification.
  *
  * Les routes de base (vehicules, auth/me) sont configurées en test.beforeEach
- * comme dans navigation.spec.ts, ce qui est le pattern éprouvé qui fonctionne.
+ * comme dans navigation.spec.ts (pattern éprouvé qui passe toujours).
  *
- * openLoginModal utilise page.waitForFunction sur le fiber React pour garantir
- * que React a terminé hydrateRoot() sur le bouton avant de cliquer.
- * waitForLoadState("networkidle") ne suffit pas en CI : le réseau peut être
- * inactif pendant que React exécute encore son cycle d'hydratation JavaScript.
- * La présence de __reactFiber$... sur un élément DOM est la seule garantie
- * que le handler onClick est attaché.
+ * global-setup.ts effectue un warmup HTTP de la page d'accueil avant les tests,
+ * ce qui force la compilation JIT de V8 sur le bundle React. Sans ce warmup,
+ * networkidle se déclenche quand les téléchargements JS finissent mais V8 n'a
+ * pas encore parsé/exécuté le bundle — le clic bouton arrive avant que le handler
+ * onClick soit attaché.
  */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
@@ -30,20 +29,9 @@ test.beforeEach(async ({ page }) => {
 async function openLoginModal(page: Page) {
   await page.goto("/");
   await page.waitForLoadState("networkidle");
-  // Attend que React ait hydraté le bouton Connexion : le fiber React
-  // (__reactFiber$...) n'apparaît sur un élément DOM qu'après hydrateRoot().
-  await page.waitForFunction(
-    () => {
-      const btn = document.querySelector(".nav-right button");
-      if (!btn) return false;
-      return Object.keys(btn as Element & Record<string, unknown>).some((k) =>
-        k.startsWith("__reactFiber")
-      );
-    },
-    { timeout: 15000 }
-  );
   await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
-  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 10000 });
+  // 15 s : laisse le temps à React de finir l'hydratation si le warmup n'a pas tout couvert
+  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15000 });
 }
 
 async function openRegisterModal(page: Page) {
