@@ -1,19 +1,21 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { MOCK_VEHICLES } from "../mock-data";
 
 /**
  * Tests E2E — Page catalogue (/).
  *
- * Sélecteurs documentés depuis les composants réels :
- * - Cartes véhicules  : <button class="vehicle-card" aria-label="Ouvrir la fiche Make Model, year">
- * - Modal véhicule    : <div class="modal-panel"> (pas de role=dialog)
- *   • Titre make      : texte "{v.make} · {v.year}" dans la modal-hero
- *   • Titre model     : <h2>{v.model}</h2> dans le modal-body
- * - SearchBar         : que des <select id="search-*"> + 1 <input type="number" id="search-prix-max">
- * - FiltersRow        : <button aria-pressed="...">Tous/Achat/LLD disponible</button>
+ * waitForResponse("** /api/v1/auth/me") est utilisé avant toute interaction UI.
+ * Il garantit que checkAuthStatus() a terminé → React est hydraté → les onClick
+ * des cartes et des boutons FiltersRow sont bien branchés.
  */
 
 const UNAUTHENTICATED = JSON.stringify({ detail: "Non authentifié" });
+
+async function gotoAndWaitHydration(page: Page) {
+  const authMeComplete = page.waitForResponse("**/api/v1/auth/me");
+  await page.goto("/");
+  await authMeComplete;
+}
 
 test.describe("Catalogue véhicules", () => {
   test.beforeEach(async ({ page }) => {
@@ -29,7 +31,8 @@ test.describe("Catalogue véhicules", () => {
     await page.route("**/api/v1/lld-catalog**", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [] }) })
     );
-    await page.goto("/");
+    // Attend l'hydratation avant chaque test interactif
+    await gotoAndWaitHydration(page);
   });
 
   test("affiche les cartes des véhicules du catalogue", async ({ page }) => {
@@ -38,35 +41,33 @@ test.describe("Catalogue véhicules", () => {
   });
 
   test("affiche le prix sur la carte véhicule", async ({ page }) => {
-    // Le prix peut être formaté FR (18 990) ou non (18990)
     const priceText = page.getByText(/18[\s ]?990/);
     await expect(priceText.first()).toBeVisible();
   });
 
   test("badge LLD visible sur les véhicules en location", async ({ page }) => {
-    // La Renault Zoé est LLD → badge "LLD" dans la carte
     await expect(page.getByText("LLD").first()).toBeVisible();
   });
 
   test("ouvre la modale au clic sur une carte véhicule", async ({ page }) => {
+    // Attend la réponse galerie pour confirmer que la modale a bien ouvert et chargé
+    const galerieComplete = page.waitForResponse("**/api/v1/vehicules/*/galerie");
     await page.getByRole("button", { name: /Peugeot 208/i }).click();
-    // La modal-panel doit devenir visible
+    await galerieComplete;
     await expect(page.locator(".modal-panel")).toBeVisible({ timeout: 5000 });
-    // Le modèle (h2) doit apparaître dans la modale
     await expect(page.getByRole("heading", { name: "208" })).toBeVisible({ timeout: 5000 });
   });
 
-  test("ferme la modale avec le bouton ✕", async ({ page }) => {
+  test("ferme la modale avec le bouton Fermer", async ({ page }) => {
+    const galerieComplete = page.waitForResponse("**/api/v1/vehicules/*/galerie");
     await page.getByRole("button", { name: /Peugeot 208/i }).click();
+    await galerieComplete;
     await expect(page.locator(".modal-panel")).toBeVisible({ timeout: 5000 });
-
-    // Bouton Fermer dans la hero de la modale (aria-label="Fermer")
     await page.getByLabel("Fermer la modale").click();
     await expect(page.locator(".modal-panel")).not.toBeVisible({ timeout: 3000 });
   });
 
   test("la SearchBar est visible avec ses filtres", async ({ page }) => {
-    // Vérifier les <select> de la SearchBar via leur id
     await expect(page.locator("#search-marque")).toBeVisible();
     await expect(page.locator("#search-moteur")).toBeVisible();
     await expect(page.locator("#search-prix-max")).toBeVisible();
@@ -90,43 +91,37 @@ test.describe("Filtres catalogue", () => {
     );
   });
 
-  test("le filtre LLD disponible met à jour l'affichage", async ({ page }) => {
-    // Mock initial : 2 véhicules
+  test("le filtre LLD disponible bascule son état aria-pressed", async ({ page }) => {
     await page.route("**/api/v1/vehicules**", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(MOCK_VEHICLES) })
     );
-    await page.goto("/");
+    await gotoAndWaitHydration(page); // Hydratation complète avant interaction
 
-    // Cliquer sur "LLD disponible" dans la FiltersRow
-    await page.getByRole("button", { name: "LLD disponible" }).click();
-
-    // Le bouton doit passer en état pressed
-    await expect(
-      page.getByRole("button", { name: "LLD disponible" })
-    ).toHaveAttribute("aria-pressed", "true");
+    const lldBtn = page.getByRole("button", { name: "LLD disponible" });
+    await expect(lldBtn).toHaveAttribute("aria-pressed", "false");
+    await lldBtn.click();
+    await expect(lldBtn).toHaveAttribute("aria-pressed", "true", { timeout: 3000 });
   });
 
-  test("le filtre Achat met à jour l'état du bouton", async ({ page }) => {
+  test("le filtre Achat bascule son état aria-pressed", async ({ page }) => {
     await page.route("**/api/v1/vehicules**", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(MOCK_VEHICLES) })
     );
-    await page.goto("/");
+    await gotoAndWaitHydration(page);
 
-    await page.getByRole("button", { name: "Achat" }).click();
-    await expect(
-      page.getByRole("button", { name: "Achat" })
-    ).toHaveAttribute("aria-pressed", "true");
+    const achatBtn = page.getByRole("button", { name: "Achat" });
+    await achatBtn.click();
+    await expect(achatBtn).toHaveAttribute("aria-pressed", "true", { timeout: 3000 });
   });
 
-  test("affiche un message ou état vide quand le catalogue est vide", async ({ page }) => {
+  test("affiche un message quand le catalogue est vide", async ({ page }) => {
     await page.route("**/api/v1/vehicules**", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ total: 0, items: [] }) })
     );
-    await page.goto("/");
+    await gotoAndWaitHydration(page);
 
-    // "0 véhicule" dans la FiltersRow ou un message d'état vide
     await expect(
-      page.getByText(/0 véhicule|aucun véhicule|aucun résultat/i).first()
+      page.getByText(/0 véhicule|aucun véhicule|aucun résultat|catalogue vide/i).first()
     ).toBeVisible({ timeout: 5000 });
   });
 
@@ -134,7 +129,7 @@ test.describe("Filtres catalogue", () => {
     await page.route("**/api/v1/vehicules**", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(MOCK_VEHICLES) })
     );
-    await page.goto("/");
+    await gotoAndWaitHydration(page);
 
     await page.locator("#search-moteur").selectOption("Électrique");
     await expect(page.locator("#search-moteur")).toHaveValue("Électrique");

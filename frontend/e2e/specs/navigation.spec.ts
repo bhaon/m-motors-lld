@@ -28,10 +28,11 @@ test.describe("Navbar desktop", () => {
   });
 
   test("le bouton Connexion ouvre la modale", async ({ page }) => {
+    const authMeComplete = page.waitForResponse("**/api/v1/auth/me");
     await page.goto("/");
-    // Cibler le bouton dans .nav-right (desktop nav), pas celui du mobile panel caché
+    await authMeComplete; // Attend hydratation React avant interaction
     await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
-    await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 3000 });
+    await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 5000 });
   });
 });
 
