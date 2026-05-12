@@ -4,14 +4,11 @@ import { MOCK_USER } from "../mock-data";
 /**
  * Tests E2E — Authentification.
  *
- * Stratégie d'attente de l'hydratation React :
- *   waitForLoadState("networkidle") attend que toutes les requêtes réseau soient
- *   terminées (500 ms de silence). À ce point React a exécuté ses useEffect et
- *   tous les onClick sont attachés.
- *
- *   NB: page.waitForResponse() ne fonctionne pas ici car page.route() fulfille
- *   les requêtes de manière synchrone AVANT que l'événement response ne soit émis
- *   dans certaines configurations CI production.
+ * Stratégie d'ouverture de la modale :
+ *   On navigue vers /?connexion=1 pour déclencher le useEffect Navbar qui appelle
+ *   setAuthModalOpen(true) puis router.replace("/"). page.waitForURL() attend que
+ *   le paramètre disparaisse — signal causal garanti que le setter a été exécuté.
+ *   Cette approche évite toute dépendance au timing du clic React post-hydratation.
  */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
@@ -28,21 +25,12 @@ async function mockBaseRoutes(page: Page) {
 
 async function openLoginModal(page: Page) {
   await mockBaseRoutes(page);
-  await page.goto("/");
-  await page.waitForLoadState("networkidle");
-
-  const emailField = page.getByPlaceholder("Email");
-  const connexionBtn = page.locator(".nav-right").getByRole("button", { name: "Connexion" });
-
-  // Retry jusqu'à 3 fois : en CI production, le handler React peut n'être attaché
-  // qu'après le premier networkidle (bundle JS exécuté mais React encore en train de finir)
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (await emailField.isVisible().catch(() => false)) break;
-    await connexionBtn.click();
-    if (attempt < 2) await page.waitForTimeout(500);
-  }
-
-  await expect(emailField).toBeVisible({ timeout: 8000 });
+  // /?connexion=1 déclenche le useEffect Navbar qui appelle setAuthModalOpen(true)
+  // puis router.replace("/"). On attend la disparition du param pour garantir
+  // que le setter a été appelé avant de vérifier la visibilité du champ.
+  await page.goto("/?connexion=1");
+  await page.waitForURL((url) => !url.searchParams.has("connexion"), { timeout: 10000 });
+  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 8000 });
 }
 
 async function openRegisterModal(page: Page) {
