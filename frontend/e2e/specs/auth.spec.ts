@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
 import { MOCK_USER } from "../mock-data";
 
+/** CI : openLoginModal peut dépasser 30 s (navigation complète + réseau + modale). */
+test.setTimeout(120_000);
+
 /**
  * Tests E2E — Authentification.
  *
@@ -9,7 +12,10 @@ import { MOCK_USER } from "../mock-data";
  *
  * global-setup.ts effectue un warmup HTTP (`/?connexion=1`) avant les tests pour
  * forcer la compilation JIT de V8 sur le bundle React (Navbar + AuthModal).
- * openLoginModal utilise `/?connexion=1` : la Navbar ouvre la modale sans clic.
+ * openLoginModal charge d’abord `/`, nettoie sessionStorage, puis force un chargement
+ * complet vers `/?connexion=1` via `location.assign` : un second `page.goto` seul peut
+ * rester en navigation client Next sans remonter la Navbar → le `useLayoutEffect` deeplink
+ * ne se rejoue pas.
  * (Un `router.replace` après ouverture remontait la page et réinitialisait l'état — corrigé
  * dans Navbar avec `history.replaceState`, reprise via `sessionStorage` si remontée Next).
  */
@@ -55,21 +61,25 @@ test.beforeEach(async ({ page }) => {
 
 /**
  * Ouvre la modale de connexion via `/?connexion=1` (Navbar + sessionStorage si remontée).
- * Nettoie la clé deeplink avant navigation : sinon une valeur résiduelle peut court-circuiter
- * la lecture de l’URL. Le `data-testid` sur le dialog évite les écarts de nom accessible (Chromium).
+ * `location.assign` après `/` force un document complet (pas seulement une transition client),
+ * sinon le `useLayoutEffect` deeplink (`[]`) ne se réexécute pas.
  */
 async function openLoginModal(page: Page) {
-  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.goto("/", { waitUntil: "load", timeout: 60_000 });
   await page.evaluate((key) => {
     try {
       sessionStorage.removeItem(key);
     } catch {
       /* ignore */
     }
+    const next = new URL(window.location.origin);
+    next.searchParams.set("connexion", "1");
+    window.location.assign(next.toString());
   }, AUTH_DEEPLINK_RESUME_STORAGE_KEY);
-  await page.goto("/?connexion=1", { waitUntil: "load", timeout: 60_000 });
-  await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 10_000 });
+  await page.waitForURL(/\?connexion=1/, { timeout: 60_000 });
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15_000 });
 }
 
 async function openRegisterModal(page: Page) {
