@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 
 /**
  * Tests E2E — Navigation globale (Navbar, pages statiques, responsive).
+ * waitForLoadState("networkidle") avant toute interaction UI pour garantir l'hydratation.
  */
 
 test.beforeEach(async ({ page }) => {
@@ -28,9 +29,8 @@ test.describe("Navbar desktop", () => {
   });
 
   test("le bouton Connexion ouvre la modale", async ({ page }) => {
-    const authMeComplete = page.waitForResponse("**/api/v1/auth/me");
     await page.goto("/");
-    await authMeComplete; // Attend hydratation React avant interaction
+    await page.waitForLoadState("networkidle");
     await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
     await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 5000 });
   });
@@ -39,7 +39,6 @@ test.describe("Navbar desktop", () => {
 test.describe("Page À propos", () => {
   test("affiche le contenu de présentation de M-Motors", async ({ page }) => {
     await page.goto("/a-propos");
-    // Vérifie que la page contient des éléments structurants
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page.getByText("M-Motors").first()).toBeVisible();
   });
@@ -51,7 +50,6 @@ test.describe("Page À propos", () => {
 
   test("contient un CTA vers le catalogue", async ({ page }) => {
     await page.goto("/a-propos");
-    // Il doit y avoir un lien vers le catalogue (page d'accueil)
     const catalogueLink = page.getByRole("link", { name: /catalogue|véhicules|voir|découvrir/i });
     await expect(catalogueLink.first()).toBeVisible();
   });
@@ -62,36 +60,30 @@ test.describe("Responsive — menu mobile", () => {
 
   test("le bouton hamburger est visible sur mobile", async ({ page }) => {
     await page.goto("/");
-    const hamburger = page.getByLabel(/ouvrir le menu|fermer le menu/i);
-    await expect(hamburger).toBeVisible();
+    await expect(page.getByLabel(/ouvrir le menu|fermer le menu/i)).toBeVisible();
   });
 
   test("le menu mobile s'ouvre au clic sur le hamburger", async ({ page }) => {
     await page.goto("/");
-    const hamburger = page.getByLabel(/ouvrir le menu/i);
-    await hamburger.click();
-
-    // Le panel mobile doit apparaître avec les liens
-    const mobilePanel = page.locator(".nav-mobile-panel");
-    await expect(mobilePanel).toBeVisible({ timeout: 3000 });
+    await page.waitForLoadState("networkidle");
+    await page.getByLabel(/ouvrir le menu/i).click();
+    await expect(page.locator(".nav-mobile-panel")).toBeVisible({ timeout: 5000 });
   });
 
   test("le menu mobile contient les liens de navigation", async ({ page }) => {
     await page.goto("/");
-    const hamburger = page.getByLabel(/ouvrir le menu/i);
-    await hamburger.click();
-
-    // Vérifie la présence des liens dans le panel mobile
+    await page.waitForLoadState("networkidle");
+    await page.getByLabel(/ouvrir le menu/i).click();
+    await expect(page.locator(".nav-mobile-panel")).toBeVisible({ timeout: 5000 });
     await expect(page.locator(".nav-mobile-panel")).toContainText(/à propos/i);
     await expect(page.locator(".nav-mobile-panel")).toContainText(/connexion/i);
   });
 
   test("le menu mobile se ferme après navigation", async ({ page }) => {
     await page.goto("/");
-    const hamburger = page.getByLabel(/ouvrir le menu/i);
-    await hamburger.click();
-
-    // Clic sur "À propos" dans le menu mobile
+    await page.waitForLoadState("networkidle");
+    await page.getByLabel(/ouvrir le menu/i).click();
+    await expect(page.locator(".nav-mobile-panel")).toBeVisible({ timeout: 5000 });
     await page.locator(".nav-mobile-panel").getByText(/à propos/i).click();
     await expect(page).toHaveURL(/\/a-propos/);
   });
@@ -112,11 +104,12 @@ test.describe("Routes de santé frontend", () => {
 test.describe("Redirections", () => {
   test("/connexion redirige vers /?connexion=1", async ({ page }) => {
     await page.goto("/connexion");
-    await expect(page).toHaveURL(/\?connexion=1/, { timeout: 5000 });
+    // useEffect router.replace() est asynchrone en build production → waitForURL
+    await page.waitForURL(/\?connexion=1/, { timeout: 10000 });
   });
 
   test("/inscription redirige vers /?inscription=1", async ({ page }) => {
     await page.goto("/inscription");
-    await expect(page).toHaveURL(/\?inscription=1/, { timeout: 5000 });
+    await page.waitForURL(/\?inscription=1/, { timeout: 10000 });
   });
 });

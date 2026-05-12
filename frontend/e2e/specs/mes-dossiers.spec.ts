@@ -3,9 +3,7 @@ import { MOCK_USER, MOCK_DOSSIERS } from "../mock-data";
 
 /**
  * Tests E2E — Tableau de bord client « Mes dossiers ».
- *
- * waitForResponse("** /api/v1/dossiers/me") garantit que loadMyDossiers() a terminé
- * et que React a mis à jour le DOM avant de faire des assertions.
+ * waitForLoadState("networkidle") garantit que loadMyDossiers() a terminé.
  */
 
 async function setupAuthenticatedUser(page: Page) {
@@ -14,19 +12,9 @@ async function setupAuthenticatedUser(page: Page) {
   );
 }
 
-async function setupUnauthenticatedUser(page: Page) {
-  await page.route("**/api/v1/auth/me", (route) =>
-    route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Non authentifié" }) })
-  );
-  await page.route("**/api/v1/dossiers/me", (route) =>
-    route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Non authentifié" }) })
-  );
-}
-
-async function gotoMesDossiersAndWait(page: Page) {
-  const dossiersComplete = page.waitForResponse("**/api/v1/dossiers/me");
-  await page.goto("/mes-dossiers");
-  await dossiersComplete; // loadMyDossiers() a terminé → DOM mis à jour
+async function gotoMesDossiersAndWait(page: Page, url = "/mes-dossiers") {
+  await page.goto(url);
+  await page.waitForLoadState("networkidle");
 }
 
 // ── Mes dossiers — état vide ──────────────────────────────────────────────────
@@ -46,9 +34,7 @@ test.describe("Mes dossiers — état vide", () => {
 
   test("affiche un lien vers le catalogue pour créer un premier dossier", async ({ page }) => {
     await gotoMesDossiersAndWait(page);
-    // Deux liens "catalogue" peuvent exister (Navbar + message) → prendre le premier
-    const catalogueLink = page.getByRole("link", { name: /catalogue/i }).first();
-    await expect(catalogueLink).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("link", { name: /catalogue/i }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test("affiche le titre du tableau de bord", async ({ page }) => {
@@ -83,7 +69,6 @@ test.describe("Mes dossiers — avec dossiers", () => {
 
   test("affiche les statuts des dossiers via le StatusBadge", async ({ page }) => {
     await gotoMesDossiersAndWait(page);
-    // DOS-2024-001 est en brouillon → StatusBadge affiche "Brouillon" ou similaire
     await expect(page.getByText(/brouillon/i).first()).toBeVisible({ timeout: 5000 });
   });
 
@@ -95,7 +80,6 @@ test.describe("Mes dossiers — avec dossiers", () => {
         body: JSON.stringify({ ...MOCK_DOSSIERS[0], pieces: [], historique: [], options_lld: [] }),
       })
     );
-
     await gotoMesDossiersAndWait(page);
     const voirLinks = page.getByRole("link", { name: /voir/i });
     await expect(voirLinks.first()).toBeVisible({ timeout: 5000 });
@@ -105,7 +89,6 @@ test.describe("Mes dossiers — avec dossiers", () => {
 
   test("le bouton Supprimer est visible uniquement pour les brouillons", async ({ page }) => {
     await gotoMesDossiersAndWait(page);
-    // DOS-2024-001 est en brouillon → 1 bouton Supprimer ; DOS-2024-002 est en_instruction → pas de bouton
     const deleteButtons = page.getByRole("button", { name: /supprimer/i });
     await expect(deleteButtons).toHaveCount(1, { timeout: 5000 });
   });
@@ -118,7 +101,6 @@ test.describe("Mes dossiers — avec dossiers", () => {
         route.continue();
       }
     });
-
     await gotoMesDossiersAndWait(page);
     const deleteBtn = page.getByRole("button", { name: /supprimer/i }).first();
     await expect(deleteBtn).toBeVisible({ timeout: 5000 });
@@ -131,10 +113,13 @@ test.describe("Mes dossiers — avec dossiers", () => {
 
 test.describe("Mes dossiers — non authentifié", () => {
   test("affiche une erreur quand non connecté", async ({ page }) => {
-    await setupUnauthenticatedUser(page);
+    await page.route("**/api/v1/auth/me", (route) =>
+      route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Non authentifié" }) })
+    );
+    await page.route("**/api/v1/dossiers/me", (route) =>
+      route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Non authentifié" }) })
+    );
     await gotoMesDossiersAndWait(page);
-
-    // La page affiche une alerte avec le message d'erreur (401 → "Non authentifié")
     await expect(
       page.getByRole("alert").or(page.getByText(/non authentifié|connect|erreur/i)).first()
     ).toBeVisible({ timeout: 5000 });
@@ -152,18 +137,14 @@ test.describe("Notice de création de dossier", () => {
   });
 
   test("affiche la notice quand paramètre cree=1 est présent", async ({ page }) => {
-    await gotoMesDossiersAndWait(page);
-    // Simuler l'arrivée avec les params de confirmation (après création de dossier)
-    await page.goto("/mes-dossiers?cree=1&ref=DOS-2024-003&type=ACHAT&id=103");
-    await page.waitForResponse("**/api/v1/dossiers/me");
+    await gotoMesDossiersAndWait(page, "/mes-dossiers?cree=1&ref=DOS-2024-003&type=ACHAT&id=103");
     await expect(
       page.getByText(/DOS-2024-003|créé|achat/i).first()
     ).toBeVisible({ timeout: 5000 });
   });
 
   test("la notice peut être fermée", async ({ page }) => {
-    await page.goto("/mes-dossiers?cree=1&ref=DOS-2024-003&type=ACHAT&id=103");
-    await page.waitForResponse("**/api/v1/dossiers/me");
+    await gotoMesDossiersAndWait(page, "/mes-dossiers?cree=1&ref=DOS-2024-003&type=ACHAT&id=103");
     const closeBtn = page.getByRole("button", { name: /fermer/i });
     if (await closeBtn.isVisible()) {
       await closeBtn.click();
