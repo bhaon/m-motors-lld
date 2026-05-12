@@ -17,6 +17,9 @@ import { MOCK_USER } from "../mock-data";
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
 const UNAUTHENTICATED = JSON.stringify({ detail: "Non authentifié" });
 
+/** Aligné sur `Navbar.tsx` — évite qu’un résidu de session fasse rater le deeplink `?connexion=1`. */
+const AUTH_DEEPLINK_RESUME_STORAGE_KEY = "m-motors-auth-deeplink-resume";
+
 // Warmup Chromium V8 avant tous les tests auth.
 // auth.spec.ts s'exécute en premier (ordre alphabétique) → JIT froid sur le runner.
 // Ce beforeAll charge `/?connexion=1` une fois pour compiler Navbar + AuthModal,
@@ -52,18 +55,26 @@ test.beforeEach(async ({ page }) => {
 
 /**
  * Ouvre la modale de connexion via `/?connexion=1` (Navbar + sessionStorage si remontée).
+ * Nettoie la clé deeplink avant navigation : sinon une valeur résiduelle peut court-circuiter
+ * la lecture de l’URL. Le `data-testid` sur le dialog évite les écarts de nom accessible (Chromium).
  */
 async function openLoginModal(page: Page) {
+  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.evaluate((key) => {
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }, AUTH_DEEPLINK_RESUME_STORAGE_KEY);
   await page.goto("/?connexion=1", { waitUntil: "load", timeout: 60_000 });
-  await expect(page.getByRole("dialog", { name: /accès à votre espace client/i })).toBeVisible({
-    timeout: 25_000,
-  });
+  await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 10_000 });
 }
 
 async function openRegisterModal(page: Page) {
   await openLoginModal(page);
-  await page.getByLabel("Accès à votre espace client").getByRole("button", { name: "Inscription" }).click();
+  await page.getByTestId("auth-modal-dialog").getByRole("button", { name: "Inscription" }).click();
   await expect(page.getByRole("button", { name: "S'inscrire" })).toBeVisible({ timeout: 3000 });
 }
 
@@ -184,7 +195,7 @@ test.describe("Modale d'inscription", () => {
 
   test("peut basculer vers l'onglet connexion depuis l'inscription", async ({ page }) => {
     await openRegisterModal(page);
-    await page.getByLabel("Créer un compte client").getByRole("button", { name: "Connexion" }).click();
+    await page.getByTestId("auth-modal-dialog").getByRole("button", { name: "Connexion" }).first().click();
     await expect(page.getByRole("button", { name: "Se connecter" })).toBeVisible({ timeout: 3000 });
   });
 });
