@@ -17,6 +17,32 @@ import { MOCK_USER } from "../mock-data";
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
 const UNAUTHENTICATED = JSON.stringify({ detail: "Non authentifié" });
 
+// Warmup Chromium V8 avant tous les tests auth.
+// auth.spec.ts s'exécute EN PREMIER (ordre alphabétique) → Chromium V8 est froid.
+// Le bundle React n'est pas encore compilé par le JIT Chromium → networkidle se
+// déclenche mais React n'a pas encore attaché les handlers → clic sans effet.
+// Ce beforeAll navigue une fois vers "/" pour forcer la compilation du bundle,
+// après quoi tous les tests auth bénéficient d'un JIT chaud.
+test.beforeAll(async ({ browser }) => {
+  const warmupPage = await browser.newPage();
+  try {
+    await warmupPage.route("**/api/v1/vehicules**", (r) =>
+      r.fulfill({ status: 200, contentType: "application/json", body: EMPTY_CATALOGUE })
+    );
+    await warmupPage.route("**/api/v1/auth/me", (r) =>
+      r.fulfill({ status: 401, contentType: "application/json", body: UNAUTHENTICATED })
+    );
+    await warmupPage.goto("http://localhost:3000/", {
+      waitUntil: "networkidle",
+      timeout: 60_000,
+    });
+  } catch {
+    // Non-bloquant : les tests tournent quand même, juste potentiellement plus lents
+  } finally {
+    await warmupPage.close();
+  }
+});
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/vehicules**", (r) =>
     r.fulfill({ status: 200, contentType: "application/json", body: EMPTY_CATALOGUE })
