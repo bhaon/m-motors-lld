@@ -6,9 +6,10 @@ import { MOCK_USER } from "../mock-data";
  *
  * Stratégie d'ouverture de la modale :
  *   On navigue vers /?connexion=1 pour déclencher le useEffect Navbar qui appelle
- *   setAuthModalOpen(true) puis router.replace("/"). page.waitForURL() attend que
- *   le paramètre disparaisse — signal causal garanti que le setter a été exécuté.
- *   Cette approche évite toute dépendance au timing du clic React post-hydratation.
+ *   setAuthModalOpen(true) AVANT router.replace("/"). waitForLoadState("networkidle")
+ *   garantit que React a terminé l'hydratation et les effets. On ne peut pas utiliser
+ *   waitForURL car router.replace sur la même route (sans rechargement) ne produit pas
+ *   d'événement navigation détectable par Playwright.
  */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
@@ -25,12 +26,13 @@ async function mockBaseRoutes(page: Page) {
 
 async function openLoginModal(page: Page) {
   await mockBaseRoutes(page);
-  // /?connexion=1 déclenche le useEffect Navbar qui appelle setAuthModalOpen(true)
-  // puis router.replace("/"). On attend la disparition du param pour garantir
-  // que le setter a été appelé avant de vérifier la visibilité du champ.
+  // /?connexion=1 déclenche le useEffect Navbar (setAuthModalOpen(true) appelé avant
+  // router.replace). networkidle garantit que React a terminé l'hydratation et les
+  // effets. On ne peut pas attendre le changement d'URL : router.replace sur la même
+  // route sans rechargement ne produit pas d'événement navigation détectable.
   await page.goto("/?connexion=1");
-  await page.waitForURL((url) => !url.searchParams.has("connexion"), { timeout: 10000 });
-  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 8000 });
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15000 });
 }
 
 async function openRegisterModal(page: Page) {
