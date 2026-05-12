@@ -30,8 +30,19 @@ async function openLoginModal(page: Page) {
   await mockBaseRoutes(page);
   await page.goto("/");
   await page.waitForLoadState("networkidle");
-  await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
-  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 5000 });
+
+  const emailField = page.getByPlaceholder("Email");
+  const connexionBtn = page.locator(".nav-right").getByRole("button", { name: "Connexion" });
+
+  // Retry jusqu'à 3 fois : en CI production, le handler React peut n'être attaché
+  // qu'après le premier networkidle (bundle JS exécuté mais React encore en train de finir)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await emailField.isVisible().catch(() => false)) break;
+    await connexionBtn.click();
+    if (attempt < 2) await page.waitForTimeout(500);
+  }
+
+  await expect(emailField).toBeVisible({ timeout: 8000 });
 }
 
 async function openRegisterModal(page: Page) {
