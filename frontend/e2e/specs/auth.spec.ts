@@ -4,12 +4,15 @@ import { MOCK_USER } from "../mock-data";
 /**
  * Tests E2E — Authentification.
  *
- * Stratégie d'ouverture de la modale :
- *   On navigue vers /?connexion=1 pour déclencher le useEffect Navbar qui appelle
- *   setAuthModalOpen(true) AVANT router.replace("/"). waitForLoadState("networkidle")
- *   garantit que React a terminé l'hydratation et les effets. On ne peut pas utiliser
- *   waitForURL car router.replace sur la même route (sans rechargement) ne produit pas
- *   d'événement navigation détectable par Playwright.
+ * Stratégie d'attente de l'hydratation React :
+ *   waitForLoadState("networkidle") attend que toutes les requêtes réseau soient
+ *   terminées (500 ms de silence). À ce point React a exécuté ses useEffect et
+ *   tous les onClick sont attachés. On clique ensuite sur le bouton Connexion.
+ *
+ *   NB : page.route() fulfille les requêtes avant que l'événement response ne soit
+ *   émis → waitForResponse() ne fonctionne pas. L'approche /?connexion=1 ne fonctionne
+ *   pas non plus car router.replace sur le même pathname ne produit pas d'événement
+ *   navigation détectable. Le clic bouton est la seule voie fiable.
  */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
@@ -26,13 +29,10 @@ async function mockBaseRoutes(page: Page) {
 
 async function openLoginModal(page: Page) {
   await mockBaseRoutes(page);
-  // /?connexion=1 déclenche le useEffect Navbar (setAuthModalOpen(true) appelé avant
-  // router.replace). networkidle garantit que React a terminé l'hydratation et les
-  // effets. On ne peut pas attendre le changement d'URL : router.replace sur la même
-  // route sans rechargement ne produit pas d'événement navigation détectable.
-  await page.goto("/?connexion=1");
+  await page.goto("/");
   await page.waitForLoadState("networkidle");
-  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15000 });
+  await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
+  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 10000 });
 }
 
 async function openRegisterModal(page: Page) {
