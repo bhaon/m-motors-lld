@@ -11,7 +11,7 @@ import { MOCK_USER } from "../mock-data";
  * forcer la compilation JIT de V8 sur le bundle React (Navbar + AuthModal).
  * openLoginModal utilise `/?connexion=1` : la Navbar ouvre la modale sans clic.
  * (Un `router.replace` après ouverture remontait la page et réinitialisait l'état — corrigé
- * dans Navbar avec `history.replaceState` + strip différé d'un tick.)
+ * dans Navbar avec `history.replaceState`, reprise via `sessionStorage` si remontée Next).
  */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
@@ -51,14 +51,14 @@ test.beforeEach(async ({ page }) => {
 });
 
 /**
- * Ouvre la modale de connexion via le deeplink `/?connexion=1` (voir Navbar).
- * Évite la course réseau / hydratation : un clic sur « Connexion » peut arriver avant
- * que React n’ait attaché le handler alors que `networkidle` est déjà passé (CI, bundle prod).
+ * Ouvre la modale de connexion via `/?connexion=1` (Navbar + sessionStorage si remontée).
  */
 async function openLoginModal(page: Page) {
-  await page.goto("/?connexion=1");
-  await page.waitForLoadState("domcontentloaded");
-  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 20_000 });
+  await page.goto("/?connexion=1", { waitUntil: "load", timeout: 60_000 });
+  await expect(page.getByRole("dialog", { name: /accès à votre espace client/i })).toBeVisible({
+    timeout: 25_000,
+  });
+  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 10_000 });
 }
 
 async function openRegisterModal(page: Page) {

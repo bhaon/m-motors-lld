@@ -1,6 +1,6 @@
  "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import AuthModal from "@/components/AuthModal";
@@ -35,6 +35,33 @@ function stripUrlSearchParam(param: string): void {
   url.searchParams.delete(param);
   const next = `${url.pathname}${url.search}${url.hash}` || "/";
   window.history.replaceState(window.history.state, "", next);
+}
+
+/** Clé sessionStorage : survit à une remontée client après strip de l’URL (Next / historique). */
+const AUTH_DEEPLINK_RESUME_KEY = "m-motors-auth-deeplink-resume";
+
+type AuthDeeplinkResume = "login" | "register" | "profile";
+
+/**
+ * Enregistre l’intention d’ouverture avant de retirer le paramètre d’URL, puis efface la clé
+ * après un délai si aucune remontée n’a consommé la valeur (navigation « normale »).
+ */
+function persistDeeplinkForPossibleRemount(intent: AuthDeeplinkIntent, paramToStrip: string): void {
+  window.setTimeout(() => {
+    try {
+      sessionStorage.setItem(AUTH_DEEPLINK_RESUME_KEY, intent);
+    } catch {
+      /* navigation privée / quota */
+    }
+    stripUrlSearchParam(paramToStrip);
+    window.setTimeout(() => {
+      try {
+        sessionStorage.removeItem(AUTH_DEEPLINK_RESUME_KEY);
+      } catch {
+        /* ignore */
+      }
+    }, 500);
+  }, 0);
 }
 
 /**
@@ -236,9 +263,37 @@ export default function Navbar() {
 
   /**
    * Ouvre les modales depuis l’URL (`/?connexion=1`, `/?inscription=1`, `/?profil=1`).
+   * useLayoutEffect : ouverture avant premier paint (E2E / utilisateur). Après strip d’URL,
+   * une remontée Next peut réinitialiser l’état : on relit sessionStorage au montage.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
+
+    let resume: AuthDeeplinkResume | null = null;
+    try {
+      const raw = sessionStorage.getItem(AUTH_DEEPLINK_RESUME_KEY);
+      if (raw === "login" || raw === "register" || raw === "profile") resume = raw;
+    } catch {
+      /* ignore */
+    }
+    if (resume) {
+      try {
+        sessionStorage.removeItem(AUTH_DEEPLINK_RESUME_KEY);
+      } catch {
+        /* ignore */
+      }
+      if (resume === "login") {
+        setAuthModalTab("login");
+        setAuthModalOpen(true);
+      } else if (resume === "register") {
+        setAuthModalTab("register");
+        setAuthModalOpen(true);
+      } else {
+        setProfileModalOpen(true);
+      }
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const c = params.get("connexion");
     const i = params.get("inscription");
@@ -246,14 +301,14 @@ export default function Navbar() {
     if (c === "1") {
       setAuthModalTab("login");
       setAuthModalOpen(true);
-      window.setTimeout(() => stripUrlSearchParam("connexion"), 0);
+      persistDeeplinkForPossibleRemount("login", "connexion");
     } else if (i === "1") {
       setAuthModalTab("register");
       setAuthModalOpen(true);
-      window.setTimeout(() => stripUrlSearchParam("inscription"), 0);
+      persistDeeplinkForPossibleRemount("register", "inscription");
     } else if (p === "1") {
       setProfileModalOpen(true);
-      window.setTimeout(() => stripUrlSearchParam("profil"), 0);
+      persistDeeplinkForPossibleRemount("profile", "profil");
     }
   }, []);
 
