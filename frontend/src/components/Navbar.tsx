@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import AuthModal from "@/components/AuthModal";
 import ProfileModal from "@/components/ProfileModal";
@@ -23,6 +22,19 @@ function resolveLogoutUrl(): string {
   const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
   const base = pub ? pub.replace(/\/$/, "") : "";
   return base ? `${base}/api/v1/auth/logout` : "/api/v1/auth/logout";
+}
+
+/**
+ * Retire un paramètre de la query sans `router.replace` : une navigation App Router
+ * peut remonter la page et réinitialiser l'état client (ex. modale auth déjà ouverte).
+ */
+function stripUrlSearchParam(param: string): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(param)) return;
+  url.searchParams.delete(param);
+  const next = `${url.pathname}${url.search}${url.hash}` || "/";
+  window.history.replaceState(window.history.state, "", next);
 }
 
 /**
@@ -151,7 +163,6 @@ function DossierIcon({ size = 16 }: { size?: number }) {
 const GESTIONNAIRE_ROLES = new Set(["gestionnaire", "superviseur", "admin"]);
 
 export default function Navbar() {
-  const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [initials, setInitials] = useState<string>("U");
   const [role, setRole] = useState<string | null>(null);
@@ -235,16 +246,16 @@ export default function Navbar() {
     if (c === "1") {
       setAuthModalTab("login");
       setAuthModalOpen(true);
-      router.replace("/", { scroll: false });
+      window.setTimeout(() => stripUrlSearchParam("connexion"), 0);
     } else if (i === "1") {
       setAuthModalTab("register");
       setAuthModalOpen(true);
-      router.replace("/", { scroll: false });
+      window.setTimeout(() => stripUrlSearchParam("inscription"), 0);
     } else if (p === "1") {
       setProfileModalOpen(true);
-      router.replace("/", { scroll: false });
+      window.setTimeout(() => stripUrlSearchParam("profil"), 0);
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     /**

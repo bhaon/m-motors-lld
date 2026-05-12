@@ -9,8 +9,9 @@ import { MOCK_USER } from "../mock-data";
  *
  * global-setup.ts effectue un warmup HTTP (`/?connexion=1`) avant les tests pour
  * forcer la compilation JIT de V8 sur le bundle React (Navbar + AuthModal).
- * openLoginModal utilise le deeplink plutôt qu'un clic : évite la course où
- * networkidle est atteint avant l'hydratation et le handler « Connexion ».
+ * openLoginModal utilise `/?connexion=1` : la Navbar ouvre la modale sans clic.
+ * (Un `router.replace` après ouverture remontait la page et réinitialisait l'état — corrigé
+ * dans Navbar avec `history.replaceState` + strip différé d'un tick.)
  */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
