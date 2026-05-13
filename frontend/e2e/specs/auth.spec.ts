@@ -20,15 +20,20 @@ test.beforeEach(async ({ page }) => {
 /**
  * Ouvre la modale de connexion.
  *
- * waitUntil:"load" est le seul signal fiable que les scripts defer sont exécutés
- * (V8 a compilé le bundle, React a terminé hydrateRoot, les onClick sont attachés).
- * Après cet événement, un clic sur le bouton Connexion ouvre la modale de manière
- * synchrone via le handler React.
+ * Pourquoi waitUntil:"networkidle" et pas "load" ?
+ * En production Next.js, la Navbar peut être dans un chunk JS chargé lazily.
+ * Le SSR génère l'HTML du bouton Connexion, mais le code React (onClick) n'est
+ * attaché qu'après l'exécution du chunk. waitUntil:"load" peut se déclencher
+ * AVANT ce chunk → clic sans effet (handler absent).
+ *
+ * waitUntil:"networkidle" est fiable car le useEffect checkAuthStatus (→ auth/me)
+ * ne peut tourner qu'APRÈS que la Navbar soit complètement hydratée. Quand
+ * networkidle se déclenche, tous les chunks sont chargés et les onClick sont attachés.
  */
 async function openLoginModal(page: Page) {
-  await page.goto("/", { waitUntil: "load", timeout: 120_000 });
+  await page.goto("/", { waitUntil: "networkidle", timeout: 120_000 });
   await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
-  await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15_000 });
 }
 
