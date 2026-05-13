@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "../fixtures";
+import { test, expect, type Page } from "@playwright/test";
 import { MOCK_USER, MOCK_DOSSIERS } from "../mock-data";
 
 /**

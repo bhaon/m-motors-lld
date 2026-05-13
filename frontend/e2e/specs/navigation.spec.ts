@@ -1,4 +1,4 @@
-import { test, expect } from "../fixtures";
+import { test, expect } from "@playwright/test";
 
 /**
  * Tests E2E — Navigation globale (Navbar, pages statiques, responsive).
