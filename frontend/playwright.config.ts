@@ -48,7 +48,7 @@ export default defineConfig({
     command: process.env.CI
       ? "PORT=3000 node .next/standalone/server.js"
       : "npm run dev",
-    url: "http://localhost:3000/healthz",
+    url: "http://localhost:3000/",
     timeout: 180_000,
     reuseExistingServer: !process.env.CI,
     env: {

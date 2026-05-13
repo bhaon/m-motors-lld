@@ -52,7 +52,7 @@ test.describe("Catalogue véhicules", () => {
   test("ferme la modale avec le bouton Fermer", async ({ page }) => {
     await page.getByRole("button", { name: /Peugeot 208/i }).click();
     await expect(page.locator(".modal-panel")).toBeVisible({ timeout: 5000 });
-    await page.getByLabel("Fermer la modale").click();
+    await page.locator(".modal-panel").getByLabel("Fermer").click();
     await expect(page.locator(".modal-panel")).not.toBeVisible({ timeout: 3000 });
   });
 
