@@ -26,29 +26,6 @@ const UNAUTHENTICATED = JSON.stringify({ detail: "Non authentifié" });
 /** Aligné sur `Navbar.tsx` — évite qu’un résidu de session fasse rater le deeplink `?connexion=1`. */
 const AUTH_DEEPLINK_RESUME_STORAGE_KEY = "m-motors-auth-deeplink-resume";
 
-// Warmup Chromium V8 avant tous les tests auth.
-// auth.spec.ts s'exécute en premier (ordre alphabétique) → JIT froid sur le runner.
-// Ce beforeAll charge `/?connexion=1` une fois pour compiler Navbar + AuthModal,
-// en complément du global-setup.
-test.beforeAll(async ({ browser }) => {
-  const warmupPage = await browser.newPage();
-  try {
-    await warmupPage.route("**/api/v1/vehicules**", (r) =>
-      r.fulfill({ status: 200, contentType: "application/json", body: EMPTY_CATALOGUE })
-    );
-    await warmupPage.route("**/api/v1/auth/me", (r) =>
-      r.fulfill({ status: 401, contentType: "application/json", body: UNAUTHENTICATED })
-    );
-    await warmupPage.goto("http://localhost:3000/?connexion=1", {
-      waitUntil: "networkidle",
-      timeout: 60_000,
-    });
-  } catch {
-    // Non-bloquant : les tests tournent quand même, juste potentiellement plus lents
-  } finally {
-    await warmupPage.close();
-  }
-});
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/vehicules**", (r) =>

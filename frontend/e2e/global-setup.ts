@@ -5,7 +5,7 @@
  *
  * Les tests individuels peuvent surcharger le comportement via page.route().
  */
-import { createServer, get as httpGet, IncomingMessage, ServerResponse } from "http";
+import { createServer, IncomingMessage, ServerResponse } from "http";
 import { MOCK_VEHICLES, MOCK_MARQUES, MOCK_LLD_CATALOG } from "./mock-data";
 
 const MOCK_PORT = 8001;
@@ -77,20 +77,6 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   res.end(JSON.stringify({ detail: "Not found" }));
 }
 
-/** Pré-charge l'accueil avec `?connexion=1` pour forcer la compilation JIT de V8
- *  (Navbar + AuthModal) avant les tests. Sans ça, le premier scénario auth peut
- *  rester lent ou fragile sur un runner CI cold. */
-function warmupNextServer(): Promise<void> {
-  return new Promise((resolve) => {
-    const r = httpGet("http://localhost:3000/?connexion=1", (res) => {
-      res.resume();
-      res.on("end", resolve);
-    });
-    r.on("error", resolve);
-    r.setTimeout(30_000, () => { r.destroy(); resolve(); });
-  });
-}
-
 export default async function globalSetup(): Promise<void> {
   const server = createServer(handleRequest);
 
@@ -103,9 +89,4 @@ export default async function globalSetup(): Promise<void> {
   (global as Record<string, unknown>).__MOCK_API_SERVER__ = server;
 
   console.log(`[mock-api] Serveur mock démarré sur http://localhost:${MOCK_PORT}`);
-
-  // Warmup : force V8 à compiler le bundle Next.js avant le premier test
-  console.log("[mock-api] Warmup Next.js server (JIT compilation)...");
-  await warmupNextServer();
-  console.log("[mock-api] Warmup terminé.");
 }
