@@ -1,12 +1,54 @@
 import { test, expect, type Page } from "../fixtures";
 import { MOCK_USER } from "../mock-data";
 
-/** Timeout généreux : compilation V8 froide en CI peut prendre 20–40 s. */
-test.setTimeout(180_000);
+/** CI : openLoginModal peut dépasser 30 s (navigation complète + réseau + modale). */
+test.setTimeout(120_000);
+
+/**
+ * Tests E2E — Authentification.
+ *
+ * Les routes de base (vehicules, auth/me) sont configurées en test.beforeEach
+ * comme dans navigation.spec.ts (pattern éprouvé qui passe toujours).
+ *
+ * global-setup.ts effectue un warmup HTTP (`/?connexion=1`) avant les tests pour
+ * forcer la compilation JIT de V8 sur le bundle React (Navbar + AuthModal).
+ * openLoginModal charge d’abord `/`, nettoie sessionStorage, puis force un chargement
+ * complet vers `/?connexion=1` via `location.assign` : un second `page.goto` seul peut
+ * rester en navigation client Next sans remonter la Navbar → le `useLayoutEffect` deeplink
+ * ne se rejoue pas.
+ * (Un `router.replace` après ouverture remontait la page et réinitialisait l'état — corrigé
+ * dans Navbar avec `history.replaceState`, reprise via `sessionStorage` si remontée Next).
+ */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
 const UNAUTHENTICATED = JSON.stringify({ detail: "Non authentifié" });
 
+/** Aligné sur `Navbar.tsx` — évite qu’un résidu de session fasse rater le deeplink `?connexion=1`. */
+const AUTH_DEEPLINK_RESUME_STORAGE_KEY = "m-motors-auth-deeplink-resume";
+
+// Warmup Chromium V8 avant tous les tests auth.
+// auth.spec.ts s'exécute en premier (ordre alphabétique) → JIT froid sur le runner.
+// Ce beforeAll charge `/?connexion=1` une fois pour compiler Navbar + AuthModal,
+// en complément du global-setup.
+test.beforeAll(async ({ browser }) => {
+  const warmupPage = await browser.newPage();
+  try {
+    await warmupPage.route("**/api/v1/vehicules**", (r) =>
+      r.fulfill({ status: 200, contentType: "application/json", body: EMPTY_CATALOGUE })
+    );
+    await warmupPage.route("**/api/v1/auth/me", (r) =>
+      r.fulfill({ status: 401, contentType: "application/json", body: UNAUTHENTICATED })
+    );
+    await warmupPage.goto("http://localhost:3000/?connexion=1", {
+      waitUntil: "networkidle",
+      timeout: 60_000,
+    });
+  } catch {
+    // Non-bloquant : les tests tournent quand même, juste potentiellement plus lents
+  } finally {
+    await warmupPage.close();
+  }
+});
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/vehicules**", (r) =>
@@ -18,22 +60,25 @@ test.beforeEach(async ({ page }) => {
 });
 
 /**
- * Ouvre la modale de connexion.
- *
- * Pourquoi waitUntil:"networkidle" et pas "load" ?
- * En production Next.js, la Navbar peut être dans un chunk JS chargé lazily.
- * Le SSR génère l'HTML du bouton Connexion, mais le code React (onClick) n'est
- * attaché qu'après l'exécution du chunk. waitUntil:"load" peut se déclencher
- * AVANT ce chunk → clic sans effet (handler absent).
- *
- * waitUntil:"networkidle" est fiable car le useEffect checkAuthStatus (→ auth/me)
- * ne peut tourner qu'APRÈS que la Navbar soit complètement hydratée. Quand
- * networkidle se déclenche, tous les chunks sont chargés et les onClick sont attachés.
+ * Ouvre la modale de connexion via `/?connexion=1` (Navbar + sessionStorage si remontée).
+ * `location.assign` après `/` force un document complet (pas seulement une transition client),
+ * sinon le `useLayoutEffect` deeplink (`[]`) ne se réexécute pas.
  */
 async function openLoginModal(page: Page) {
-  await page.goto("/", { waitUntil: "networkidle", timeout: 120_000 });
-  await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
-  await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 30_000 });
+  await page.goto("/", { waitUntil: "load", timeout: 60_000 });
+  await page.evaluate((key) => {
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+    const next = new URL(window.location.origin);
+    next.searchParams.set("connexion", "1");
+    window.location.assign(next.toString());
+  }, AUTH_DEEPLINK_RESUME_STORAGE_KEY);
+  await page.waitForURL(/\?connexion=1/, { timeout: 60_000 });
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 45_000 });
   await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15_000 });
 }
 
