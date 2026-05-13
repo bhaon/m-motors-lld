@@ -214,7 +214,10 @@ test.describe("Modale d'inscription", () => {
 
 test.describe("État authentifié dans la Navbar", () => {
   test("affiche le menu utilisateur quand connecté", async ({ page }) => {
-    // Override du beforeEach : auth/me renvoie MOCK_USER → isAuthenticated = true
+    // Supprime le handler auth/me → 401 du beforeEach avant d'en ajouter un autre.
+    // page.route() empile les handlers (dernier ajouté = priorité haute) mais
+    // page.unroute() garantit qu'il n'y a qu'un seul handler sans ambiguïté.
+    await page.unroute("**/api/v1/auth/me");
     await page.route("**/api/v1/auth/me", (r) =>
       r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(MOCK_USER) })
     );
