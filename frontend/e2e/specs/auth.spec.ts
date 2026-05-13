@@ -7,8 +7,6 @@ test.setTimeout(180_000);
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
 const UNAUTHENTICATED = JSON.stringify({ detail: "Non authentifié" });
 
-/** Doit correspondre à AUTH_DEEPLINK_RESUME_KEY dans Navbar.tsx. */
-const AUTH_DEEPLINK_RESUME_STORAGE_KEY = "m-motors-auth-deeplink-resume";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/vehicules**", (r) =>
@@ -20,31 +18,16 @@ test.beforeEach(async ({ page }) => {
 });
 
 /**
- * Ouvre la modale de connexion via le mécanisme sessionStorage de la Navbar.
+ * Ouvre la modale de connexion.
  *
- * Pourquoi pas /?connexion=1 directement ?
- * En CI (production standalone), Next.js App Router patche history.replaceState.
- * persistDeeplinkForPossibleRemount appelle replaceState → le router Next.js
- * détecte le changement URL et initie une soft-navigation vers "/" avant que
- * useLayoutEffect ait pu définir authModalOpen=true → modal jamais ouverte.
- *
- * Solution : prépositonner la clé sessionStorage que useLayoutEffect lit au montage.
- * La Navbar ouvre la modale via cette clé lors du rechargement, indépendamment
- * de tout changement d’URL.
+ * waitUntil:"load" est le seul signal fiable que les scripts defer sont exécutés
+ * (V8 a compilé le bundle, React a terminé hydrateRoot, les onClick sont attachés).
+ * Après cet événement, un clic sur le bouton Connexion ouvre la modale de manière
+ * synchrone via le handler React.
  */
 async function openLoginModal(page: Page) {
-  // 1. Première navigation : compile le bundle JS dans le cache HTTP (V8 froid → chaud)
   await page.goto("/", { waitUntil: "load", timeout: 120_000 });
-
-  // 2. Préparer sessionStorage : useLayoutEffect lira cette clé au prochain montage
-  await page.evaluate((key) => {
-    sessionStorage.setItem(key, "login");
-  }, AUTH_DEEPLINK_RESUME_STORAGE_KEY);
-
-  // 3. Rechargement : bundle servi depuis cache HTTP (V8 chaud), Navbar monte,
-  //    useLayoutEffect lit "login" → setAuthModalOpen(true) avant premier paint
-  await page.reload({ waitUntil: "load", timeout: 60_000 });
-
+  await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
   await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15_000 });
 }
