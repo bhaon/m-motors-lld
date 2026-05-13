@@ -161,7 +161,8 @@ test.describe("Modale d'inscription", () => {
       r.fulfill({
         status: 201,
         contentType: "application/json",
-        body: JSON.stringify({ message: "Compte créé. Vérifiez votre email." }),
+        // Message aligné sur la réponse réelle du backend
+        body: JSON.stringify({ message: "Inscription reussie. Un email de confirmation vous a ete envoye pour activer votre compte." }),
       })
     );
     await page.getByPlaceholder("Email").fill("nouveau@example.com");
@@ -176,10 +177,8 @@ test.describe("Modale d'inscription", () => {
       await checkboxes.nth(i).check();
     }
     await page.getByRole("button", { name: "S'inscrire" }).click();
-    // "Compte créé" n'apparaît que dans le message de succès de l'inscription —
-    // le regex large /inscription/i matchait aussi le bouton onglet et le bouton
-    // "Inscription..." (loading), ce qui causait un "resolved to more than one element".
-    await expect(page.getByText(/Compte créé|Inscription réussie/i)).toBeVisible({ timeout: 5000 });
+    // "email de confirmation" n'apparaît que dans ce message de succès
+    await expect(page.getByText(/email de confirmation/i)).toBeVisible({ timeout: 5000 });
   });
 
   test("affiche une erreur si l'email est déjà utilisé", async ({ page }) => {
