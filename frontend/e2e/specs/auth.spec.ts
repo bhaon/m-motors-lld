@@ -1,31 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 import { MOCK_USER } from "../mock-data";
 
-/** CI : openLoginModal peut dépasser 30 s (navigation complète + réseau + modale). */
 test.setTimeout(120_000);
-
-/**
- * Tests E2E — Authentification.
- *
- * Les routes de base (vehicules, auth/me) sont configurées en test.beforeEach
- * comme dans navigation.spec.ts (pattern éprouvé qui passe toujours).
- *
- * global-setup.ts effectue un warmup HTTP (`/?connexion=1`) avant les tests pour
- * forcer la compilation JIT de V8 sur le bundle React (Navbar + AuthModal).
- * openLoginModal charge d’abord `/`, nettoie sessionStorage, puis force un chargement
- * complet vers `/?connexion=1` via `location.assign` : un second `page.goto` seul peut
- * rester en navigation client Next sans remonter la Navbar → le `useLayoutEffect` deeplink
- * ne se rejoue pas.
- * (Un `router.replace` après ouverture remontait la page et réinitialisait l'état — corrigé
- * dans Navbar avec `history.replaceState`, reprise via `sessionStorage` si remontée Next).
- */
 
 const EMPTY_CATALOGUE = JSON.stringify({ total: 0, items: [] });
 const UNAUTHENTICATED = JSON.stringify({ detail: "Non authentifié" });
-
-/** Aligné sur `Navbar.tsx` — évite qu’un résidu de session fasse rater le deeplink `?connexion=1`. */
-const AUTH_DEEPLINK_RESUME_STORAGE_KEY = "m-motors-auth-deeplink-resume";
-
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/vehicules**", (r) =>
@@ -37,25 +16,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 /**
- * Ouvre la modale de connexion via `/?connexion=1` (Navbar + sessionStorage si remontée).
- * `location.assign` après `/` force un document complet (pas seulement une transition client),
- * sinon le `useLayoutEffect` deeplink (`[]`) ne se réexécute pas.
+ * Ouvre la modale de connexion via le bouton Navbar.
+ * Utilise networkidle pour garantir que React est hydraté avant le clic.
  */
 async function openLoginModal(page: Page) {
-  await page.goto("/", { waitUntil: "load", timeout: 60_000 });
-  await page.evaluate((key) => {
-    try {
-      sessionStorage.removeItem(key);
-    } catch {
-      /* ignore */
-    }
-    const next = new URL(window.location.origin);
-    next.searchParams.set("connexion", "1");
-    window.location.assign(next.toString());
-  }, AUTH_DEEPLINK_RESUME_STORAGE_KEY);
-  await page.waitForURL(/\?connexion=1/, { timeout: 60_000 });
-  await page.waitForLoadState("networkidle");
-  await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 45_000 });
+  await page.goto("/", { waitUntil: "networkidle", timeout: 60_000 });
+  await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
+  await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15_000 });
 }
 
