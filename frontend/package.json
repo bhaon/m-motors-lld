@@ -11,7 +11,10 @@
     "format:check": "prettier --check .",
     "test": "jest",
     "test:ci": "jest --ci --coverage --coverageReporters=lcov --coverageReporters=text",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "next": "15.5.15",
@@ -29,6 +32,7 @@
   },
   "devDependencies": {
     "@happy-dom/jest-environment": "^20.0.0",
+    "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/jest": "^30.0.0",

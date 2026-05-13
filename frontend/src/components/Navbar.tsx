@@ -1,8 +1,7 @@
  "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import AuthModal from "@/components/AuthModal";
 import ProfileModal from "@/components/ProfileModal";
@@ -23,6 +22,46 @@ function resolveLogoutUrl(): string {
   const pub = process.env.NEXT_PUBLIC_API_URL?.trim();
   const base = pub ? pub.replace(/\/$/, "") : "";
   return base ? `${base}/api/v1/auth/logout` : "/api/v1/auth/logout";
+}
+
+/**
+ * Retire un paramètre de la query sans `router.replace` : une navigation App Router
+ * peut remonter la page et réinitialiser l'état client (ex. modale auth déjà ouverte).
+ */
+function stripUrlSearchParam(param: string): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(param)) return;
+  url.searchParams.delete(param);
+  const next = `${url.pathname}${url.search}${url.hash}` || "/";
+  window.history.replaceState(window.history.state, "", next);
+}
+
+/** Clé sessionStorage : survit à une remontée client après strip de l’URL (Next / historique). */
+const AUTH_DEEPLINK_RESUME_KEY = "m-motors-auth-deeplink-resume";
+
+type AuthDeeplinkResume = "login" | "register" | "profile";
+
+/**
+ * Enregistre l’intention d’ouverture avant de retirer le paramètre d’URL, puis efface la clé
+ * après un délai si aucune remontée n’a consommé la valeur (navigation « normale »).
+ */
+function persistDeeplinkForPossibleRemount(intent: AuthDeeplinkResume, paramToStrip: string): void {
+  window.setTimeout(() => {
+    try {
+      sessionStorage.setItem(AUTH_DEEPLINK_RESUME_KEY, intent);
+    } catch {
+      /* navigation privée / quota */
+    }
+    stripUrlSearchParam(paramToStrip);
+    window.setTimeout(() => {
+      try {
+        sessionStorage.removeItem(AUTH_DEEPLINK_RESUME_KEY);
+      } catch {
+        /* ignore */
+      }
+    }, 500);
+  }, 0);
 }
 
 /**
@@ -151,7 +190,6 @@ function DossierIcon({ size = 16 }: { size?: number }) {
 const GESTIONNAIRE_ROLES = new Set(["gestionnaire", "superviseur", "admin"]);
 
 export default function Navbar() {
-  const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [initials, setInitials] = useState<string>("U");
   const [role, setRole] = useState<string | null>(null);
@@ -225,9 +263,37 @@ export default function Navbar() {
 
   /**
    * Ouvre les modales depuis l’URL (`/?connexion=1`, `/?inscription=1`, `/?profil=1`).
+   * useLayoutEffect : ouverture avant premier paint (E2E / utilisateur). Après strip d’URL,
+   * une remontée Next peut réinitialiser l’état : on relit sessionStorage au montage.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
+
+    let resume: AuthDeeplinkResume | null = null;
+    try {
+      const raw = sessionStorage.getItem(AUTH_DEEPLINK_RESUME_KEY);
+      if (raw === "login" || raw === "register" || raw === "profile") resume = raw;
+    } catch {
+      /* ignore */
+    }
+    if (resume) {
+      try {
+        sessionStorage.removeItem(AUTH_DEEPLINK_RESUME_KEY);
+      } catch {
+        /* ignore */
+      }
+      if (resume === "login") {
+        setAuthModalTab("login");
+        setAuthModalOpen(true);
+      } else if (resume === "register") {
+        setAuthModalTab("register");
+        setAuthModalOpen(true);
+      } else {
+        setProfileModalOpen(true);
+      }
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const c = params.get("connexion");
     const i = params.get("inscription");
@@ -235,16 +301,16 @@ export default function Navbar() {
     if (c === "1") {
       setAuthModalTab("login");
       setAuthModalOpen(true);
-      router.replace("/", { scroll: false });
+      persistDeeplinkForPossibleRemount("login", "connexion");
     } else if (i === "1") {
       setAuthModalTab("register");
       setAuthModalOpen(true);
-      router.replace("/", { scroll: false });
+      persistDeeplinkForPossibleRemount("register", "inscription");
     } else if (p === "1") {
       setProfileModalOpen(true);
-      router.replace("/", { scroll: false });
+      persistDeeplinkForPossibleRemount("profile", "profil");
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     /**

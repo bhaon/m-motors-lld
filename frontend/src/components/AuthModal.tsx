@@ -241,6 +241,7 @@ export default function AuthModal({
     >
       <div
         role="dialog"
+        data-testid="auth-modal-dialog"
         aria-modal="true"
         aria-labelledby="auth-modal-title"
         style={{
