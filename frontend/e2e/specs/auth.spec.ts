@@ -176,7 +176,10 @@ test.describe("Modale d'inscription", () => {
       await checkboxes.nth(i).check();
     }
     await page.getByRole("button", { name: "S'inscrire" }).click();
-    await expect(page.getByText(/vérifi|email|créé|succès|inscription/i)).toBeVisible({ timeout: 5000 });
+    // "Compte créé" n'apparaît que dans le message de succès de l'inscription —
+    // le regex large /inscription/i matchait aussi le bouton onglet et le bouton
+    // "Inscription..." (loading), ce qui causait un "resolved to more than one element".
+    await expect(page.getByText(/Compte créé|Inscription réussie/i)).toBeVisible({ timeout: 5000 });
   });
 
   test("affiche une erreur si l'email est déjà utilisé", async ({ page }) => {
