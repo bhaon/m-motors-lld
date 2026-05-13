@@ -15,19 +15,11 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-/**
- * Ouvre la modale de connexion via le bouton Navbar.
- * toPass() reessaie le clic jusqu'à ce que la modale apparaisse :
- * couvre les cas où React n'est pas encore hydraté au moment du clic
- * (CI production — serveur froid, hydratation différée).
- */
 async function openLoginModal(page: Page) {
-  await page.goto("/", { waitUntil: "load", timeout: 60_000 });
-  await expect(async () => {
-    await page.getByRole("button", { name: "Connexion" }).click({ timeout: 5_000 });
-    await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 5_000 });
-  }).toPass({ timeout: 45_000 });
-  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15_000 });
+  await page.goto("/", { waitUntil: "networkidle", timeout: 60_000 });
+  await page.getByRole("button", { name: "Connexion" }).click();
+  await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 10_000 });
 }
 
 async function openRegisterModal(page: Page) {

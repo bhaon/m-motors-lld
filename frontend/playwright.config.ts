@@ -46,7 +46,7 @@ export default defineConfig({
      * En local : next dev pour un démarrage plus rapide.
      */
     command: process.env.CI
-      ? "PORT=3000 node .next/standalone/server.js"
+      ? "cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public 2>/dev/null; PORT=3000 node .next/standalone/server.js"
       : "npm run dev",
     url: "http://localhost:3000/",
     timeout: 180_000,
