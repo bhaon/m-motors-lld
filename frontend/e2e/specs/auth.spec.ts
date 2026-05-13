@@ -223,8 +223,10 @@ test.describe("État authentifié dans la Navbar", () => {
     );
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    // Attend que checkAuthStatus ait reçu MOCK_USER → isAuthenticated = true
-    await expect(page.getByLabel("Ouvrir le menu utilisateur")).toBeVisible({ timeout: 10000 });
+    // 45 s : cette navigation est la 1re de ce test → cache HTTP vide → V8 compile
+    // le bundle à froid (15–20 s sur runner CI), puis checkAuthStatus doit s'exécuter.
+    // Cohérent avec le timeout utilisé pour auth-modal-dialog dans openLoginModal.
+    await expect(page.getByLabel("Ouvrir le menu utilisateur")).toBeVisible({ timeout: 45_000 });
     await expect(page.locator(".nav-right").getByRole("button", { name: "Connexion" })).not.toBeVisible();
   });
 });
