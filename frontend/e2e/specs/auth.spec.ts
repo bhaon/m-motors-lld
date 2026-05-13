@@ -17,11 +17,17 @@ test.beforeEach(async ({ page }) => {
 
 /**
  * Ouvre la modale de connexion via le bouton Navbar.
- * Utilise networkidle pour garantir que React est hydraté avant le clic.
+ * Attend la réponse auth/me comme signal que React est hydraté
+ * (useEffect ne se lance qu'après l'hydratation complète du composant).
  */
 async function openLoginModal(page: Page) {
-  await page.goto("/", { waitUntil: "networkidle", timeout: 60_000 });
-  await page.locator(".nav-right").getByRole("button", { name: "Connexion" }).click();
+  const authReady = page.waitForResponse(
+    (r) => r.url().includes("/api/v1/auth/me"),
+    { timeout: 30_000 }
+  );
+  await page.goto("/", { waitUntil: "load", timeout: 60_000 });
+  await authReady;
+  await page.getByRole("button", { name: "Connexion" }).click();
   await expect(page.getByTestId("auth-modal-dialog")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByPlaceholder("Email")).toBeVisible({ timeout: 15_000 });
 }
