@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "../fixtures";
 import { MOCK_USER } from "../mock-data";
 
 /** CI : openLoginModal peut dépasser 30 s (navigation complète + réseau + modale). */
