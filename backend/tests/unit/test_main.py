@@ -28,3 +28,12 @@ def test_readyz_ok(client: TestClient) -> None:
     r = client.get("/api/readyz")
     assert r.status_code == 200
     assert r.json()["ready"] is True
+
+
+def test_metrics_prometheus(client: TestClient) -> None:
+    """GET /metrics expose les séries Prometheus (US-08-03)."""
+    r = client.get("/metrics")
+    assert r.status_code == 200
+    body = r.text
+    assert "http_requests_total" in body
+    assert "http_request_duration" in body

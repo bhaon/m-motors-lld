@@ -14,10 +14,11 @@ loki:
   persistence:
     enabled: true
     storageClassName: local-path
-    size: 10Gi
+    size: 40Gi
   config:
     limits_config:
-      retention_period: 168h      # 7 jours de logs
+      # US-08-03 : 90 jours de rétention (DoD). Ajuster la taille PVC si le volume grossit vite.
+      retention_period: 2160h
       ingestion_rate_mb: 4
       ingestion_burst_size_mb: 8
   resources:
