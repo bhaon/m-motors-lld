@@ -57,7 +57,7 @@ Les **Ingress** Traefik (`jaeger-ingress.yaml`) et les **Certificate** cert-mana
 - **UI en HTTPS** (après enregistrement DNS des noms ci-dessous vers l’Ingress) :
   - dev : `https://jaeger-dev.netdevops.fr`
   - staging : `https://jaeger-staging.netdevops.fr` (BasicAuth `staging-auth`, comme l’app)
-  - production : `https://jaeger.netdevops.fr` (en-têtes + rate limit alignés sur l’app)
+  - production : `https://jaeger.netdevops.fr` (rate limit + compress, comme l’Ingress app ; dépannage 502 : `k8s/infra/monitoring/README.md`)
 
 - **UI en local** (port-forward, sans DNS) :
 

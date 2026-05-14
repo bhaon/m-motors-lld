@@ -354,11 +354,13 @@ jobs:
 
   # ────────────────────────────────────────────────────────────
   # JOB 3 : Tests d'intégration (optionnel, staging uniquement)
+  # PostgreSQL réel ; pytest sur le runner (pas d'image Docker : l'ENTRYPOINT
+  # du backend ne transmet pas les args à pytest et l'image n'inclut pas pytest).
   # ────────────────────────────────────────────────────────────
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
-    needs: build
+    needs: [test-backend]
     if: ${{ inputs.run_integration_tests }}
     services:
       postgres:
@@ -379,22 +381,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
+      - name: Setup Python
+        uses: actions/setup-python@v6
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install backend deps
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run backend integration tests
-        run: |
-          docker run --rm \
-            --network host \
-            -e DATABASE_URL="postgresql://intuser:intpass@localhost:5432/integrationdb" \
-            -e ENVIRONMENT="test" \
-            -e SECRET_KEY="integration-test-key" \
-            ghcr.io/${{ github.repository }}-backend:${{ inputs.image_tag }} \
-            pytest tests/integration/ -v --tb=short
+        working-directory: backend
+        run: pytest tests/integration/ -v --tb=short
+        env:
+          DATABASE_URL: "postgresql://intuser:intpass@localhost:5432/integrationdb"
+          SECRET_KEY: "integration-test-key-only-for-ci"
+          ENVIRONMENT: "test"
+          OTEL_SDK_DISABLED: "true"
 
   # ────────────────────────────────────────────────────────────
   # JOB 4 : Tests E2E Playwright (frontend — toujours activés)

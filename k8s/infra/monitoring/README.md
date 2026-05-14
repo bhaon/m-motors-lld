@@ -23,6 +23,23 @@ kubectl apply -f k8s/infra/monitoring/namespace-and-netpol.yaml
 kubectl apply -k k8s/infra/monitoring
 ```
 
-Prérequis : DNS vers l’Ingress pour les hôtes déclarés dans `jaeger-ingress.yaml`, middlewares Traefik (`staging-auth`, `rate-limit`, etc.) déjà déployés selon `k8s/infra/traefik/traefik-config.yaml`.
+Prérequis : DNS vers l’Ingress pour les hôtes déclarés dans `jaeger-ingress.yaml`, middlewares Traefik (`staging-auth`, `rate-limit`, `compress`, etc.) déjà déployés selon `k8s/infra/traefik/traefik-config.yaml` et **`k8s/infra/production/rate-limit.yaml`** (namespace `production`).
 
 Voir aussi **`k8s/README.MD`** (section Jaeger) et **`docs/monitoring/observabilite-opentelemetry.md`**.
+
+## Dépannage — « Bad Gateway » (502) sur l’UI Jaeger
+
+1. **Backend absent** : l’Ingress pointe vers le Service `jaeger` (port **16686**) dans **`monitoring`**. Vérifier qu’un pod tourne et que le Service a des endpoints.
+
+   ```bash
+   kubectl get pods,svc,endpoints -n monitoring -l app=jaeger
+   kubectl logs -n monitoring -l app=jaeger --tail=50
+   ```
+
+   Si aucun pod : `kubectl apply -k k8s/infra/monitoring` (après `namespace-and-netpol.yaml` si besoin).
+
+2. **Middleware Traefik introuvable** : l’Ingress production Jaeger utilise `production-rate-limit` et `kube-system-compress`. Ils doivent exister (`kubectl get middleware -n production` et `-n kube-system`). Sinon appliquer `k8s/infra/production/rate-limit.yaml` et `k8s/infra/traefik/traefik-config.yaml`.
+
+3. **NetworkPolicy** : le fichier `jaeger-netpol.yaml` doit autoriser le port **16686** depuis le namespace **`kube-system`** (Traefik). Vérifier qu’aucune autre policy ne isole Jaeger de façon contradictoire.
+
+4. **TLS / DNS** : un certificat invalide donne plutôt une erreur navigateur ; un 502 indique en général un problème **Traefik → Service** (points 1–2).

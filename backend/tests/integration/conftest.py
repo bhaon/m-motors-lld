@@ -1,6 +1,10 @@
 """Fixtures et helpers partagés pour les tests d'intégration.
 
 Ces tests tournent contre une vraie base PostgreSQL (DATABASE_URL fourni par CI).
+En CI (``.github/workflows/ci.yaml``), ils s'exécutent avec **pytest sur le runner**
+et le service Postgres du workflow — pas via ``docker run`` sur l'image backend :
+l'image de production démarre toujours Gunicorn (ENTRYPOINT) et n'inclut pas pytest.
+
 Le ``reset_db`` du ``tests/conftest.py`` parent recrée le schéma entre chaque test
 (``drop_all`` / ``create_all``) : ne pas le remplacer par un no-op, sinon les tables
 n'existent jamais sur Postgres (relation "users" does not exist).
