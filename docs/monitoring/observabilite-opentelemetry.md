@@ -1,6 +1,6 @@
 # Observabilité — OpenTelemetry (logs et traces)
 
-Ce document décrit la mise en place d’**OpenTelemetry** sur le monorepo M-Motors (frontend Next.js et backend FastAPI) : objectifs, fichiers concernés, variables d’environnement et usage pour les développeurs.
+Ce document décrit la mise en place d’**OpenTelemetry** sur le monorepo M-Motors (frontend Next.js et backend FastAPI) : objectifs, fichiers concernés, variables d’environnement et usage pour les développeurs. Pour **Prometheus / Grafana / Loki / alertes (US-08-03)**, voir **[us-08-03-observabilite-v1.md](./us-08-03-observabilite-v1.md)**.
 
 ## Objectifs
 
@@ -15,8 +15,9 @@ Ce document décrit la mise en place d’**OpenTelemetry** sur le monorepo M-Mot
 | Fichier | Rôle |
 |---------|------|
 | `backend/app/telemetry.py` | Initialisation OTel : `TracerProvider`, export OTLP ou console en `DEBUG`, instrumentation FastAPI / SQLAlchemy / httpx, corrélation des logs, `LoggerProvider` + handler OTLP pour les logs si la configuration l’autorise (`OTEL_LOGS_EXPORTER`, endpoints). |
-| `backend/app/main.py` | Appel à `configure_opentelemetry(...)` après le montage des routes ; `shutdown_opentelemetry()` en fin de cycle de vie (`lifespan`). |
-| `backend/requirements.txt` | Dépendances `opentelemetry-api`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http`, instrumentations FastAPI / SQLAlchemy / logging / httpx (versions alignées, ex. API/SDK **1.28.2** et instrumentations **0.49b2**). |
+| `backend/app/main.py` | Appel à `configure_opentelemetry(...)` et `configure_prometheus_metrics(...)` ; `shutdown_opentelemetry()` / `shutdown_metrics()` en fin de cycle de vie (`lifespan`). |
+| `backend/app/prometheus_metrics.py` | Métriques HTTP **Prometheus** (`/metrics`) pour Grafana / alertes — complète OTel (traces/logs). |
+| `backend/requirements.txt` | Dépendances `opentelemetry-api`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http`, `prometheus-fastapi-instrumentator`, instrumentations FastAPI / SQLAlchemy / logging / httpx (versions alignées, ex. API/SDK **1.28.2** et instrumentations **0.49b2**). |
 | `backend/tests/conftest.py` | `OTEL_SDK_DISABLED=true` par défaut pour éviter d’instrumenter l’app pendant les tests Pytest. |
 
 ### Comportement

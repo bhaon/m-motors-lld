@@ -7,6 +7,7 @@ from sqlalchemy import text
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.session import engine
+from app.prometheus_metrics import configure_prometheus_metrics, shutdown_metrics
 from app.telemetry import configure_opentelemetry, shutdown_opentelemetry
 
 # Import all models so Alembic / Base.metadata sees them
@@ -28,6 +29,7 @@ async def lifespan(application: FastAPI):
     """
     yield
     shutdown_opentelemetry()
+    shutdown_metrics()
 
 
 application = FastAPI(
@@ -55,6 +57,7 @@ configure_opentelemetry(
     service_name=settings.APP_NAME,
     debug=settings.DEBUG,
 )
+configure_prometheus_metrics(application)
 
 
 @application.get("/api/health", tags=["Health"])

@@ -39,6 +39,8 @@ Le projet est compose de :
 
 Traces et logs (corrélation, export OTLP optionnel) sont décrits dans le guide **[docs/monitoring/observabilite-opentelemetry.md](docs/monitoring/observabilite-opentelemetry.md)** (fichiers touchés, variables d’environnement, usage `logging` / `getLogger`). Avec **docker compose**, l’UI **Jaeger** est disponible sur [http://localhost:16686](http://localhost:16686) pour visualiser les traces (`mmotors-api`, `mmotors-frontend`).
 
+**Métriques Prometheus, Grafana, Loki et alertes (US-08-03)** : **[docs/monitoring/us-08-03-observabilite-v1.md](docs/monitoring/us-08-03-observabilite-v1.md)**.
+
 ## Arborescence utile
 
 ```text
