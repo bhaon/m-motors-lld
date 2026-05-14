@@ -15,12 +15,14 @@ describe("getLogger", () => {
   });
 
   it("n’émet pas de debug en production", () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    // ProcessEnv typé rend NODE_ENV en lecture seule ; cast pour le test.
+    const env = process.env as Record<string, string | undefined>;
+    const prev = env.NODE_ENV;
+    env.NODE_ENV = "production";
     const spy = jest.spyOn(console, "debug").mockImplementation(() => {});
     getLogger("prod").debug("skip");
     expect(spy).not.toHaveBeenCalled();
-    process.env.NODE_ENV = prev;
+    env.NODE_ENV = prev;
     spy.mockRestore();
   });
 });

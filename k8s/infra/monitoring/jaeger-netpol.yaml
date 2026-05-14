@@ -1,12 +1,12 @@
 ---
-# OTLP : autorise les pods applicatifs (labels alignés sur base/deployment.yaml),
-# quel que soit le nom du namespace (dev, staging, production ou autre).
-# Les namespaceSelector par nom « dev/staging/production » excluent les clusters
-# où le label kubernetes.io/metadata.name manque ou le namespace diffère.
+# OTLP : pods applicatifs (component=api / component=web), tous namespaces applicatifs.
+# metadata.namespace: monitoring obligatoire si vous faites kubectl apply -f ce fichier
+# sans kustomize (sinon les policies sont créées dans « default » et Jaeger reste non protégé côté OTLP).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: jaeger-otlp-from-apps
+  namespace: monitoring
   labels:
     app: jaeger
 spec:
@@ -42,6 +42,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: jaeger-ui-from-traefik
+  namespace: monitoring
   labels:
     app: jaeger
 spec:
