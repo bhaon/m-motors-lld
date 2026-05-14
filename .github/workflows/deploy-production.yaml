@@ -15,6 +15,9 @@ on:
       - 'docs/**'
       - '.gitignore'
       - 'LICENSE'
+      - 'k8s/**'
+      - 'docker-compose.yml'
+      - '.github/**'
   workflow_dispatch:
     inputs:
       tag:

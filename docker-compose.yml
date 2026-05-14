@@ -64,6 +64,9 @@ services:
     restart: unless-stopped
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+      # Même binding explicite qu’en K8s (évite OTLP sur localhost uniquement).
+      COLLECTOR_OTLP_GRPC_HOST_PORT: "0.0.0.0:4317"
+      COLLECTOR_OTLP_HTTP_HOST_PORT: "0.0.0.0:4318"
     ports:
       - "16686:16686" # UI : recherche par service (mmotors-api, mmotors-frontend)
       - "4317:4317"   # OTLP gRPC

@@ -63,13 +63,10 @@ spec:
               - 192.168.0.0/16
       ports:
         - port: 443
-    - to:  # Jaeger OTLP (namespace monitoring)
+    - to:  # Jaeger OTLP : monitoring uniquement, port 4318 (sans podSelector : K3s + ClusterIP peut refuser l’egress si podSelector cible le pod Jaeger).
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
-          podSelector:
-            matchLabels:
-              app: jaeger
       ports:
         - port: 4318
           protocol: TCP
@@ -136,13 +133,10 @@ spec:
               - 192.168.0.0/16
       ports:
         - port: 443
-    - to:  # Jaeger OTLP (namespace monitoring)
+    - to:  # Jaeger OTLP : monitoring uniquement, port 4318 (sans podSelector : K3s + ClusterIP peut refuser l’egress si podSelector cible le pod Jaeger).
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
-          podSelector:
-            matchLabels:
-              app: jaeger
       ports:
         - port: 4318
           protocol: TCP
