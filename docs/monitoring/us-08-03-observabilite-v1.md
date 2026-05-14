@@ -182,4 +182,3 @@ kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:909
 | `k8s/infra/monitoring/grafana-dashboard-us08-configmap.yaml` | Dashboard indicateurs clés. |
 | `docs/monitoring/us-08-03-observabilite-v1.md` | Ce document. |
 
-Pour aller plus loin : exporter des **métriques OTel** vers un **OpenTelemetry Collector** puis remote-write Prometheus (hors périmètre V1 documenté ici).

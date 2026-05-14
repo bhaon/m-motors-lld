@@ -41,6 +41,8 @@ Traces et logs (corrélation, export OTLP optionnel) sont décrits dans le guide
 
 **Métriques Prometheus, Grafana, Loki et alertes (US-08-03)** : **[docs/monitoring/us-08-03-observabilite-v1.md](docs/monitoring/us-08-03-observabilite-v1.md)**.
 
+**Workflow de monitoring complet** (synthèse opérationnelle, Markdown + Word) : **[docs/monitoring/workflow-monitoring-complet.md](docs/monitoring/workflow-monitoring-complet.md)** — fichier Word : `docs/monitoring/workflow-monitoring-complet.docx`.
+
 ## Arborescence utile
 
 ```text
