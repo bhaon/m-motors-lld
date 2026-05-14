@@ -17,7 +17,7 @@ k8s/
     ├── dev|staging|production/   # Namespace, quotas, rbac, secrets, hpa, pdb...
     ├── traefik/                  # Config Traefik / middlewares / ingressroutes
     ├── cert-manager/             # ClusterIssuer, certificats
-    └── monitoring/               # Jaeger (OTLP), Prometheus/Loki/alerting/backup
+    └── monitoring/               # Jaeger (manifests), Prometheus/Loki/alerting/backup
 ```
 
 ## Principe de fonctionnement
@@ -68,7 +68,7 @@ kubectl port-forward -n monitoring svc/jaeger 16686:16686
 
 - **Applications** : les overlays **dev** et **staging** injectent `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger.monitoring.svc.cluster.local:4318` et `OTEL_LOGS_EXPORTER=none` sur les pods `backend` et `frontend`. La **production** n’inclut pas ce patch par défaut (traces persistantes / charge : prévoir un backend managé ou dupliquer le patch si besoin).
 
-- **Politiques réseau** : les fichiers `infra/<env>/network-policy.yaml` autorisent l’**egress** vers Jaeger (OTLP) depuis `frontend` et `backend`. Les politiques `jaeger-netpol.yaml` autorisent l’**ingress** OTLP depuis les namespaces `dev`, `staging` et `production`.
+- **Politiques réseau** : les fichiers `infra/<env>/network-policy.yaml` autorisent l’**egress** vers Jaeger (OTLP) depuis `frontend` et `backend`. **`jaeger-netpol.yaml`** autorise l’**ingress** OTLP vers Jaeger depuis tout pod portant le label **`component: api`** ou **`component: web`** (aligné sur les déploiements de la base).
 
 ## Commandes utiles
 

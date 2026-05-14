@@ -37,7 +37,7 @@ Le projet est compose de :
 
 ## Observabilite (OpenTelemetry)
 
-Traces et logs (corrélation, export OTLP optionnel) sont décrits dans le guide **[docs/observabilite-opentelemetry.md](docs/observabilite-opentelemetry.md)** (fichiers touchés, variables d’environnement, usage `logging` / `getLogger`). Avec **docker compose**, l’UI **Jaeger** est disponible sur [http://localhost:16686](http://localhost:16686) pour visualiser les traces (`mmotors-api`, `mmotors-frontend`).
+Traces et logs (corrélation, export OTLP optionnel) sont décrits dans le guide **[docs/monitoring/observabilite-opentelemetry.md](docs/monitoring/observabilite-opentelemetry.md)** (fichiers touchés, variables d’environnement, usage `logging` / `getLogger`). Avec **docker compose**, l’UI **Jaeger** est disponible sur [http://localhost:16686](http://localhost:16686) pour visualiser les traces (`mmotors-api`, `mmotors-frontend`).
 
 ## Arborescence utile
 

@@ -111,9 +111,35 @@ Pour **désactiver** tout export OTel dans le compose (sans retirer Jaeger), vou
 
 ## Jaeger sur Kubernetes
 
-Le déploiement cluster (namespace **`monitoring`**, Service **`jaeger`**, OTLP **`http://jaeger.monitoring.svc.cluster.local:4318`**) est décrit dans **`k8s/README.MD`** (ordre d’application, port-forward UI). Les overlays **dev** et **staging** configurent automatiquement les variables OTel vers ce service ; la **production** ne référence pas ce patch par défaut.
+### Manifests (déploiement des composants)
 
-L’**UI** est exposée via **Ingress Traefik** (TLS cert-manager) sur **`https://jaeger-dev.netdevops.fr`**, **`https://jaeger-staging.netdevops.fr`** (BasicAuth staging) et **`https://jaeger.netdevops.fr`** (production), définies dans **`k8s/infra/monitoring/jaeger-ingress.yaml`**.
+Tous les manifests Jaeger pour le cluster se trouvent sous **`k8s/infra/monitoring/`** (résumé : **`k8s/infra/monitoring/README.md`**).
+
+| Chemin | Contenu |
+|--------|---------|
+| `k8s/infra/monitoring/jaeger.yaml` | `Deployment` + `Service` Jaeger (OTLP + UI). |
+| `k8s/infra/monitoring/jaeger-netpol.yaml` | `NetworkPolicy` (OTLP depuis les pods `component=api` / `component=web` ; UI depuis Traefik / kube-system). |
+| `k8s/infra/monitoring/jaeger-ingress.yaml` | `Certificate` cert-manager + `Ingress` Traefik (HTTP→HTTPS + TLS par environnement). |
+| `k8s/infra/monitoring/kustomization.yaml` | Agrège les ressources ci-dessus : `kubectl apply -k k8s/infra/monitoring`. |
+| `k8s/infra/monitoring/namespace-and-netpol.yaml` | Namespace `monitoring` et politiques transverses (à appliquer avant si besoin). |
+
+Les overlays **dev** et **staging** ajoutent les variables OTel vers `http://jaeger.monitoring.svc.cluster.local:4318` (`k8s/overlays/<env>/patches/otel-jaeger.yaml`). La **production** n’inclut pas ce patch par défaut.
+
+### UI HTTPS (Traefik)
+
+L’**UI** est exposée via **Ingress** sur **`https://jaeger-dev.netdevops.fr`**, **`https://jaeger-staging.netdevops.fr`** (BasicAuth staging) et **`https://jaeger.netdevops.fr`** (production), déclarées dans **`jaeger-ingress.yaml`**.
+
+Pour l’ordre d’application et le port-forward, voir **`k8s/README.MD`** (section Jaeger).
+
+### Erreur « Connection refused » vers `jaeger.monitoring.svc.cluster.local:4318`
+
+Ce nom DNS n’existe **que dans le cluster Kubernetes**. En **Docker Compose**, utilisez **`http://jaeger:4318`**. En **local** (uvicorn sur l’hôte, Jaeger avec port `4318` exposé), utilisez **`http://127.0.0.1:4318`**. Vérifiez qu’aucun **`backend/.env`** ou **`docker-compose.override.yml`** ne surcharge l’endpoint avec la valeur Kubernetes.
+
+**Si l’erreur vient bien du cluster** (`kubectl logs` sur un pod `backend`) :
+
+1. **Jaeger déployé et prêt** : `kubectl get pods,ep -n monitoring -l app=jaeger` — le `Service` `jaeger` n’a pas d’endpoint tant que le pod n’est pas *Ready* (sonde sur le port UI 16686).
+2. **Réappliquer les NetworkPolicies** : depuis la mise à jour des manifests, l’OTLP est autorisé depuis tout pod portant le label **`component: api`** (backend) ou **`component: web`** (frontend), dans n’importe quel namespace — plus seulement `dev` / `staging` / `production` nommés ainsi.
+3. **Egress côté app** : les `NetworkPolicy` des namespaces applicatifs doivent autoriser le TCP **4318** vers le namespace `monitoring` (déjà prévu dans `infra/<env>/network-policy.yaml` pour dev, staging et production).
 
 ## Tests
 
