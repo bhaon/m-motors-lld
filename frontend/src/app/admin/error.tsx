@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 import Link from "next/link";
 
+import { getLogger } from "@/lib/logger";
+
+const log = getLogger("app.admin.error");
+
 /** Boundary d'erreur pour toutes les routes /admin/*. */
 export default function AdminError({
   error,
@@ -11,7 +15,9 @@ export default function AdminError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => { console.error("[admin]", error); }, [error]);
+  useEffect(() => {
+    log.error("boundary erreur admin", { digest: error.digest }, error);
+  }, [error]);
 
   return (
     <main style={{ maxWidth: 560, margin: "6rem auto", padding: "0 1.5rem", textAlign: "center" }}>

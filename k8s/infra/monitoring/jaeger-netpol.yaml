@@ -1,0 +1,60 @@
+---
+# OTLP : autorise les pods applicatifs (labels alignés sur base/deployment.yaml),
+# quel que soit le nom du namespace (dev, staging, production ou autre).
+# Les namespaceSelector par nom « dev/staging/production » excluent les clusters
+# où le label kubernetes.io/metadata.name manque ou le namespace diffère.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jaeger-otlp-from-apps
+  labels:
+    app: jaeger
+spec:
+  podSelector:
+    matchLabels:
+      app: jaeger
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              component: api
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              component: web
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+---
+# UI Jaeger : accès depuis Traefik (kube-system) pour l’Ingress HTTPS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jaeger-ui-from-traefik
+  labels:
+    app: jaeger
+spec:
+  podSelector:
+    matchLabels:
+      app: jaeger
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 16686
+          protocol: TCP

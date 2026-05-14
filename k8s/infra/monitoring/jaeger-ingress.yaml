@@ -1,0 +1,186 @@
+---
+# TLS — UI Jaeger (dev)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: jaeger-dev-tls
+  labels:
+    app: jaeger
+spec:
+  secretName: jaeger-dev-tls-secret
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - jaeger-dev.netdevops.fr
+---
+# TLS — UI Jaeger (staging)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: jaeger-staging-tls
+  labels:
+    app: jaeger
+spec:
+  secretName: jaeger-staging-tls-secret
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - jaeger-staging.netdevops.fr
+---
+# TLS — UI Jaeger (production)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: jaeger-production-tls
+  labels:
+    app: jaeger
+spec:
+  secretName: jaeger-production-tls-secret
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - jaeger.netdevops.fr
+---
+# Redirection HTTP → HTTPS (même principe que les overlays applicatifs ; cert-manager HTTP-01 reste prioritaire).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jaeger-http-redirect
+  labels:
+    app: jaeger
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-redirect-to-https@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: jaeger-dev.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger
+                port:
+                  number: 16686
+    - host: jaeger-staging.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger
+                port:
+                  number: 16686
+    - host: jaeger.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger
+                port:
+                  number: 16686
+---
+# UI Jaeger — dev
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jaeger-ui-dev
+  labels:
+    app: jaeger
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/service.passhostheader: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-compress@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - jaeger-dev.netdevops.fr
+      secretName: jaeger-dev-tls-secret
+  rules:
+    - host: jaeger-dev.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger
+                port:
+                  number: 16686
+---
+# UI Jaeger — staging (BasicAuth aligné sur l’app staging)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jaeger-ui-staging
+  labels:
+    app: jaeger
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/service.passhostheader: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: staging-staging-auth@kubernetescrd,kube-system-compress@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - jaeger-staging.netdevops.fr
+      secretName: jaeger-staging-tls-secret
+  rules:
+    - host: jaeger-staging.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger
+                port:
+                  number: 16686
+---
+# UI Jaeger — production (en-têtes + rate limit alignés sur l’app)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jaeger-ui-production
+  labels:
+    app: jaeger
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/service.passhostheader: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: production-security-headers@kubernetescrd,production-rate-limit@kubernetescrd,kube-system-compress@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - jaeger.netdevops.fr
+      secretName: jaeger-production-tls-secret
+  rules:
+    - host: jaeger.netdevops.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger
+                port:
+                  number: 16686

@@ -8,6 +8,10 @@
 import { useEffect } from "react";
 import Link from "next/link";
 
+import { getLogger } from "@/lib/logger";
+
+const log = getLogger("app.backoffice.error");
+
 export default function BackofficeError({
   error,
   reset,
@@ -16,8 +20,7 @@ export default function BackofficeError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // En production, envoyer l'erreur à un service de monitoring
-    console.error("[backoffice]", error);
+    log.error("boundary erreur backoffice", { digest: error.digest }, error);
   }, [error]);
 
   return (

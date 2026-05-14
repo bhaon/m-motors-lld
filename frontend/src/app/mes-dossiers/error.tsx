@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 import Link from "next/link";
 
+import { getLogger } from "@/lib/logger";
+
+const log = getLogger("app.mes-dossiers.error");
+
 /** Boundary d'erreur pour /mes-dossiers et /mes-dossiers/[id]. */
 export default function MesDossiersError({
   error,
@@ -11,7 +15,9 @@ export default function MesDossiersError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => { console.error("[mes-dossiers]", error); }, [error]);
+  useEffect(() => {
+    log.error("boundary erreur mes-dossiers", { digest: error.digest }, error);
+  }, [error]);
 
   return (
     <main style={{ maxWidth: 560, margin: "6rem auto", padding: "0 1.5rem", textAlign: "center" }}>

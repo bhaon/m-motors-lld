@@ -18,6 +18,7 @@ patches:
   - path: patches/resources.yaml
   - path: patches/storage.yaml
   - path: patches/minio-server-url.yaml
+  - path: patches/otel-jaeger.yaml
 
 images:
   - name: ghcr.io/bhaon/m-motors-lld-frontend
