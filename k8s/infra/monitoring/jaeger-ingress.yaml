@@ -153,7 +153,10 @@ spec:
                 port:
                   number: 16686
 ---
-# UI Jaeger — production (en-têtes + rate limit alignés sur l’app)
+# UI Jaeger — production (rate limit + compress, comme l’Ingress app `app-ingress`).
+# Ne pas chaîner `production-security-headers` ici : ce Middleware n’existe que si
+# `k8s/infra/traefik/traefik-config.yaml` a été appliqué ; une référence manquante
+# fait échouer le routeur Traefik → 502 Bad Gateway.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -166,7 +169,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/service.passhostheader: "true"
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    traefik.ingress.kubernetes.io/router.middlewares: production-security-headers@kubernetescrd,production-rate-limit@kubernetescrd,kube-system-compress@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: production-rate-limit@kubernetescrd,kube-system-compress@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:
