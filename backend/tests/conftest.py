@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-minimum-32bytes!")
 os.environ.setdefault("ENV", "test")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./pytest_unit.db")
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 from app.core.security import create_access_token, hash_password  # noqa: E402
 from app.db.session import Base, SessionLocal, engine  # noqa: E402

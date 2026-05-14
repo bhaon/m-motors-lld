@@ -17,7 +17,7 @@ k8s/
     ├── dev|staging|production/   # Namespace, quotas, rbac, secrets, hpa, pdb...
     ├── traefik/                  # Config Traefik / middlewares / ingressroutes
     ├── cert-manager/             # ClusterIssuer, certificats
-    └── monitoring/               # Prometheus/Loki/alerting/backup
+    └── monitoring/               # Jaeger (OTLP), Prometheus/Loki/alerting/backup
 ```
 
 ## Principe de fonctionnement
@@ -35,9 +35,40 @@ Toujours appliquer dans cet ordre:
 
 1. **Infra environnement** (`k8s/infra/<env>`)
 2. **Infra transverse** si necessaire (`k8s/infra/traefik`, `k8s/infra/cert-manager`, `k8s/infra/monitoring`)
+   - Le namespace `monitoring` doit exister avant Jaeger (voir `infra/monitoring/namespace-and-netpol.yaml`).
+   - Jaeger : `kubectl apply -k k8s/infra/monitoring`
 3. **Application** (`k8s/overlays/<env>`)
 
 Pourquoi: les manifests applicatifs supposent que namespace, secrets, RBAC et CRDs existent deja.
+
+## Jaeger sur le cluster (traces)
+
+Les manifests sous **`k8s/infra/monitoring/`** déploient **Jaeger all-in-one** dans le namespace **`monitoring`** (OTLP HTTP sur le port **4318**, UI sur **16686**).
+
+- **Appliquer** (après création du namespace `monitoring`, ex. via `namespace-and-netpol.yaml`) :
+
+```bash
+kubectl apply -f k8s/infra/monitoring/namespace-and-netpol.yaml   # si pas deja present
+kubectl apply -k k8s/infra/monitoring
+```
+
+Les **Ingress** Traefik (`jaeger-ingress.yaml`) et les **Certificate** cert-manager émettent les certificats Let’s Encrypt pour les hôtes ci-dessus (prérequis : enregistrements DNS `A`/`CNAME` vers l’Ingress public).
+
+- **UI en HTTPS** (après enregistrement DNS des noms ci-dessous vers l’Ingress) :
+  - dev : `https://jaeger-dev.netdevops.fr`
+  - staging : `https://jaeger-staging.netdevops.fr` (BasicAuth `staging-auth`, comme l’app)
+  - production : `https://jaeger.netdevops.fr` (en-têtes + rate limit alignés sur l’app)
+
+- **UI en local** (port-forward, sans DNS) :
+
+```bash
+kubectl port-forward -n monitoring svc/jaeger 16686:16686
+# puis ouvrir http://localhost:16686
+```
+
+- **Applications** : les overlays **dev** et **staging** injectent `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger.monitoring.svc.cluster.local:4318` et `OTEL_LOGS_EXPORTER=none` sur les pods `backend` et `frontend`. La **production** n’inclut pas ce patch par défaut (traces persistantes / charge : prévoir un backend managé ou dupliquer le patch si besoin).
+
+- **Politiques réseau** : les fichiers `infra/<env>/network-policy.yaml` autorisent l’**egress** vers Jaeger (OTLP) depuis `frontend` et `backend`. Les politiques `jaeger-netpol.yaml` autorisent l’**ingress** OTLP depuis les namespaces `dev`, `staging` et `production`.
 
 ## Commandes utiles
 

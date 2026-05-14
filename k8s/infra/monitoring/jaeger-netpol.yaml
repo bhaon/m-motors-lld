@@ -1,0 +1,64 @@
+---
+# Autorise les pods applicatifs (dev / staging / production) à envoyer des traces OTLP à Jaeger.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jaeger-otlp-from-apps
+  labels:
+    app: jaeger
+spec:
+  podSelector:
+    matchLabels:
+      app: jaeger
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dev
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: staging
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: production
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+---
+# UI Jaeger : accès depuis Traefik (kube-system) pour une exposition future via IngressRoute.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jaeger-ui-from-traefik
+  labels:
+    app: jaeger
+spec:
+  podSelector:
+    matchLabels:
+      app: jaeger
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 16686
+          protocol: TCP

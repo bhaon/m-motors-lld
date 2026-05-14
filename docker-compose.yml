@@ -10,6 +10,7 @@
 #  Accès :
 #    Frontend  →  http://localhost:3000
 #    API docs  →  http://localhost:8000/api/docs
+#    Jaeger UI →  http://localhost:16686  (traces OTLP : service jaeger:4318)
 #    MinIO UI  →  http://localhost:9001  (minioadmin / minioadmin)
 #    PostgreSQL→  localhost:5432  (mmotors / mmotors_dev)
 #
@@ -57,6 +58,18 @@ services:
       retries: 10
       start_period: 15s
 
+  # ── Jaeger (traces OTLP + UI) — dev uniquement ───────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # UI : recherche par service (mmotors-api, mmotors-frontend)
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP (utilisé par l’exporter Python / Next)
+    # Pas de healthcheck officiel stable : démarrage généralement < 5 s
+
   # ── Backend FastAPI ──────────────────────────────────────────────────────────
   backend:
     build:
@@ -88,6 +101,11 @@ services:
       FRONTEND_BASE_URL: http://localhost:3000
       DEBUG: "true"
 
+      # OpenTelemetry → Jaeger (docker compose) : traces uniquement (logs OTLP désactivés)
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: mmotors-api
+      OTEL_LOGS_EXPORTER: "none"
+
       # ── Optionnels (décommenter pour activer) ───────────────────────────────
       # RESEND_API_KEY: re_xxxxxxxxxxxxxxxxxxxx
       # RESEND_FROM_EMAIL: "M-Motors <no-reply@mmotors.dev>"
@@ -101,6 +119,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     # Override du healthcheck Dockerfile pour un intervalle plus court en dev
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/healthz')"]
@@ -121,6 +141,9 @@ services:
       API_INTERNAL_URL: http://backend:8000
       NEXT_TELEMETRY_DISABLED: "1"
       NODE_ENV: development
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: mmotors-frontend
+      OTEL_LOGS_EXPORTER: "none"
       # NEXT_PUBLIC_API_URL non défini → les appels navigateur utilisent des
       # URLs relatives (/api/...) proxiées par le serveur Next.js
     volumes:
@@ -133,6 +156,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
 volumes:
   postgres_data:

@@ -63,6 +63,16 @@ spec:
               - 192.168.0.0/16
       ports:
         - port: 443
+    - to:  # Jaeger OTLP (namespace monitoring)
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app: jaeger
+      ports:
+        - port: 4318
+          protocol: TCP
 ---
 # ============================================================
 # NETWORK POLICY — Backend API
@@ -126,6 +136,16 @@ spec:
               - 192.168.0.0/16
       ports:
         - port: 443
+    - to:  # Jaeger OTLP (namespace monitoring)
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app: jaeger
+      ports:
+        - port: 4318
+          protocol: TCP
 ---
 # ============================================================
 # NETWORK POLICY — PostgreSQL

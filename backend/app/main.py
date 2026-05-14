@@ -4,9 +4,10 @@ from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.core.config import settings
 from app.api.v1.router import api_router
+from app.core.config import settings
 from app.db.session import engine
+from app.telemetry import configure_opentelemetry, shutdown_opentelemetry
 
 # Import all models so Alembic / Base.metadata sees them
 import app.models.feature_flag  # noqa
@@ -26,6 +27,7 @@ async def lifespan(application: FastAPI):
     pas via `create_all()` au démarrage de l'API.
     """
     yield
+    shutdown_opentelemetry()
 
 
 application = FastAPI(
@@ -46,6 +48,13 @@ application.add_middleware(
 )
 
 application.include_router(api_router)
+
+configure_opentelemetry(
+    application,
+    sqlalchemy_engine=engine,
+    service_name=settings.APP_NAME,
+    debug=settings.DEBUG,
+)
 
 
 @application.get("/api/health", tags=["Health"])

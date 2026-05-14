@@ -1,0 +1,306 @@
+// ============================================================
+// M-Motors — Schéma base de données
+// Format : DBML (https://dbml.dbdiagram.io)
+// Généré depuis les modèles SQLAlchemy (backend/app/models/)
+// ============================================================
+
+// ── Enums ────────────────────────────────────────────────────
+
+enum role_enum {
+  client
+  gestionnaire
+  superviseur
+  admin
+}
+
+enum moteur_enum {
+  Essence
+  Diesel
+  Hybride
+  "Électrique"
+}
+
+enum dossier_type_enum {
+  achat
+  lld
+}
+
+enum dossier_status_enum {
+  brouillon          // Dossier créé, pièces non déposées
+  depose             // Soumis par le client
+  en_instruction     // Pris en charge par un gestionnaire
+  valide             // Approuvé, contrat à générer
+  en_signature       // Contrat envoyé pour signature
+  attente_livraison  // Contrat signé, livraison à planifier
+  livraison_planifiee
+  contrat_en_cours   // LLD actif
+  cloture            // Dossier fermé (fin contrat ou achat finalisé)
+  rejete
+  annule
+}
+
+// ── Tables ───────────────────────────────────────────────────
+
+Table users {
+  id                             integer        [pk, increment]
+  email                          text           [not null, note: "Chiffré pgcrypto (PII)"]
+  email_hash                     varchar(64)    [not null, note: "SHA-256 pour recherche — index unique partiel WHERE deleted_at IS NULL"]
+  hashed_password                varchar(255)   [not null]
+  first_name                     text           [not null, note: "Chiffré pgcrypto (PII)"]
+  last_name                      text           [not null, note: "Chiffré pgcrypto (PII)"]
+  birth_date                     text           [not null, note: "Date chiffrée pgcrypto (PII)"]
+  phone                          varchar(30)
+  role                           role_enum      [not null, default: "client"]
+  is_active                      boolean        [not null, default: true]
+  email_verified                 boolean        [not null, default: false]
+  deleted_at                     timestamptz    [note: "Soft delete RGPD"]
+  cgu_accepted_at                timestamptz    [not null]
+  privacy_accepted_at            timestamptz    [not null]
+  email_verification_token       varchar(255)   [unique]
+  email_verification_sent_at     timestamptz
+  email_verification_expires_at  timestamptz
+  password_reset_token           varchar(255)   [unique]
+  password_reset_sent_at         timestamptz
+  password_reset_expires_at      timestamptz
+  created_at                     timestamptz    [not null, default: `now()`]
+  updated_at                     timestamptz    [not null, default: `now()`]
+
+  indexes {
+    email_hash [name: "ix_users_email_hash"]
+    (email_hash) [unique, name: "uq_users_email_hash_active", note: "WHERE deleted_at IS NULL"]
+  }
+
+  note: "Clients, gestionnaires, superviseurs et admins. Données PII chiffrées au repos (pgcrypto)."
+}
+
+Table vehicles {
+  id                 integer       [pk, increment]
+  make               varchar(100)  [not null]
+  model              varchar(100)  [not null]
+  year               integer       [not null]
+  km                 integer       [not null]
+  moteur             moteur_enum   [not null]
+  prix               numeric(10,2) [not null]
+  lld                boolean       [not null, default: false]
+  mensualite         numeric(10,2) [note: "Mensualité de base LLD (null si achat uniquement)"]
+  img                text          [not null, note: "URL photo principale"]
+  spec_carburant     varchar(100)  [not null]
+  spec_boite         varchar(100)  [not null]
+  spec_couleur       varchar(100)  [not null]
+  spec_places        integer       [not null, default: 5]
+  spec_puissance     varchar(50)   [not null]
+  visible_catalogue  boolean       [not null, default: true]
+  archived           boolean       [not null, default: false]
+  archived_at        timestamptz
+  created_at         timestamptz   [not null, default: `now()`]
+  updated_at         timestamptz   [not null, default: `now()`]
+
+  indexes {
+    make  [name: "ix_vehicles_make"]
+    model [name: "ix_vehicles_model"]
+  }
+}
+
+Table vehicle_options {
+  id          integer       [pk, increment]
+  vehicle_id  integer       [not null, ref: > vehicles.id]
+  name        varchar(200)  [not null]
+  surcharge   numeric(8,2)  [not null, note: "Surcoût mensuel HT en €"]
+
+  indexes {
+    vehicle_id [name: "ix_vehicle_options_vehicle_id"]
+  }
+
+  note: "Options LLD historiques par véhicule (remplacées par lld_option_catalog pour les nouveaux dossiers)."
+}
+
+Table vehicle_photos {
+  id          integer  [pk, increment]
+  vehicle_id  integer  [not null, ref: > vehicles.id]
+  url         text     [not null]
+  is_main     boolean  [not null, default: false]
+  "order"     integer  [not null, default: 0]
+
+  indexes {
+    vehicle_id [name: "ix_vehicle_photos_vehicle_id"]
+  }
+}
+
+Table dossiers {
+  id                    integer             [pk, increment]
+  reference             varchar(30)         [not null, unique]
+  type                  dossier_type_enum   [not null]
+  status                dossier_status_enum [not null, default: "brouillon"]
+  client_id             integer             [not null, ref: > users.id]
+  vehicle_id            integer             [not null, ref: > vehicles.id]
+  gestionnaire_id       integer             [ref: > users.id, note: "Gestionnaire assigné"]
+  motif_rejet           text
+  notes_internes        text
+  duree_mois            integer             [note: "Durée du LLD en mois"]
+  date_debut_contrat    date                [note: "Date de début du contrat LLD"]
+  draft_reminder_sent_at timestamptz
+  submitted_at          timestamptz
+  validated_at          timestamptz
+  rejected_at           timestamptz
+  livraison_prevue_at   timestamptz         [note: "Date de livraison planifiée par le gestionnaire"]
+  created_at            timestamptz         [not null, default: `now()`]
+  updated_at            timestamptz         [not null, default: `now()`]
+
+  indexes {
+    reference    [name: "ix_dossiers_reference"]
+    client_id    [name: "ix_dossiers_client_id"]
+    vehicle_id   [name: "ix_dossiers_vehicle_id"]
+    status       [name: "ix_dossiers_status"]
+  }
+}
+
+Table pieces_justificatives {
+  id          integer      [pk, increment]
+  dossier_id  integer      [not null, ref: > dossiers.id]
+  type_piece  varchar(50)  [not null, note: "cni | permis | revenus | domicile | rib"]
+  filename    varchar(255) [not null]
+  s3_key      varchar(500) [not null, note: "Clé objet MinIO/S3"]
+  checksum    varchar(64)  [not null, note: "SHA-256 du fichier"]
+  uploaded_at timestamptz  [not null, default: `now()`]
+
+  indexes {
+    dossier_id [name: "ix_pieces_justificatives_dossier_id"]
+  }
+}
+
+Table dossier_historique {
+  id             integer      [pk, increment]
+  dossier_id     integer      [not null, ref: > dossiers.id]
+  ancien_status  varchar(30)  [note: "null si création"]
+  nouveau_status varchar(30)  [not null]
+  commentaire    text
+  operateur_id   integer      [ref: > users.id]
+  created_at     timestamptz  [not null, default: `now()`]
+
+  indexes {
+    dossier_id [name: "ix_dossier_historique_dossier_id"]
+  }
+
+  note: "Audit trail métier des changements de statut d'un dossier."
+}
+
+Table dossier_contrats {
+  id                          integer      [pk, increment]
+  dossier_id                  integer      [not null, unique, ref: - dossiers.id]
+  reference                   varchar(64)  [not null]
+  body_markdown               text         [not null, note: "Gabarit contrat rendu en Markdown"]
+  signature_token_hash        varchar(64)  [unique, note: "SHA-256 du jeton envoyé par e-mail"]
+  signature_token_sent_at     timestamptz
+  signature_token_expires_at  timestamptz
+  signed_at                   timestamptz
+  created_at                  timestamptz  [not null, default: `now()`]
+
+  indexes {
+    dossier_id [name: "ix_dossier_contrats_dossier_id"]
+    reference  [name: "ix_dossier_contrats_reference"]
+  }
+
+  note: "Un contrat par dossier (relation 1-1). Signature par lien e-mail tokenisé."
+}
+
+Table options_lld {
+  id                  integer       [pk, increment]
+  dossier_id          integer       [not null, ref: > dossiers.id]
+  code                varchar(40)   [not null, note: "assurance | assistance | entretien | controle_technique"]
+  selected            boolean       [not null, default: false]
+  surcout_mensuel_ht  numeric(10,2) [not null]
+
+  indexes {
+    dossier_id [name: "ix_options_lld_dossier_id"]
+    (dossier_id, code) [unique, name: "uq_options_lld_dossier_code"]
+  }
+
+  note: "Options LLD choisies par le client pour un dossier donné."
+}
+
+Table lld_option_catalog {
+  code         varchar(40)  [pk, note: "assurance | assistance | entretien | controle_technique"]
+  label        varchar(255) [not null]
+  description  text         [not null]
+
+  note: "Référentiel éditorial des options LLD proposées aux clients."
+}
+
+Table lld_option_price_history {
+  id                  integer       [pk, increment]
+  option_code         varchar(40)   [not null, ref: > lld_option_catalog.code]
+  price_ht            numeric(10,2) [not null]
+  valid_from          timestamptz   [not null, default: `now()`]
+  created_by_user_id  integer       [ref: > users.id, note: "null si suppression de l'admin"]
+
+  indexes {
+    option_code [name: "ix_lld_option_price_history_option_code"]
+  }
+
+  note: "Historique immuable des tarifs. Le prix actif est le dernier valid_from ≤ now()."
+}
+
+Table lld_avenants {
+  id                          integer      [pk, increment]
+  dossier_id                  integer      [not null, ref: > dossiers.id]
+  reference                   varchar(64)  [not null, unique]
+  body_markdown               text         [not null]
+  selections                  json         [not null, note: "Options retenues dans l'avenant {code: bool}"]
+  signature_token_hash        varchar(64)  [unique]
+  signature_token_sent_at     timestamptz
+  signature_token_expires_at  timestamptz
+  signed_at                   timestamptz
+  created_at                  timestamptz  [not null, default: `now()`]
+
+  indexes {
+    dossier_id [name: "ix_lld_avenants_dossier_id"]
+    reference  [name: "ix_lld_avenants_reference"]
+  }
+
+  note: "Avenant généré lors d'une modification d'options sur un LLD en cours. Signature requise."
+}
+
+Table audit_trail {
+  id             integer      [pk, increment]
+  created_at     timestamptz  [not null]
+  action         varchar(64)  [not null, note: "Ex : STATUS_CHANGED, DOCUMENT_UPLOADED"]
+  entity_type    varchar(64)  [not null, note: "Ex : Dossier, User"]
+  entity_id      integer      [not null]
+  operator_id    integer      [not null, note: "Dénormalisé (conservé après suppression compte)"]
+  operator_email varchar(255) [not null]
+  operator_role  varchar(32)  [not null]
+  ip_address     varchar(45)
+  before_state   json
+  after_state    json         [not null]
+
+  indexes {
+    action      [name: "ix_audit_trail_action"]
+    entity_type [name: "ix_audit_trail_entity_type"]
+    entity_id   [name: "ix_audit_trail_entity_id"]
+    operator_id [name: "ix_audit_trail_operator_id"]
+  }
+
+  note: "Registre immuable. Pas d'UPDATE ni DELETE autorisés. Rétention 5 ans minimum."
+}
+
+Table feature_flags {
+  key         varchar(128)  [pk, note: "Ex : lld_option.assurance.enabled"]
+  value_bool  boolean       [not null]
+  updated_at  timestamptz   [not null, default: `now()`]
+
+  note: "Interrupteurs métier persistants. Utilisés pour activer/désactiver les options LLD."
+}
+
+// ── Références explicites (cascade) ──────────────────────────
+// Les Ref inline dans les tables suffisent pour dbdiagram.io ;
+// les cascades sont documentées ici pour lisibilité.
+
+// vehicle_options.vehicle_id   → vehicles.id         CASCADE DELETE
+// vehicle_photos.vehicle_id    → vehicles.id         CASCADE DELETE
+// pieces_justificatives.dossier_id → dossiers.id     CASCADE DELETE
+// dossier_historique.dossier_id → dossiers.id        CASCADE DELETE
+// dossier_contrats.dossier_id  → dossiers.id         CASCADE DELETE
+// options_lld.dossier_id       → dossiers.id         CASCADE DELETE
+// lld_avenants.dossier_id      → dossiers.id         CASCADE DELETE
+// lld_option_price_history.option_code → lld_option_catalog.code  CASCADE DELETE
+// lld_option_price_history.created_by_user_id → users.id          SET NULL
