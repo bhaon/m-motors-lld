@@ -37,7 +37,11 @@ external_services:
     enabled: true
     internal_url: "http://jaeger.monitoring.svc.cluster.local:16686"
     use_grpc: false
+  istio:
+    istio_api_enabled: false
 
 kiali_feature_flags:
-  disabled_features:
-    - istio
+  # « istio » n’est pas un nom valide (seul ex. « logs-tab ») — désactiver les actions Istio :
+  istio_annotation_action: false
+  istio_injection_action: false
+  istio_upgrade_action: false
