@@ -1,14 +1,13 @@
 ---
 # ============================================================
 # LOKI — Agrégation des logs (stack légère pour VPS)
-# Installation via Helm :
+# Installation (release DOIT s'appeler « loki » pour le Service DNS) :
 #   helm repo add grafana https://grafana.github.io/helm-charts
-#   helm install loki grafana/loki-stack \
+#   helm upgrade --install loki grafana/loki-stack \
 #     -n monitoring \
 #     -f k8s/infra/monitoring/loki-values.yaml
 # ============================================================
 
-# loki-values.yaml
 loki:
   enabled: true
   persistence:
@@ -31,37 +30,20 @@ loki:
 
 promtail:
   enabled: true
+  # K3s : pipeline cri + chemins /var/log/pods (défaut du chart promtail ≥ 6.x).
+  # Ne pas définir scrape_configs ici : le chart l'ignore et utilise config.snippets.
   config:
     clients:
-      - url: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
-    scrape_configs:
-      - job_name: kubernetes-pods-production
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names:
-                - production
-        # K3s / containerd : utiliser « cri », pas « docker » (sinon aucun log ingéré).
-        pipeline_stages:
-          - cri: {}
-        relabel_configs:
-          # Ne collecter que les pods du namespace production (aligné monitoring prod seul).
-          - action: keep
-            source_labels: [__meta_kubernetes_namespace]
-            regex: production
-          - action: keep
-            source_labels: [__meta_kubernetes_pod_phase]
-            regex: Running
-          - source_labels: [__meta_kubernetes_namespace]
-            target_label: namespace
-          - source_labels: [__meta_kubernetes_pod_name]
-            target_label: pod
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            target_label: container
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            target_label: app
-          - source_labels: [__meta_kubernetes_pod_label_environment]
-            target_label: environment
+      # Même namespace « monitoring » ; release Helm = « loki » → Service « loki ».
+      - url: http://loki:3100/loki/api/v1/push
+    snippets:
+      pipelineStages:
+        - cri: {}
+      extraRelabelConfigs:
+        # Monitoring limité à la production (US-08).
+        - action: keep
+          source_labels: [__meta_kubernetes_namespace]
+          regex: production
   resources:
     requests:
       cpu: 50m
