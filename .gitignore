@@ -169,4 +169,4 @@ docker-compose.override.yml
 *.tfstate.*
 
 # -- Monitoring tools
-prometheus-values.yaml
+k8s/infra/monitoring/prometheus-values.yaml
