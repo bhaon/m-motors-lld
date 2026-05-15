@@ -19,12 +19,20 @@ Le namespace **`monitoring`** et certaines politiques réseau transverses sont d
 
 ## Déploiement
 
+**Important** : Loki/Promtail/Grafana doivent être sur le **même cluster** que les workloads `production`. Si la prod a migré vers un autre VPS, réinstallez aussi la stack monitoring sur ce cluster.
+
 ```bash
 # 1) Namespace + politiques de base (si pas déjà appliqué)
 kubectl apply -f k8s/infra/monitoring/namespace-and-netpol.yaml
 
 # 2) Jaeger + Ingress + certificats
 kubectl apply -k k8s/infra/monitoring
+```
+
+**Loki** : Promtail est limité au namespace `production` et utilise le pipeline **cri** (K3s/containerd). Après changement de `loki-values.yaml` :
+
+```bash
+helm upgrade loki grafana/loki-stack -n monitoring -f k8s/infra/monitoring/loki-values.yaml
 ```
 
 Prérequis : DNS vers l’Ingress pour les hôtes déclarés dans `jaeger-ingress.yaml`, middlewares Traefik (`staging-auth`, `rate-limit`, `compress`, etc.) déjà déployés selon `k8s/infra/traefik/traefik-config.yaml` et **`k8s/infra/production/rate-limit.yaml`** (namespace `production`).

@@ -95,13 +95,18 @@ data:
           "type": "logs",
           "title": "Logs pod backend (Loki)",
           "gridPos": { "h": 10, "w": 16, "x": 0, "y": 21 },
-          "datasource": { "type": "loki" },
+          "datasource": { "type": "loki", "uid": "loki" },
           "targets": [
             {
-              "expr": "{namespace=\"$namespace\", app=\"backend\"}",
+              "expr": "{namespace=\"$namespace\", pod=~\"backend-.*\", container=\"backend\"}",
               "refId": "A"
             }
-          ]
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": true,
+            "wrapLogMessage": true
+          }
         }
       ]
     }
