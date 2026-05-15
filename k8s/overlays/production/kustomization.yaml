@@ -36,9 +36,9 @@ patchesJson6902:
 
 images:
   - name: ghcr.io/bhaon/m-motors-lld-frontend
-    newTag: v0.0.0  # Remplacé par le tag Git réel via GitHub Actions
+    newTag: v0.1.3  # Remplacé par le tag Git réel via GitHub Actions
   - name: ghcr.io/bhaon/m-motors-lld-backend
-    newTag: v0.0.0
+    newTag: v0.1.3
 
 labels:
   - pairs:
