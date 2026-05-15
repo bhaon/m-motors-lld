@@ -16,7 +16,7 @@ data:
       "title": "M-Motors — Observabilité V1 (US-08-03)",
       "uid": "mmotors-us08",
       "schemaVersion": 39,
-      "version": 2,
+      "version": 3,
       "refresh": "30s",
       "time": { "from": "now-6h", "to": "now" },
       "templating": {
@@ -103,7 +103,7 @@ data:
             {
               "datasource": { "type": "loki", "uid": "loki" },
               "editorMode": "code",
-              "expr": "{namespace=\"$namespace\", pod=~\"backend.*\", container=\"backend\"}",
+              "expr": "{namespace=\"$namespace\", app=\"backend\", container=\"backend\"}",
               "queryType": "range",
               "refId": "A"
             }
