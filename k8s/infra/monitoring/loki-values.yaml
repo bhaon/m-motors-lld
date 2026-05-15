@@ -10,6 +10,10 @@
 
 loki:
   enabled: true
+  # Ne pas marquer Loki comme datasource par défaut (Prometheus l’est déjà via kube-prometheus-stack).
+  isDefault: false
+  datasource:
+    uid: loki
   persistence:
     enabled: true
     storageClassName: local-path
@@ -54,3 +58,7 @@ promtail:
 
 grafana:
   enabled: false    # Grafana déjà installé via kube-prometheus-stack
+  # Ne pas créer le ConfigMap grafana_datasource (sinon conflit isDefault avec Prometheus).
+  sidecar:
+    datasources:
+      enabled: false

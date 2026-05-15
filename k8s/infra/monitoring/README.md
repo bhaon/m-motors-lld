@@ -29,7 +29,9 @@ kubectl apply -f k8s/infra/monitoring/namespace-and-netpol.yaml
 kubectl apply -k k8s/infra/monitoring
 ```
 
-**Loki** : Promtail est limité au namespace `production` et utilise le pipeline **cri** (K3s/containerd). Après changement de `loki-values.yaml` :
+**Loki** : ne pas laisser le chart `loki-stack` provisionner une datasource Grafana (`isDefault: true` → conflit avec Prometheus). C’est désactivé dans `loki-values.yaml` (`grafana.sidecar.datasources.enabled: false`) ; Loki est ajouté via `prometheus-values.yaml` → `additionalDataSources`.
+
+Promtail est limité au namespace `production` et utilise le pipeline **cri** (K3s/containerd). Après changement de `loki-values.yaml` :
 
 ```bash
 helm upgrade loki grafana/loki-stack -n monitoring -f k8s/infra/monitoring/loki-values.yaml
