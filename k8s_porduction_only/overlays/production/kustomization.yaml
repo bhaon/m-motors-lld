@@ -1,0 +1,51 @@
+---
+# ============================================================
+# OVERLAY PRODUCTION — Kustomization
+# Déployé uniquement sur tag Git vX.Y.Z avec approbation manuelle
+# ============================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: production
+
+resources:
+  - ../../base
+  - ingress.yaml
+  - configmap.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+patchesStrategicMerge:
+  - patches/replicas.yaml
+  - patches/resources.yaml
+  - patches/storage.yaml
+  - patches/security.yaml
+  - patches/minio-server-url.yaml
+
+# Minio a été déployé sans `environment: production` dans son selector (contrairement
+# à backend/frontend/redis/postgresql créés avec commonLabels). Ce patch JSON 6902
+# supprime la clé ajoutée par le transformer `labels` ci-dessus, pour ne pas tenter
+# de modifier un selector immuable en cluster.
+patchesJson6902:
+  - target:
+      kind: Deployment
+      name: minio
+    patch: |-
+      - op: remove
+        path: /spec/selector/matchLabels/environment
+
+images:
+  - name: ghcr.io/bhaon/m-motors-lld-frontend
+    newTag: v0.0.0  # Remplacé par le tag Git réel via GitHub Actions
+  - name: ghcr.io/bhaon/m-motors-lld-backend
+    newTag: v0.0.0
+
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
+    includeTemplates: true
+
+commonAnnotations:
+  managed-by: kustomize
+  environment: production

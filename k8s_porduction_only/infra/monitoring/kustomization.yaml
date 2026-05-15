@@ -1,0 +1,19 @@
+---
+# Déploiement Jaeger (namespace « monitoring » — créé par namespace-and-netpol.yaml).
+# Ordre recommandé : appliquer d’abord infra/monitoring/namespace-and-netpol.yaml si besoin,
+# puis : kubectl apply -k k8s/infra/monitoring
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+resources:
+  - jaeger.yaml
+  - jaeger-netpol.yaml
+  - jaeger-ingress.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: mmotors-observability
+    includeSelectors: false
+    includeTemplates: true
