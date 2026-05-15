@@ -1,9 +1,11 @@
-"""Schémas pour le reporting dossiers (US-06-06)."""
+"""Schémas pour le reporting dossiers (US-06-06) et contrats en cours (US-06-11)."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.schemas.dossier import ContratVehicleOut
 
 
 ReportingPeriodPreset = Literal["week", "month", "quarter"]
@@ -29,3 +31,39 @@ class DossierReportingOut(BaseModel):
         default=None,
         description="Délai moyen en jours (dépôt → décision) pour les dossiers validés ou rejetés de la cohorte ayant les timestamps nécessaires.",
     )
+
+
+LocationPhase = Literal["year1", "year2", "year3"]
+
+
+class ContratEnCoursClientOut(BaseModel):
+    """Client associé à un contrat LLD en cours."""
+
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+
+
+class ContratEnCoursItemOut(BaseModel):
+    """Contrat LLD en cours pour le tableau de bord superviseur."""
+
+    id: int
+    reference: str
+    client: ContratEnCoursClientOut
+    vehicle: ContratVehicleOut
+    gestionnaire_email: str | None = None
+    duree_mois: int | None = None
+    date_debut: date | None = None
+    date_fin: date | None = None
+    total_mensualite_ht: float | None = None
+    location_phase: LocationPhase
+    fin_dans_3_mois: bool = False
+    jours_restants: int | None = None
+
+
+class ContratEnCoursListOut(BaseModel):
+    """Liste des contrats LLD actifs."""
+
+    total: int
+    items: list[ContratEnCoursItemOut]
