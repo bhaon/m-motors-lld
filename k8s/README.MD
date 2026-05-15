@@ -65,7 +65,7 @@ Les **Ingress** Traefik (`jaeger-ingress.yaml`) et les **Certificate** cert-mana
 - **UI en HTTPS** (après DNS) :
   - dev : `https://jaeger-dev.netdevops.fr`
   - staging : `https://jaeger-staging.netdevops.fr` (BasicAuth `staging-auth`, comme l’app)
-  - production : `https://jaeger.netdevops.fr` (rate limit + compress, comme l’Ingress app ; dépannage 502 : **`k8s/infra/monitoring/README.md`**)
+  - production : `https://jaeger.opsdev.fr` (dépannage 502 : **`k8s/infra/monitoring/README.md`**, script `./scripts/diagnose-jaeger.sh`)
 
 - **UI en local** (port-forward, sans DNS) :
 
@@ -74,7 +74,7 @@ kubectl port-forward -n monitoring svc/jaeger 16686:16686
 # puis ouvrir http://localhost:16686
 ```
 
-- **Applications** : les overlays **dev** et **staging** injectent `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger.monitoring.svc.cluster.local:4318` et `OTEL_LOGS_EXPORTER=none` sur les pods `backend` et `frontend`. La **production** n’inclut pas ce patch par défaut (charge / persistance : prévoir un backend managé ou dupliquer le patch si besoin).
+- **Applications** : les overlays **dev**, **staging** et **production** injectent `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger.monitoring.svc.cluster.local:4318` (`patches/otel-jaeger.yaml`).
 
 - **Politiques réseau** : les fichiers `infra/<env>/network-policy.yaml` autorisent l’**egress** vers Jaeger (OTLP) depuis `frontend` et `backend`. **`jaeger-netpol.yaml`** autorise l’**ingress** OTLP vers Jaeger depuis les pods portant le label **`component: api`** ou **`component: web`** (aligné sur la base).
 
