@@ -10,14 +10,6 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"  # Uniquement les tags semver (v1.2.3)
-    paths:
-      - '!**.md'
-      - 'backend/**'
-      - 'frontend/**'
-      - '!.gitignore'
-      - '!LICENSE'
-      - '!docker-compose.yml'
-      - '!.github/**'
   workflow_dispatch:
     inputs:
       tag:
@@ -45,9 +37,6 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
       - name: Get version
         id: get_version
         run: |
@@ -59,15 +48,25 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Déploiement de la version: $VERSION"
 
-      - name: Verify tag exists on main
+      - name: Checkout (commit du tag)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.get_version.outputs.version }}
+
+      - name: Verify tag exists and is on main
         run: |
-          git fetch --tags
-          TAG_COMMIT=$(git rev-list -n 1 ${{ steps.get_version.outputs.version }} 2>/dev/null || echo "")
+          TAG="${{ steps.get_version.outputs.version }}"
+          git fetch --tags origin main
+          TAG_COMMIT=$(git rev-list -n 1 "${TAG}" 2>/dev/null || echo "")
           if [ -z "$TAG_COMMIT" ]; then
-            echo "❌ Tag ${{ steps.get_version.outputs.version }} introuvable"
+            echo "❌ Tag ${TAG} introuvable"
             exit 1
           fi
-          echo "✅ Tag trouvé, commit: $TAG_COMMIT"
+          if ! git merge-base --is-ancestor "${TAG_COMMIT}" origin/main; then
+            echo "❌ Le commit du tag ${TAG} n'est pas sur la branche main"
+            exit 1
+          fi
+          echo "✅ Tag ${TAG} trouvé sur main, commit: ${TAG_COMMIT}"
 
   # ----------------------------------------------------------
   # CI : rebuild avec le tag de production
@@ -79,6 +78,7 @@ jobs:
     with:
       environment: production
       image_tag: ${{ needs.validate.outputs.version }}
+      git_ref: ${{ needs.validate.outputs.version }}
 
   # ----------------------------------------------------------
   # APPROBATION MANUELLE — Bloque ici jusqu'à validation
@@ -101,8 +101,10 @@ jobs:
       PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_SMOKE_BASE_URL != '' && vars.PRODUCTION_SMOKE_BASE_URL || 'https://opsdev.fr' }}
 
     steps:
-      - name: Checkout
+      - name: Checkout (commit du tag)
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.validate.outputs.version }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
@@ -298,15 +300,19 @@ jobs:
           echo "✅ Production stable"
 
   # ----------------------------------------------------------
-  # JOB de nettoyage — supprime la release et son tag si le
-  # workflow échoue à n'importe quelle étape (validate, ci,
-  # deploy ou post-deploy-check).
+  # JOB de nettoyage — supprime la release et son tag uniquement si
+  # validate, ci ou deploy échoue (pas si seul post-deploy-check échoue).
   # ----------------------------------------------------------
   cleanup-on-failure:
     name: Supprimer la release en cas d'échec
     runs-on: ubuntu-latest
     needs: [validate, ci, deploy, post-deploy-check]
-    if: failure()
+    if: |
+      always() && (
+        needs.validate.result == 'failure' ||
+        needs.ci.result == 'failure' ||
+        needs.deploy.result == 'failure'
+      )
     permissions:
       contents: write
 
