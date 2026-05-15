@@ -24,8 +24,8 @@ data:
 
     connectors:
       spanmetrics:
+        # service.name est déjà une dimension par défaut — ne pas la redéclarer.
         dimensions:
-          - name: service.name
           - name: k8s.namespace.name
         metrics_flush_interval: 15s
       servicegraph:

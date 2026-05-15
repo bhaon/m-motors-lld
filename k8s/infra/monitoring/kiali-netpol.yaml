@@ -28,6 +28,12 @@ spec:
       ports:
         - port: 9090
         - port: 16686
+    # API Kubernetes (cluster_wide_access)
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
     - to:
         - namespaceSelector: {}
       ports:
