@@ -16,7 +16,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: netdevops.fr
+    - host: opsdev.fr
       http:
         paths:
           - path: /
@@ -26,7 +26,7 @@ spec:
                 name: frontend
                 port:
                   name: http
-    - host: www.netdevops.fr
+    - host: www.opsdev.fr
       http:
         paths:
           - path: /
@@ -36,7 +36,7 @@ spec:
                 name: frontend
                 port:
                   name: http
-    - host: s3.netdevops.fr
+    - host: s3.opsdev.fr
       http:
         paths:
           - path: /
@@ -63,11 +63,11 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - netdevops.fr
-        - www.netdevops.fr
+        - opsdev.fr
+        - www.opsdev.fr
       secretName: production-tls-secret
   rules:
-    - host: netdevops.fr
+    - host: opsdev.fr
       http:
         paths:
           - path: /api
@@ -84,7 +84,7 @@ spec:
                 name: frontend
                 port:
                   name: http
-    - host: www.netdevops.fr
+    - host: www.opsdev.fr
       http:
         paths:
           - path: /api
@@ -121,10 +121,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - s3.netdevops.fr
+        - s3.opsdev.fr
       secretName: s3-production-tls-secret
   rules:
-    - host: s3.netdevops.fr
+    - host: s3.opsdev.fr
       http:
         paths:
           - path: /
@@ -146,8 +146,8 @@ metadata:
 spec:
   headers:
     accessControlAllowOriginList:
-      - "https://netdevops.fr"
-      - "https://www.netdevops.fr"
+      - "https://opsdev.fr"
+      - "https://www.opsdev.fr"
     accessControlAllowMethods:
       - "GET"
       - "HEAD"
@@ -164,7 +164,7 @@ spec:
     addVaryHeader: true
 ---
 # ============================================================
-# CERTIFICATE — TLS dédié pour s3.netdevops.fr
+# CERTIFICATE — TLS dédié pour s3.opsdev.fr
 # ============================================================
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -177,4 +177,4 @@ spec:
     name: letsencrypt-prod
     kind: ClusterIssuer
   dnsNames:
-    - s3.netdevops.fr
+    - s3.opsdev.fr
