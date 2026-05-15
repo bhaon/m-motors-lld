@@ -124,7 +124,7 @@ Tous les manifests Jaeger pour le cluster se trouvent sous **`k8s/infra/monitori
 | `k8s/infra/monitoring/kustomization.yaml` | Agrège les ressources ci-dessus : `kubectl apply -k k8s/infra/monitoring`. |
 | `k8s/infra/monitoring/namespace-and-netpol.yaml` | Namespace `monitoring` et politiques transverses (à appliquer avant si besoin). |
 
-Les overlays **dev**, **staging** et **production** ajoutent les variables OTel vers `http://jaeger.monitoring.svc.cluster.local:4318` (`k8s/overlays/<env>/patches/otel-jaeger.yaml`).
+Les overlays **dev**, **staging** et **production** envoient l’OTLP vers le **collecteur** `http://otel-collector.monitoring.svc.cluster.local:4318`, qui relaie vers **Jaeger** et alimente **Prometheus** (métriques pour **Kiali**). Voir **`kiali-topologie-services.md`**.
 
 ### UI HTTPS (Traefik)
 
