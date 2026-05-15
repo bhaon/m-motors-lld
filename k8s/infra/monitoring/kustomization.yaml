@@ -13,8 +13,7 @@ resources:
   - jaeger-ingress.yaml
   - otel-collector.yaml
   - otel-collector-netpol.yaml
-  - kiali-ingress.yaml
-  - kiali-netpol.yaml
+  # Kiali (optionnel, non recommandé sans Istio) : kiali-ingress.yaml, kiali-netpol.yaml
 
 labels:
   - pairs:

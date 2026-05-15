@@ -1,65 +1,77 @@
-# Kiali — graphe des relations entre services (sans Istio)
+# Topologie des services — Kiali vs alternatives (sans Istio)
 
-## Contexte
+## Verdict pour M-Motors LLD
 
-**Kiali** est pensé pour Istio, mais peut être utilisé **sans mesh** si :
+**Oui : Kiali est conçu pour Istio.** Sans service mesh, l’UI affiche souvent :
 
-1. Les traces OTLP passent par le **collecteur OpenTelemetry** (`otel-collector`).
-2. Le collecteur génère des métriques **spanmetrics / servicegraph** exposées à **Prometheus**.
-3. Kiali lit **Prometheus** (topologie, trafic) et **Jaeger** (traces).
+- erreurs du type *« Istio APIs are not present »* ;
+- validations ignorées (KIA1301, etc.) ;
+- graphe **vide** ou incomplet (métriques Istio absentes) ;
+- onglets mesh / mTLS / VirtualService inutilisables.
 
-Sans collecteur, Kiali affiche surtout l’inventaire Kubernetes ; le **graphe de trafic** entre `mmotors-api` et `mmotors-frontend` reste vide.
+Les correctifs (`istio_api_enabled: false`, désactivation des actions Istio) permettent au **pod de démarrer**, mais **ne remplacent pas** un mesh. Pour ce projet (Traefik + NetworkPolicies), **ne pas compter sur Kiali** pour la topologie.
 
-## Architecture
+**Recommandation :** utiliser **Jaeger** (et Grafana) ; **désinstaller Kiali** si déjà installé (voir ci-dessous).
 
-```text
-backend / frontend  --OTLP-->  otel-collector  --traces-->  Jaeger
-                                    |
-                                    +--métriques-->  Prometheus  <--  Kiali
-```
+---
 
-## Déploiement (cluster production)
+## Alternative recommandée : Jaeger (déjà en place)
+
+1. Ouvrir **https://jaeger.opsdev.fr**
+2. Service : `mmotors-api` ou `mmotors-frontend` (selon les `service.name` OTLP)
+3. **Find Traces** → générer du trafic sur le site (hors `/api/readyz`)
+4. Ouvrir une trace → onglet **System Architecture** / vue des **dépendances** entre spans (frontend → API → DB, etc.)
+
+C’est la vue la plus proche d’un « graphe de relations » **sans Istio**, avec les traces que vous envoyez déjà via `otel-collector` → Jaeger.
+
+---
+
+## Grafana (complément)
+
+- Dashboard **US-08** : métriques + logs Loki.
+- Pas de graphe service mesh natif équivalent à Kiali ; pour les **liens entre services**, privilégier Jaeger.
+
+---
+
+## Collecteur OpenTelemetry (garder)
+
+Le **otel-collector** reste utile même sans Kiali :
+
+- point d’entrée OTLP unique pour backend / frontend ;
+- relais vers **Jaeger** ;
+- possibilité d’ajouter d’autres exportateurs plus tard.
+
+Il n’est **plus** nécessaire de générer des métriques `spanmetrics` / `servicegraph` pour Kiali (config simplifiée dans le dépôt).
+
+---
+
+## Désinstaller Kiali (VPS)
 
 ```bash
-# 1. Manifests (Jaeger + collecteur + Ingress Kiali)
-kubectl apply -f k8s/infra/monitoring/namespace-and-netpol.yaml
-kubectl apply -k k8s/infra/monitoring
+helm uninstall kiali -n monitoring
 
-# 2. Kiali (Helm — release « kiali » → Service DNS « kiali »)
-helm repo add kiali https://kiali.org/helm-charts
-helm upgrade --install kiali kiali/kiali-server \
-  -n monitoring \
-  -f k8s/infra/monitoring/kiali-values.yaml
-
-# 3. Redéployer les apps (endpoint OTLP = collecteur)
-kubectl apply -k k8s/overlays/production
+kubectl delete ingress -n monitoring kiali-http-redirect kiali-ui-production --ignore-not-found
+kubectl delete certificate -n monitoring kiali-production-tls --ignore-not-found
+kubectl delete netpol -n monitoring kiali-ui-from-traefik --ignore-not-found
 ```
 
-## DNS et URL
+Optionnel : retirer le DNS `kiali.opsdev.fr`.
 
-| Service | URL |
-|---------|-----|
-| Kiali | `https://kiali.opsdev.fr` |
-| Jaeger | `https://jaeger.opsdev.fr` |
-| Grafana | `https://grafana.opsdev.fr` |
+Les manifests Kiali dans `k8s/infra/monitoring/` restent **optionnels** (non appliqués si vous ne faites pas `kubectl apply` sur `kiali-ingress.yaml` / `kiali-netpol.yaml`).
 
-Enregistrement DNS **`kiali.opsdev.fr`** → même IP que Traefik.
+---
 
-## Vérifications
+## Si vous vouliez vraiment Kiali « complet »
 
-```bash
-kubectl get pods,svc -n monitoring | grep -E 'otel-collector|kiali|jaeger'
-kubectl exec -n production deploy/backend -c backend -- env | grep OTEL_EXPORTER
-# → http://otel-collector.monitoring.svc.cluster.local:4318
-```
+Il faudrait déployer **Istio** (ou un autre mesh supporté) sur le cluster : injection sidecar, control plane, métriques Istio — **hors périmètre** actuel du projet Studi (coût ops, complexité, interaction avec Traefik).
 
-Dans Kiali : menu **Graph**, namespace **production**, générer du trafic sur le site puis rafraîchir.
+---
 
-## Alternative légère (sans Kiali)
+## Fichiers liés
 
-- **Jaeger UI** → onglet lié aux dépendances entre services (à partir des traces).
-- **Grafana** + métriques Prometheus existantes (sans graphe service dédié).
-
-## Istio (non déployé)
-
-Un graphe « mesh » complet (mTLS, règles Istio, etc.) nécessiterait **Istio + Kiali**. Ce n’est pas le modèle actuel (Traefik + NetworkPolicies).
+| Fichier | Rôle |
+|---------|------|
+| `k8s/infra/monitoring/otel-collector.yaml` | OTLP → Jaeger |
+| `k8s/overlays/*/patches/otel-jaeger.yaml` | Variables OTEL des apps |
+| [observabilite-opentelemetry.md](./observabilite-opentelemetry.md) | Détail OTLP |
+| [exploitation-monitoring.md](./exploitation-monitoring.md) | Exploitation quotidienne |
