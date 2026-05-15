@@ -17,6 +17,11 @@ on:
         required: true
         type: string
         description: "Tag Docker à construire et pousser"
+      git_ref:
+        required: false
+        type: string
+        default: ""
+        description: "Ref Git à checkout (tag semver en prod, ex. v1.2.3)"
       run_integration_tests:
         required: false
         type: boolean
@@ -41,6 +46,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -100,6 +107,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -170,6 +179,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -207,7 +218,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend-${{ inputs.environment }}
           build-args: |
             BUILD_ENV=${{ inputs.environment }}
-            NEXT_PUBLIC_API_URL=${{ inputs.environment == 'production' && 'https://netdevops.fr/api' || format('https://{0}.netdevops.fr/api', inputs.environment) }}
+            NEXT_PUBLIC_API_URL=${{ inputs.environment == 'production' && (vars.PRODUCTION_API_URL != '' && vars.PRODUCTION_API_URL || 'https://opsdev.fr/api') || format('https://{0}.netdevops.fr/api', inputs.environment) }}
           provenance: false
 
       - name: Vérifier picomatch dans l'image frontend buildée
@@ -380,6 +391,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -414,6 +427,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
