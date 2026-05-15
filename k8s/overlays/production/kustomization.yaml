@@ -22,6 +22,9 @@ patchesStrategicMerge:
   - patches/security.yaml
   - patches/minio-server-url.yaml
 
+patches:
+  - path: patches/otel-jaeger.yaml
+
 # Minio a été déployé sans `environment: production` dans son selector (contrairement
 # à backend/frontend/redis/postgresql créés avec commonLabels). Ce patch JSON 6902
 # supprime la clé ajoutée par le transformer `labels` ci-dessus, pour ne pas tenter

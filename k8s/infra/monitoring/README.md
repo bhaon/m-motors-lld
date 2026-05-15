@@ -8,7 +8,7 @@ Ce répertoire regroupe les manifests **Jaeger**, **Prometheus rules / ServiceMo
 |---------|--------------|------|
 | **`jaeger.yaml`** | `Deployment` `jaeger`, `Service` `jaeger` | Image `jaegertracing/all-in-one`, ports OTLP **4317/4318**, UI **16686**. |
 | **`jaeger-netpol.yaml`** | `NetworkPolicy` | Ingress OTLP depuis les pods **backend** / **frontend** (`component: api` / `component: web`) ; UI depuis `kube-system` (Traefik). |
-| **`jaeger-ingress.yaml`** | `Certificate` (×3), `Ingress` HTTP redirect, `Ingress` HTTPS (×3) | TLS Let’s Encrypt, hôtes `jaeger-dev`, `jaeger-staging`, `jaeger.netdevops.fr`. |
+| **`jaeger-ingress.yaml`** | `Certificate`, `Ingress` HTTP redirect, `Ingress` HTTPS | TLS Let’s Encrypt, hôte **`jaeger.opsdev.fr`**. |
 | **`alert-rules.yaml`** | `PrometheusRule`, `ServiceMonitor` (dev/staging/prod) | Alertes infra + **US-08-03** (P95 API, taux 5xx) ; scrape `/metrics` backend. |
 | **`prometheus-values.yaml`** | Référence Helm | kube-prometheus-stack (Prometheus, Grafana, Alertmanager). |
 | **`loki-values.yaml`** | Référence Helm | Loki + Promtail ; rétention **90 j** (US-08-03). |
@@ -37,7 +37,7 @@ Promtail est limité au namespace `production` et utilise le pipeline **cri** (K
 helm upgrade loki grafana/loki-stack -n monitoring -f k8s/infra/monitoring/loki-values.yaml
 ```
 
-Prérequis : DNS vers l’Ingress pour les hôtes déclarés dans `jaeger-ingress.yaml`, middlewares Traefik (`staging-auth`, `rate-limit`, `compress`, etc.) déjà déployés selon `k8s/infra/traefik/traefik-config.yaml` et **`k8s/infra/production/rate-limit.yaml`** (namespace `production`).
+Prérequis : enregistrement DNS **`jaeger.opsdev.fr`** → IP du cluster ; `k8s/infra/traefik/traefik-config.yaml` appliqué (middlewares `redirect-to-https`, `compress` dans `kube-system`).
 
 Voir aussi **`k8s/README.MD`** (section Jaeger), **`docs/monitoring/observabilite-opentelemetry.md`** et **`docs/monitoring/us-08-03-observabilite-v1.md`** (Prometheus / Grafana / Loki / alertes).
 
@@ -52,7 +52,9 @@ Voir aussi **`k8s/README.MD`** (section Jaeger), **`docs/monitoring/observabilit
 
    Si aucun pod : `kubectl apply -k k8s/infra/monitoring` (après `namespace-and-netpol.yaml` si besoin).
 
-2. **Middleware Traefik introuvable** : l’Ingress production Jaeger utilise `production-rate-limit` et `kube-system-compress`. Ils doivent exister (`kubectl get middleware -n production` et `-n kube-system`). Sinon appliquer `k8s/infra/production/rate-limit.yaml` et `k8s/infra/traefik/traefik-config.yaml`.
+2. **Middleware Traefik introuvable** : l’Ingress Jaeger utilise `kube-system-compress`. Vérifier : `kubectl get middleware -n kube-system compress`. Sinon : `kubectl apply -f k8s/infra/traefik/traefik-config.yaml`.
+
+5. **Nouveau cluster** : Jaeger n’est pas dans l’overlay `production` seul — déployer explicitement `kubectl apply -k k8s/infra/monitoring`. Script : `./scripts/diagnose-jaeger.sh`.
 
 3. **NetworkPolicy** : le fichier `jaeger-netpol.yaml` doit autoriser le port **16686** depuis le namespace **`kube-system`** (Traefik). Vérifier qu’aucune autre policy ne isole Jaeger de façon contradictoire.
 

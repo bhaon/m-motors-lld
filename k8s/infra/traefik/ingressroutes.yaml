@@ -5,7 +5,7 @@
 # sur le chaînage des middlewares
 #
 # UI Jaeger : exposée via Ingress Kubernetes dans le namespace
-# « monitoring » (fichier infra/monitoring/jaeger-ingress.yaml), host jaeger.netdevops.fr.
+# « monitoring » (fichier infra/monitoring/jaeger-ingress.yaml), host jaeger.opsdev.fr.
 # ============================================================
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute

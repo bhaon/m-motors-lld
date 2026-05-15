@@ -124,11 +124,11 @@ Tous les manifests Jaeger pour le cluster se trouvent sous **`k8s/infra/monitori
 | `k8s/infra/monitoring/kustomization.yaml` | Agrège les ressources ci-dessus : `kubectl apply -k k8s/infra/monitoring`. |
 | `k8s/infra/monitoring/namespace-and-netpol.yaml` | Namespace `monitoring` et politiques transverses (à appliquer avant si besoin). |
 
-Les overlays **dev** et **staging** ajoutent les variables OTel vers `http://jaeger.monitoring.svc.cluster.local:4318` (`k8s/overlays/<env>/patches/otel-jaeger.yaml`). La **production** n’inclut pas ce patch par défaut.
+Les overlays **dev**, **staging** et **production** ajoutent les variables OTel vers `http://jaeger.monitoring.svc.cluster.local:4318` (`k8s/overlays/<env>/patches/otel-jaeger.yaml`).
 
 ### UI HTTPS (Traefik)
 
-L’**UI** est exposée via **Ingress** sur **`https://jaeger-dev.netdevops.fr`**, **`https://jaeger-staging.netdevops.fr`** (BasicAuth staging) et **`https://jaeger.netdevops.fr`** (production), déclarées dans **`jaeger-ingress.yaml`**.
+L’**UI** production est exposée sur **`https://jaeger.opsdev.fr`** (`k8s/infra/monitoring/jaeger-ingress.yaml`).
 
 Pour l’ordre d’application et le port-forward, voir **`k8s/README.MD`** (section Jaeger).
 

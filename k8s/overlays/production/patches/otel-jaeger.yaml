@@ -1,0 +1,35 @@
+---
+# Export OpenTelemetry vers Jaeger (monitoring) — production.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger.monitoring.svc.cluster.local:4318"
+            - name: OTEL_SERVICE_NAME
+              value: "mmotors-api"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  template:
+    spec:
+      containers:
+        - name: frontend
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger.monitoring.svc.cluster.local:4318"
+            - name: OTEL_SERVICE_NAME
+              value: "mmotors-frontend"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
