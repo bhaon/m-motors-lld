@@ -21,6 +21,12 @@ grafana:
 
   adminPassword: "CHANGER_CE_MOT_DE_PASSE"   # À stocker dans un Secret K8s
 
+  # Évite Init:Error / CrashLoopBackOff sur « init-chown-data » (exit 1) lorsque
+  # le stockage ou la politique de sécurité interdit chown sur le PVC ; le fsGroup
+  # du pod Grafana suffit en pratique pour /var/lib/grafana (SQLite).
+  initChownData:
+    enabled: false
+
   persistence:
     enabled: true
     storageClassName: local-path
@@ -49,16 +55,13 @@ grafana:
         hosts:
           - grafana.netdevops.fr
 
-  # Datasources préconfigurées
+  # Datasources additionnelles (Prometheus « default » est déjà créé par le chart
+  # kube-prometheus-stack — ne pas redéclarer Prometheus avec isDefault: true
+  # sous peine d’erreur : « Only one datasource per organization can be marked as default ».
   datasources:
     datasources.yaml:
       apiVersion: 1
       datasources:
-        - name: Prometheus
-          type: prometheus
-          url: http://kube-prometheus-stack-prometheus:9090
-          isDefault: true
-          access: proxy
         - name: Loki
           type: loki
           url: http://loki:3100
