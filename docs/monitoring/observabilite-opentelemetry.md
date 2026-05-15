@@ -130,6 +130,17 @@ Les overlays **dev**, **staging** et **production** ajoutent les variables OTel 
 
 L’**UI** production est exposée sur **`https://jaeger.opsdev.fr`** (`k8s/infra/monitoring/jaeger-ingress.yaml`).
 
+### UI Jaeger : seul le service « jaeger-all-in-one »
+
+Ce nom correspond aux **traces internes du collecteur Jaeger**, pas à l’API ni au frontend. Tant qu’aucune trace applicative n’arrive, la liste des services ne contient que cette entrée.
+
+**Services attendus** après trafic réel : `mmotors-api`, `mmotors-frontend`.
+
+1. Vérifier les variables sur les pods : `kubectl exec -n production deploy/backend -- env | grep OTEL`
+2. Redéployer après le patch : `kubectl apply -k k8s/overlays/production`
+3. Générer des requêtes **métier** (catalogue, API documentée) — les sondes `/api/readyz` sont **exclues** des spans.
+4. Lister les services : `./scripts/diagnose-jaeger.sh` ou `curl http://jaeger:16686/api/services` (depuis le cluster).
+
 Pour l’ordre d’application et le port-forward, voir **`k8s/README.MD`** (section Jaeger).
 
 ### Erreur « Connection refused » vers `jaeger.monitoring.svc.cluster.local:4318`

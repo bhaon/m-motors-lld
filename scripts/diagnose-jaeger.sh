@@ -29,7 +29,16 @@ section "5. Test UI en local (si Ingress/DNS en échec)"
 echo "  kubectl port-forward -n $NS_MON svc/jaeger 16686:16686"
 echo "  puis http://localhost:16686"
 
-section "6. DNS"
+section "6. Services visibles dans Jaeger (API)"
+kubectl run jaeger-svc-test --rm -i --restart=Never -n "$NS_MON" \
+  --image=curlimages/curl:8.5.0 --command -- \
+  curl -sS "http://jaeger:16686/api/services" 2>/dev/null \
+  || echo "(échec — port-forward : kubectl port-forward -n $NS_MON svc/jaeger 16686:16686)"
+echo ""
+echo "Attendu : mmotors-api, mmotors-frontend. Si seul « jaeger-all-in-one » : pas de traces applicatives."
+echo "  → kubectl apply -k k8s/overlays/production && générer du trafic (pas seulement /api/readyz)."
+
+section "7. DNS"
 echo "  $HOST doit pointer vers l’IP publique de ce cluster (même IP que opsdev.fr / Traefik)."
 getent hosts "$HOST" 2>/dev/null || host "$HOST" 2>/dev/null || echo "(résolution DNS non disponible depuis cette machine)"
 
