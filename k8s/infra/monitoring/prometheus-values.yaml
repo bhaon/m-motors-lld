@@ -19,6 +19,10 @@
 grafana:
   enabled: true
 
+  # Un seul replica évite deux pods Grafana (dont un en CrashLoop) pendant les upgrades Helm.
+  deploymentStrategy:
+    type: Recreate
+
   adminPassword: "CHANGER_CE_MOT_DE_PASSE"   # À stocker dans un Secret K8s
 
   # Évite Init:Error / CrashLoopBackOff sur « init-chown-data » (exit 1) lorsque
@@ -65,9 +69,12 @@ grafana:
         - name: Loki
           type: loki
           uid: loki
-          url: http://loki.monitoring.svc.cluster.local:3100
+          # Nom court (même namespace) : le FQDN .svc.cluster.local échoue parfois sous K3s.
+          url: http://loki:3100
           access: proxy
           isDefault: false
+          jsonData:
+            maxLines: 1000
 
   # Dashboards préconfigurés — importés automatiquement
   dashboardProviders:
