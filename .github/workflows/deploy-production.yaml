@@ -96,9 +96,9 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
     # URL publique alignée avec l'Ingress prod (voir k8s/overlays/production/ingress.yaml).
-    # Override optionnel : variable dépôt PRODUCTION_SMOKE_BASE_URL (ex. https://www.netdevops.fr).
+    # Override optionnel : variable dépôt PRODUCTION_SMOKE_BASE_URL (ex. https://www.opsdev.fr).
     env:
-      PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_SMOKE_BASE_URL != '' && vars.PRODUCTION_SMOKE_BASE_URL || 'https://netdevops.fr' }}
+      PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_SMOKE_BASE_URL != '' && vars.PRODUCTION_SMOKE_BASE_URL || 'https://opsdev.fr' }}
 
     steps:
       - name: Checkout
@@ -269,7 +269,7 @@ jobs:
     needs: deploy
     if: success()
     env:
-      PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_SMOKE_BASE_URL != '' && vars.PRODUCTION_SMOKE_BASE_URL || 'https://netdevops.fr' }}
+      PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_SMOKE_BASE_URL != '' && vars.PRODUCTION_SMOKE_BASE_URL || 'https://opsdev.fr' }}
 
     steps:
       - name: Extended health check (stabilité sur 5 minutes)
