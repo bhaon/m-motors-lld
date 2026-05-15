@@ -37,23 +37,41 @@ kubectl get endpoints -n "$NS_MON" "$LOKI_SVC" -o wide 2>/dev/null || true
 section "3. Pods application ($NS_APP)"
 kubectl get pods -n "$NS_APP" -l app=backend 2>/dev/null || kubectl get pods -n "$NS_APP"
 
-section "4. API Loki — labels (depuis Grafana, nom court DNS)"
-if grafana_exec wget -qO- -T 5 "http://${LOKI_SVC}:3100/loki/api/v1/labels" 2>/dev/null; then
-  echo ""
+PROMTAIL_POD=$(kubectl get pods -n "$NS_MON" -l app.kubernetes.io/name=promtail \
+  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+
+section "4. API Loki — labels (ingestion réelle)"
+LABELS_OUT=""
+if LABELS_OUT=$(grafana_exec wget -qO- -T 5 "http://${LOKI_SVC}:3100/loki/api/v1/labels" 2>/dev/null); then
+  echo "$LABELS_OUT"
+elif [[ -n "$PROMTAIL_POD" ]] && LABELS_OUT=$(kubectl exec -n "$NS_MON" "$PROMTAIL_POD" -- \
+  wget -qO- -T 5 "http://${LOKI_SVC}:3100/loki/api/v1/labels" 2>/dev/null); then
+  echo "$LABELS_OUT"
+  echo "(testé depuis Promtail — Grafana non Running)"
 else
-  echo "ERREUR: impossible de joindre http://${LOKI_SVC}:3100/loki/api/v1/labels depuis Grafana"
+  echo "ERREUR: impossible de joindre http://${LOKI_SVC}:3100/loki/api/v1/labels"
+fi
+if [[ "$LABELS_OUT" == *'"data":[]'* ]] || [[ "$LABELS_OUT" == *'"data": []'* ]]; then
+  echo "ATTENTION: Loki répond mais aucun label — Promtail n’envoie peut‑être pas encore (attendre 1–2 min après restart)."
+elif [[ "$LABELS_OUT" == *namespace* ]]; then
+  echo "OK: des logs sont indexés dans Loki."
 fi
 
-section "4b. Test FQDN (souvent en échec sous K3s — datasource Grafana doit utiliser http://loki:3100)"
-if grafana_exec wget -qO- -T 5 "http://${LOKI_SVC}.${NS_MON}.svc.cluster.local:3100/ready" 2>/dev/null; then
-  echo " → FQDN OK"
-else
-  echo "FQDN en échec (normal sur certains K3s) — utiliser http://loki:3100 dans la datasource Grafana"
+section "4b. Grafana CrashLoop — logs du conteneur en échec"
+GRAFANA_POD_ANY=$(kubectl get pods -n "$NS_MON" -l app.kubernetes.io/name=grafana \
+  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+if [[ -n "$GRAFANA_POD_ANY" ]]; then
+  for c in grafana grafana-sc-datasources grafana-sc-dashboard; do
+    st=$(kubectl get pod -n "$NS_MON" "$GRAFANA_POD_ANY" \
+      -o jsonpath="{.status.containerStatuses[?(@.name=='$c')].state.waiting.reason}" 2>/dev/null || true)
+    if [[ -n "$st" ]]; then
+      echo "--- $c ($st) ---"
+      kubectl logs -n "$NS_MON" "$GRAFANA_POD_ANY" -c "$c" --tail=15 2>/dev/null || true
+    fi
+  done
 fi
 
 section "5. Config Promtail (URL push Loki)"
-PROMTAIL_POD=$(kubectl get pods -n "$NS_MON" -l app.kubernetes.io/name=promtail \
-  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
 if [[ -n "$PROMTAIL_POD" ]]; then
   kubectl get secret -n "$NS_MON" loki-promtail -o jsonpath='{.data.promtail\.yaml}' 2>/dev/null \
     | base64 -d 2>/dev/null | grep -A2 'clients:' || true
