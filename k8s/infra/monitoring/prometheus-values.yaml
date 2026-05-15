@@ -39,10 +39,10 @@ grafana:
   resources:
     requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 256Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 768Mi
 
   # Ingress Grafana via Traefik
   ingress:
@@ -59,22 +59,18 @@ grafana:
         hosts:
           - grafana.opsdev.fr
 
-  # Datasources additionnelles (Prometheus « default » est déjà créé par le chart
-  # kube-prometheus-stack — ne pas redéclarer Prometheus avec isDefault: true
-  # sous peine d’erreur : « Only one datasource per organization can be marked as default ».
-  datasources:
-    datasources.yaml:
-      apiVersion: 1
-      datasources:
-        - name: Loki
-          type: loki
-          uid: loki
-          # Nom court (même namespace) : le FQDN .svc.cluster.local échoue parfois sous K3s.
-          url: http://loki:3100
-          access: proxy
-          isDefault: false
-          jsonData:
-            maxLines: 1000
+  # Loki en plus de Prometheus (déjà provisionné par le chart).
+  # Ne pas utiliser grafana.datasources.datasources.yaml : cela remplace toute la config
+  # et peut faire planter le sidecar / Grafana (CrashLoopBackOff 2/3).
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki:3100
+      access: proxy
+      isDefault: false
+      jsonData:
+        maxLines: 1000
 
   # Dashboards préconfigurés — importés automatiquement
   dashboardProviders:
