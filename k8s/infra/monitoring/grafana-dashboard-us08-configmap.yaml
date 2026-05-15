@@ -16,7 +16,7 @@ data:
       "title": "M-Motors — Observabilité V1 (US-08-03)",
       "uid": "mmotors-us08",
       "schemaVersion": 39,
-      "version": 1,
+      "version": 2,
       "refresh": "30s",
       "time": { "from": "now-6h", "to": "now" },
       "templating": {
@@ -25,9 +25,12 @@ data:
             "name": "namespace",
             "type": "custom",
             "query": "production",
-            "current": { "text": "production", "value": "production" },
+            "current": { "selected": true, "text": "production", "value": "production" },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
             "options": [
-              { "text": "production", "value": "production" }
+              { "selected": true, "text": "production", "value": "production" }
             ]
           }
         ]
@@ -98,13 +101,19 @@ data:
           "datasource": { "type": "loki", "uid": "loki" },
           "targets": [
             {
-              "expr": "{namespace=\"$namespace\", pod=~\"backend-.*\", container=\"backend\"}",
+              "datasource": { "type": "loki", "uid": "loki" },
+              "editorMode": "code",
+              "expr": "{namespace=\"$namespace\", pod=~\"backend.*\", container=\"backend\"}",
+              "queryType": "range",
               "refId": "A"
             }
           ],
           "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
             "showTime": true,
             "showLabels": true,
+            "sortOrder": "Descending",
             "wrapLogMessage": true
           }
         }
