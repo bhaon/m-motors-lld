@@ -77,6 +77,7 @@ Surcharges locales non versionnées : créer un fichier **`docker-compose.overri
 - **Traces et logs (OpenTelemetry)** : [docs/monitoring/observabilite-opentelemetry.md](docs/monitoring/observabilite-opentelemetry.md) — avec Docker Compose, l’UI **Jaeger** permet de visualiser les services `mmotors-api` et `mmotors-frontend`.
 
 - **Métriques Prometheus, Grafana, Loki et alertes (US-08-03)** : [docs/monitoring/us-08-03-observabilite-v1.md](docs/monitoring/us-08-03-observabilite-v1.md).
+- **Guide d’exploitation monitoring** (dashboards, interprétation, incidents) : [docs/monitoring/exploitation-monitoring.md](docs/monitoring/exploitation-monitoring.md).
 
 - **Déploiement Jaeger / ordre d’application Kustomize / ingress monitoring** : [k8s/README.MD](k8s/README.MD).
 
