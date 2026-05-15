@@ -167,3 +167,6 @@ docker-compose.override.yml
 .terraform/
 *.tfstate
 *.tfstate.*
+
+# -- Monitoring tools
+prometheus-values.yaml
