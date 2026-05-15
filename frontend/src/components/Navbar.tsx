@@ -606,23 +606,42 @@ export default function Navbar() {
                       Dossiers en attente
                     </Link>
                     {isSuperviseurReporting ? (
-                      <Link
-                        href="/backoffice/reporting"
-                        role="menuitem"
-                        onClick={() => setIsMenuOpen(false)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: "12px 14px",
-                          textDecoration: "none",
-                          color: "#6d28d9",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <ListIcon />
-                        Reporting dossiers
-                      </Link>
+                      <>
+                        <Link
+                          href="/backoffice/reporting"
+                          role="menuitem"
+                          onClick={() => setIsMenuOpen(false)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "12px 14px",
+                            textDecoration: "none",
+                            color: "#6d28d9",
+                            fontWeight: 600,
+                          }}
+                        >
+                          <ListIcon />
+                          Reporting dossiers
+                        </Link>
+                        <Link
+                          href="/backoffice/contrats-en-cours"
+                          role="menuitem"
+                          onClick={() => setIsMenuOpen(false)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "12px 14px",
+                            textDecoration: "none",
+                            color: "#b45309",
+                            fontWeight: 600,
+                          }}
+                        >
+                          <ContractIcon size={16} />
+                          Contrats en cours
+                        </Link>
+                      </>
                     ) : null}
                   </>
                 )}
@@ -750,9 +769,14 @@ export default function Navbar() {
                     <DossierIcon size={16} /> Dossiers en attente
                   </Link>
                   {isSuperviseurReporting && (
-                    <Link href="/backoffice/reporting" onClick={() => setIsNavOpen(false)}>
-                      <ListIcon size={16} /> Reporting
-                    </Link>
+                    <>
+                      <Link href="/backoffice/reporting" onClick={() => setIsNavOpen(false)}>
+                        <ListIcon size={16} /> Reporting
+                      </Link>
+                      <Link href="/backoffice/contrats-en-cours" onClick={() => setIsNavOpen(false)}>
+                        <ContractIcon size={16} /> Contrats en cours
+                      </Link>
+                    </>
                   )}
                 </>
               )}

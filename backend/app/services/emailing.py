@@ -815,3 +815,92 @@ def send_livraison_planifiee_email(
         )
     except Exception:  # pragma: no cover
         logger.exception("Echec Resend email livraison planifiée dossier %s", dossier_reference)
+
+
+def _build_contract_retention_alert_email_html(
+    *,
+    dossier_reference: str,
+    client_label: str,
+    date_fin_iso: str,
+    jours_restants: int,
+    dashboard_url: str,
+) -> str:
+    """HTML de l'alerte rétention client (US-06-11)."""
+    return f"""
+    <div style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+        <tr>
+          <td style="background:#0f172a;padding:20px 24px;color:#ffffff;font-size:22px;font-weight:800;">
+            M-<span style="color:#06b6d4;">MOTORS</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 24px 18px;">
+            <h1 style="margin:0 0 14px;font-size:22px;color:#0f172a;">Fin de contrat LLD à planifier</h1>
+            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+              Le contrat <strong>{dossier_reference}</strong> ({client_label}) se termine le
+              <strong>{date_fin_iso}</strong> (dans environ <strong>{jours_restants} jours</strong>).
+            </p>
+            <p style="margin:0 0 22px;font-size:14px;line-height:1.6;color:#4b5563;">
+              Pensez à contacter le client pour tenter de conserver la relation commerciale
+              (renouvellement, prolongation ou offre adaptée).
+            </p>
+            <a href="{dashboard_url}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:14px;">
+              Voir le tableau de bord contrats
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;">
+            Alerte automatique US-06-11 — ne pas répondre à cet email.
+          </td>
+        </tr>
+      </table>
+    </div>
+    """.strip()
+
+
+def send_contract_retention_alert_email(
+    *,
+    to_emails: list[str],
+    dossier_reference: str,
+    client_label: str,
+    date_fin_iso: str,
+    jours_restants: int,
+    dashboard_url: str,
+) -> bool:
+    """
+    Alerte superviseur / admin : contrat LLD en fin de vie (≤ 3 mois).
+
+    Renvoie ``True`` si au moins un envoi Resend a réussi.
+    """
+    recipients = [e.strip() for e in to_emails if e and e.strip()]
+    if not recipients:
+        return False
+    if resend is None:
+        logger.warning("Package resend absent : alerte rétention non envoyée pour %s", dossier_reference)
+        return False
+    if not settings.RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY absente : alerte rétention non envoyée pour %s", dossier_reference)
+        return False
+
+    resend.api_key = settings.RESEND_API_KEY
+    try:
+        resend.Emails.send(
+            {
+                "from": settings.RESEND_FROM_EMAIL,
+                "to": recipients,
+                "subject": f"[Rétention] Fin de contrat proche — {dossier_reference}",
+                "html": _build_contract_retention_alert_email_html(
+                    dossier_reference=dossier_reference,
+                    client_label=client_label,
+                    date_fin_iso=date_fin_iso,
+                    jours_restants=jours_restants,
+                    dashboard_url=dashboard_url,
+                ),
+            }
+        )
+    except Exception:  # pragma: no cover
+        logger.exception("Echec Resend alerte rétention dossier %s", dossier_reference)
+        return False
+    return True

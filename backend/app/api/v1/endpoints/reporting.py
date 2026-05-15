@@ -13,7 +13,8 @@ from app.core.deps import DbSession, enforce_role, get_user_from_cookie
 from app.models.dossier import Dossier, DossierStatusEnum
 from app.models.user import RoleEnum, User
 from app.schemas.admin import ReportingSummaryOut
-from app.schemas.reporting import DossierReportingOut, ReportingPeriodPreset
+from app.schemas.reporting import ContratEnCoursListOut, DossierReportingOut, ReportingPeriodPreset
+from app.services.active_contracts_dashboard import list_contrats_en_cours
 
 router = APIRouter(prefix="/reporting", tags=["Reporting"])
 
@@ -219,3 +220,18 @@ def get_dossiers_reporting(
     enforce_role(user, RoleEnum.superviseur, RoleEnum.admin)
 
     return _build_dossier_reporting(db, preset=period, now=datetime.now(timezone.utc))
+
+
+@router.get(
+    "/contrats-en-cours",
+    response_model=ContratEnCoursListOut,
+    summary="US-06-11 — Tableau de bord des contrats LLD en cours",
+)
+def get_contrats_en_cours(
+    db: DbSession,
+    access_token: str | None = Cookie(default=None),
+) -> ContratEnCoursListOut:
+    """Liste les contrats LLD actifs avec phase de location et alerte fin à 3 mois — superviseur / admin."""
+    user = get_user_from_cookie(access_token, db)
+    enforce_role(user, RoleEnum.superviseur, RoleEnum.admin)
+    return list_contrats_en_cours(db)
