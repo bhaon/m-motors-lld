@@ -11,6 +11,10 @@ resources:
   - jaeger.yaml
   - jaeger-netpol.yaml
   - jaeger-ingress.yaml
+  - otel-collector.yaml
+  - otel-collector-netpol.yaml
+  - kiali-ingress.yaml
+  - kiali-netpol.yaml
 
 labels:
   - pairs:

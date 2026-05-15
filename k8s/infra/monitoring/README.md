@@ -13,7 +13,10 @@ Ce répertoire regroupe les manifests **Jaeger**, **Prometheus rules / ServiceMo
 | **`prometheus-values.yaml`** | Référence Helm | kube-prometheus-stack (Prometheus, Grafana, Alertmanager). |
 | **`loki-values.yaml`** | Référence Helm | Loki + Promtail ; rétention **90 j** (US-08-03). |
 | **`grafana-dashboard-us08-configmap.yaml`** | `ConfigMap` | Dashboard indicateurs clés (Prometheus + Loki). |
-| **`kustomization.yaml`** | Kustomize | Point d’entrée Jaeger : `kubectl apply -k k8s/infra/monitoring`. |
+| **`otel-collector.yaml`** | ConfigMap, Deployment, Service, ServiceMonitor | OTLP → Jaeger + métriques spanmetrics pour Kiali. |
+| **`kiali-values.yaml`** | Référence Helm | Console Kiali (graphe services, sans Istio). |
+| **`kiali-ingress.yaml`** | Certificate, Ingress | UI **`https://kiali.opsdev.fr`**. |
+| **`kustomization.yaml`** | Kustomize | Jaeger + collecteur + Ingress Kiali : `kubectl apply -k k8s/infra/monitoring`. |
 
 Le namespace **`monitoring`** et certaines politiques réseau transverses sont définis dans le même répertoire : **`namespace-and-netpol.yaml`**.
 
@@ -38,6 +41,14 @@ helm upgrade loki grafana/loki-stack -n monitoring -f k8s/infra/monitoring/loki-
 ```
 
 Prérequis : enregistrement DNS **`jaeger.opsdev.fr`** → IP du cluster ; `k8s/infra/traefik/traefik-config.yaml` appliqué (middlewares `redirect-to-https`, `compress` dans `kube-system`).
+
+**Kiali** (graphe des relations entre services) : voir **`docs/monitoring/kiali-topologie-services.md`**.
+
+```bash
+helm repo add kiali https://kiali.org/helm-charts
+helm upgrade --install kiali kiali/kiali-server -n monitoring \
+  -f k8s/infra/monitoring/kiali-values.yaml
+```
 
 Voir aussi **`k8s/README.MD`** (section Jaeger), **`docs/monitoring/observabilite-opentelemetry.md`** et **`docs/monitoring/us-08-03-observabilite-v1.md`** (Prometheus / Grafana / Loki / alertes).
 

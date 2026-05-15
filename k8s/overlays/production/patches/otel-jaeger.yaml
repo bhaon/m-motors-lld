@@ -15,9 +15,9 @@ spec:
             - name: OTEL_TRACES_EXPORTER
               value: "otlp"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://jaeger.monitoring.svc.cluster.local:4318"
+              value: "http://otel-collector.monitoring.svc.cluster.local:4318"
             - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-              value: "http://jaeger.monitoring.svc.cluster.local:4318/v1/traces"
+              value: "http://otel-collector.monitoring.svc.cluster.local:4318/v1/traces"
             - name: OTEL_SERVICE_NAME
               value: "mmotors-api"
             - name: OTEL_RESOURCE_ATTRIBUTES
@@ -38,9 +38,9 @@ spec:
             - name: OTEL_TRACES_EXPORTER
               value: "otlp"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://jaeger.monitoring.svc.cluster.local:4318"
+              value: "http://otel-collector.monitoring.svc.cluster.local:4318"
             - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-              value: "http://jaeger.monitoring.svc.cluster.local:4318/v1/traces"
+              value: "http://otel-collector.monitoring.svc.cluster.local:4318/v1/traces"
             - name: OTEL_SERVICE_NAME
               value: "mmotors-frontend"
             - name: OTEL_RESOURCE_ATTRIBUTES

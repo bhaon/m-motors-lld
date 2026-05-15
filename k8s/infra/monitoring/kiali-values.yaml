@@ -1,0 +1,40 @@
+---
+# Kiali — console topologie (sans Istio ; métriques via OTel spanmetrics → Prometheus).
+# Installation :
+#   helm repo add kiali https://kiali.org/helm-charts
+#   helm upgrade --install kiali kiali/kiali-server \
+#     -n monitoring \
+#     -f k8s/infra/monitoring/kiali-values.yaml
+#
+# Prérequis : otel-collector + Prometheus + Jaeger dans le namespace monitoring.
+
+auth:
+  strategy: anonymous
+
+deployment:
+  instance_name: kiali
+  cluster_wide_access: true
+  pod_annotations: {}
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+external_services:
+  prometheus:
+    url: "http://kube-prometheus-stack-prometheus.monitoring:9090/"
+  tracing:
+    enabled: true
+    internal_url: "http://jaeger.monitoring.svc.cluster.local:16686"
+    use_grpc: false
+  istio:
+    root_namespace: ""
+
+kiali_feature_flags:
+  disabled_features:
+    - istio
