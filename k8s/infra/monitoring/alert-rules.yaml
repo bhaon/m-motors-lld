@@ -1,7 +1,7 @@
 ---
 # ============================================================
 # PROMETHEUS RULES — Alertes applicatives
-# Couvre les 3 namespaces : dev, staging, production
+# Couvre le namespace : production
 # Appliquer : kubectl apply -f k8s/infra/monitoring/alert-rules.yaml
 # ============================================================
 apiVersion: monitoring.coreos.com/v1
@@ -21,7 +21,7 @@ spec:
         - alert: PodCrashLooping
           expr: |
             rate(kube_pod_container_status_restarts_total{
-              namespace=~"dev|staging|production"
+              namespace=~"production"
             }[5m]) * 60 > 5
           for: 5m
           labels:
@@ -33,7 +33,7 @@ spec:
         - alert: PodNotReady
           expr: |
             kube_pod_status_ready{
-              namespace=~"staging|production",
+              namespace=~"production",
               condition="true"
             } == 0
           for: 5m
@@ -45,8 +45,8 @@ spec:
 
         - alert: DeploymentReplicasMismatch
           expr: |
-            kube_deployment_spec_replicas{namespace=~"staging|production"}
-            != kube_deployment_status_available_replicas{namespace=~"staging|production"}
+            kube_deployment_spec_replicas{namespace=~"production"}
+            != kube_deployment_status_available_replicas{namespace=~"production"}
           for: 10m
           labels:
             severity: warning
@@ -61,11 +61,11 @@ spec:
         - alert: ContainerHighCPU
           expr: |
             rate(container_cpu_usage_seconds_total{
-              namespace=~"staging|production",
+              namespace=~"production",
               container!=""
             }[5m]) /
             kube_pod_container_resource_limits{
-              namespace=~"staging|production",
+              namespace=~"production",
               resource="cpu"
             } * 100 > 85
           for: 10m
@@ -78,11 +78,11 @@ spec:
         - alert: ContainerHighMemory
           expr: |
             container_memory_working_set_bytes{
-              namespace=~"staging|production",
+              namespace=~"production",
               container!=""
             } /
             kube_pod_container_resource_limits{
-              namespace=~"staging|production",
+              namespace=~"production",
               resource="memory"
             } * 100 > 85
           for: 10m
@@ -95,7 +95,7 @@ spec:
         - alert: ContainerOOMKilled
           expr: |
             kube_pod_container_status_last_terminated_reason{
-              namespace=~"dev|staging|production",
+              namespace=~"production",
               reason="OOMKilled"
             } == 1
           for: 0m
@@ -111,8 +111,8 @@ spec:
       rules:
         - alert: PVCAlmostFull
           expr: |
-            kubelet_volume_stats_used_bytes{namespace=~"dev|staging|production"} /
-            kubelet_volume_stats_capacity_bytes{namespace=~"dev|staging|production"} * 100 > 80
+            kubelet_volume_stats_used_bytes{namespace=~"production"} /
+            kubelet_volume_stats_capacity_bytes{namespace=~"production"} * 100 > 80
           for: 5m
           labels:
             severity: warning
@@ -122,8 +122,8 @@ spec:
 
         - alert: PVCFull
           expr: |
-            kubelet_volume_stats_used_bytes{namespace=~"staging|production"} /
-            kubelet_volume_stats_capacity_bytes{namespace=~"staging|production"} * 100 > 95
+            kubelet_volume_stats_used_bytes{namespace=~"production"} /
+            kubelet_volume_stats_capacity_bytes{namespace=~"production"} * 100 > 95
           for: 1m
           labels:
             severity: critical
@@ -183,10 +183,10 @@ spec:
           expr: |
             sum(rate(traefik_service_requests_total{
               code=~"5..",
-              namespace=~"staging|production"
+              namespace=~"production"
             }[5m])) by (service, namespace) /
             sum(rate(traefik_service_requests_total{
-              namespace=~"staging|production"
+              namespace=~"production"
             }[5m])) by (service, namespace) * 100 > 5
           for: 5m
           labels:
@@ -218,7 +218,7 @@ spec:
           expr: |
             histogram_quantile(0.95,
               sum(rate(http_request_duration_highr_seconds_bucket{
-                namespace=~"staging|production",
+                namespace=~"production",
                 pod=~"backend.*"
               }[5m])) by (le)
             ) > 2
@@ -233,7 +233,7 @@ spec:
           expr: |
             (
               sum(rate(http_requests_total{
-                namespace=~"staging|production",
+                namespace=~"production",
                 pod=~"backend.*",
                 status="5xx"
               }[5m]))
@@ -241,7 +241,7 @@ spec:
             )
             /
             clamp_min(sum(rate(http_requests_total{
-              namespace=~"staging|production",
+              namespace=~"production",
               pod=~"backend.*"
             }[5m])), 1e-9)
             > 0.01
@@ -299,43 +299,3 @@ spec:
   namespaceSelector:
     matchNames:
       - production
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: backend-metrics
-  namespace: staging
-  labels:
-    release: kube-prometheus-stack
-spec:
-  selector:
-    matchLabels:
-      app: backend
-  endpoints:
-    - port: http
-      path: /metrics
-      interval: 30s
-      scrapeTimeout: 10s
-  namespaceSelector:
-    matchNames:
-      - staging
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: backend-metrics
-  namespace: dev
-  labels:
-    release: kube-prometheus-stack
-spec:
-  selector:
-    matchLabels:
-      app: backend
-  endpoints:
-    - port: http
-      path: /metrics
-      interval: 30s
-      scrapeTimeout: 10s
-  namespaceSelector:
-    matchNames:
-      - dev

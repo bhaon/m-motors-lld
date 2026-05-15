@@ -64,8 +64,10 @@ grafana:
       datasources:
         - name: Loki
           type: loki
-          url: http://loki:3100
+          uid: loki
+          url: http://loki.monitoring.svc.cluster.local:3100
           access: proxy
+          isDefault: false
 
   # Dashboards préconfigurés — importés automatiquement
   dashboardProviders:

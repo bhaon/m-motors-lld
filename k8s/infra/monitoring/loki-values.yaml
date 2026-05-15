@@ -33,18 +33,31 @@ promtail:
   enabled: true
   config:
     clients:
-      - url: http://loki:3100/loki/api/v1/push
+      - url: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
     scrape_configs:
-      - job_name: kubernetes-pods
+      - job_name: kubernetes-pods-production
         kubernetes_sd_configs:
           - role: pod
+            namespaces:
+              names:
+                - production
+        # K3s / containerd : utiliser « cri », pas « docker » (sinon aucun log ingéré).
         pipeline_stages:
-          - docker: {}
+          - cri: {}
         relabel_configs:
+          # Ne collecter que les pods du namespace production (aligné monitoring prod seul).
+          - action: keep
+            source_labels: [__meta_kubernetes_namespace]
+            regex: production
+          - action: keep
+            source_labels: [__meta_kubernetes_pod_phase]
+            regex: Running
           - source_labels: [__meta_kubernetes_namespace]
             target_label: namespace
           - source_labels: [__meta_kubernetes_pod_name]
             target_label: pod
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
           - source_labels: [__meta_kubernetes_pod_label_app]
             target_label: app
           - source_labels: [__meta_kubernetes_pod_label_environment]
