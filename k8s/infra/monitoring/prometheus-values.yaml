@@ -164,7 +164,7 @@ prometheus:
 # ── Alertmanager ───────────────────────────────────────────
 # Notifications : Slack (placeholders ci-dessous). Pour l’US-08-03 (email via Resend),
 # ajouter un receiver `email_configs` + `smtp_auth_password_file` (secret monté) — voir
-# docs/monitoring/us-08-03-observabilite-v1.md §5.
+# docs/monitoring/README.md §9.3 (notifications Resend).
 alertmanager:
   enabled: true
 

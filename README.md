@@ -46,7 +46,7 @@ Le projet est composé de :
 - **Ingress** : **Traefik** ; certificats : **cert-manager** (selon environnement)
 - **Registry** des images : **GHCR**
 - **Redis** : déployé avec l’application en cluster (cache / sessions selon configuration) — absent du `docker-compose` local minimal
-- **Monitoring cluster** : manifests et valeurs Helm sous `k8s/infra/monitoring/` (Jaeger, stack Prometheus / Grafana / Loki / alertes — voir `k8s/README.MD` et `docs/monitoring/us-08-03-observabilite-v1.md`)
+- **Monitoring cluster** : manifests sous `k8s/infra/monitoring/` (Jaeger, Prometheus, Grafana, Loki, alertes) — [docs/monitoring/README.md](docs/monitoring/README.md)
 
 ## Développement local
 
@@ -74,18 +74,16 @@ Surcharges locales non versionnées : créer un fichier **`docker-compose.overri
 
 ## Observabilité
 
-- **Traces et logs (OpenTelemetry)** : [docs/monitoring/observabilite-opentelemetry.md](docs/monitoring/observabilite-opentelemetry.md) — avec Docker Compose, l’UI **Jaeger** permet de visualiser les services `mmotors-api` et `mmotors-frontend`.
-
-- **Métriques Prometheus, Grafana, Loki et alertes (US-08-03)** : [docs/monitoring/us-08-03-observabilite-v1.md](docs/monitoring/us-08-03-observabilite-v1.md).
-- **Guide d’exploitation monitoring** (dashboards, interprétation, incidents) : [docs/monitoring/exploitation-monitoring.md](docs/monitoring/exploitation-monitoring.md).
-
-- **Déploiement Jaeger / ordre d’application Kustomize / ingress monitoring** : [k8s/README.MD](k8s/README.MD).
+- **Métriques, logs, traces, alertes et exploitation** : [docs/monitoring/README.md](docs/monitoring/README.md) (OpenTelemetry, Jaeger, Prometheus, Grafana, Loki, dashboard US-08-03).
+- **Déploiement Kubernetes** (hors monitoring) : [docs/k8s/README.md](docs/k8s/README.md).
 
 ## Documentation
 
-- **User stories** : [docs/UserStories/](docs/UserStories/)
+- **Développement fonctionnel (user stories)** : [docs/development/README.md](docs/development/README.md) — fiches détaillées : [docs/development/](docs/development/)
 - **Schéma base (DBML)** : [docs/schema.dbml](docs/schema.dbml) et variante [docs/Database/schéma.dbml](docs/Database/schéma.dbml)
-- **Kubernetes (MinIO, setup, installation prod Ubuntu 24.04)** : [docs/k8s/](docs/k8s/) — guide détaillé : [docs/k8s/installation-production-from-scratch-ubuntu-24.04.md](docs/k8s/installation-production-from-scratch-ubuntu-24.04.md)
+- **Kubernetes** (Kustomize, K3s, TLS, secrets, MinIO, CI/CD) : [docs/k8s/README.md](docs/k8s/README.md)
+- **Observabilité et logs** (OTEL, Jaeger, Prometheus, Grafana, Loki) : [docs/monitoring/README.md](docs/monitoring/README.md)
+- **CI/CD GitHub Actions** (secrets, environments, déploiements) : [docs/cicd/README.md](docs/cicd/README.md)
 
 ## Arborescence utile
 
@@ -99,7 +97,7 @@ Surcharges locales non versionnées : créer un fichier **`docker-compose.overri
 │   └── infra/                # namespaces, traefik, cert-manager, monitoring…
 ├── docs/
 │   ├── monitoring/           # OpenTelemetry, US-08-03 observabilité
-│   ├── UserStories/          # Spécifications par US
+│   ├── development/          # User stories et guide de développement
 │   ├── k8s/                  # Guides complémentaires K8s
 │   └── Database/             # Schémas DBML
 ├── .github/workflows/        # CI réutilisable, déploiements, sécurité, Sonar, rollback
@@ -119,18 +117,12 @@ Surcharges locales non versionnées : créer un fichier **`docker-compose.overri
 - **pip**
 - **Docker** et **Docker Compose** (stack locale + builds d’images)
 - **kubectl** + accès cluster (déploiement)
-- **Kustomize** (ou `kubectl kustomize`) ; éventuellement **Helm** pour les composants monitoring documentés dans `docs/monitoring/us-08-03-observabilite-v1.md`
+- **Kustomize** (ou `kubectl kustomize`) ; éventuellement **Helm** pour la stack monitoring — voir [docs/monitoring/README.md](docs/monitoring/README.md)
 
 Projet maintenu dans le cadre de l’examen Studi Bloc 3.
 
 ## CI/CD
 
-Les workflows sous **`.github/workflows/`** incluent notamment :
+Guide complet (workflows, secrets, variables, environments GitHub, procédures de configuration) : **[docs/cicd/README.md](docs/cicd/README.md)**.
 
-- **`ci.yaml`** — workflow **réutilisable** (appelé par les déploiements) : lint / tests frontend et backend, build et publication d’images, scans (ex. Trivy).
-- **`deploy-dev.yaml`**, **`deploy-staging.yaml`**, **`deploy-production.yaml`** — enchaînement CI + déploiement **Kustomize** vers les namespaces cibles (déclencheurs et garde-fous propres à chaque env).
-- **`rollback.yaml`** — procédure de retour arrière sur les déploiements.
-- **`security-scan.yaml`** — scans planifiés (images production, kube-bench, etc.).
-- **`sonarqube-pr.yaml`** — analyse sur les pull requests (`sonar-project.properties` à la racine).
-
-Les déploiements automatiques **dev** ignorent certains chemins (documentation seule, manifests `k8s/**`, etc.) : voir les filtres `paths-ignore` dans les workflows concernés.
+Résumé : **`ci.yaml`** (réutilisable) → **`deploy-dev`** / **`deploy-staging`** / **`deploy-production`** (Kustomize + GHCR) ; **`sonarqube-pr`** (SAST) ; **`security-scan`** (hebdo) ; **`rollback`** (manuel).
