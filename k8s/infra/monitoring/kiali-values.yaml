@@ -1,5 +1,7 @@
 ---
-# Kiali — console topologie (sans Istio ; métriques via OTel spanmetrics → Prometheus).
+# DÉPRÉCIÉ sans Istio — beaucoup d'erreurs UI ; préférer Jaeger (System Architecture).
+# Ne pas installer sauf si un service mesh Istio est déployé.
+# Kiali — console topologie (nécessite Istio pour un usage correct).
 # Installation :
 #   helm repo add kiali https://kiali.org/helm-charts
 #   helm upgrade --install kiali kiali/kiali-server \

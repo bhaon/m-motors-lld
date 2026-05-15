@@ -1,6 +1,5 @@
 ---
-# Collecteur OTLP : reçoit les traces des apps, les envoie à Jaeger et génère
-# des métriques spanmetrics / servicegraph pour Kiali (sans Istio).
+# Collecteur OTLP : point d'entrée unique des apps, relais des traces vers Jaeger.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -22,26 +21,11 @@ data:
         timeout: 5s
         send_batch_size: 512
 
-    connectors:
-      spanmetrics:
-        # service.name est déjà une dimension par défaut — ne pas la redéclarer.
-        dimensions:
-          - name: k8s.namespace.name
-        metrics_flush_interval: 15s
-      servicegraph:
-        metrics_flush_interval: 15s
-        store:
-          ttl: 2s
-          max_items: 2000
-
     exporters:
       otlp/jaeger:
         endpoint: jaeger.monitoring.svc.cluster.local:4317
         tls:
           insecure: true
-      prometheus:
-        endpoint: 0.0.0.0:8889
-        namespace: traces_spanmetrics
 
     extensions:
       health_check:
@@ -49,18 +33,11 @@ data:
 
     service:
       extensions: [health_check]
-      telemetry:
-        metrics:
-          address: 0.0.0.0:8888
       pipelines:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [otlp/jaeger, spanmetrics, servicegraph]
-        metrics:
-          receivers: [spanmetrics, servicegraph]
-          processors: [batch]
-          exporters: [prometheus]
+          exporters: [otlp/jaeger]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -89,8 +66,6 @@ spec:
               containerPort: 4317
             - name: otlp-http
               containerPort: 4318
-            - name: metrics
-              containerPort: 8889
             - name: health
               containerPort: 13133
           volumeMounts:
@@ -108,7 +83,7 @@ spec:
               memory: 128Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              memory: 256Mi
       volumes:
         - name: config
           configMap:
@@ -130,22 +105,3 @@ spec:
     - name: otlp-http
       port: 4318
       targetPort: 4318
-    - name: metrics
-      port: 8889
-      targetPort: 8889
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: otel-collector
-  labels:
-    app: otel-collector
-    release: kube-prometheus-stack
-spec:
-  selector:
-    matchLabels:
-      app: otel-collector
-  endpoints:
-    - port: metrics
-      interval: 30s
-      path: /metrics
