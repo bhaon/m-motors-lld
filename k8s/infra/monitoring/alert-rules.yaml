@@ -231,16 +231,19 @@ spec:
 
         - alert: BackendAPIErrorRateHigh
           expr: |
-            sum(rate(http_requests_total{
-              namespace=~"staging|production",
-              pod=~"backend.*",
-              status="5xx"
-            }[5m]))
+            (
+              sum(rate(http_requests_total{
+                namespace=~"staging|production",
+                pod=~"backend.*",
+                status="5xx"
+              }[5m]))
+              or on() vector(0)
+            )
             /
-            sum(rate(http_requests_total{
+            clamp_min(sum(rate(http_requests_total{
               namespace=~"staging|production",
               pod=~"backend.*"
-            }[5m]))
+            }[5m])), 1e-9)
             > 0.01
           for: 5m
           labels:
@@ -296,3 +299,43 @@ spec:
   namespaceSelector:
     matchNames:
       - production
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend-metrics
+  namespace: staging
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - staging
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend-metrics
+  namespace: dev
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - dev
