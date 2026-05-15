@@ -49,11 +49,11 @@ grafana:
       traefik.ingress.kubernetes.io/router.tls: "true"
       cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts:
-      - grafana.netdevops.fr
+      - grafana.opsdev.fr
     tls:
       - secretName: grafana-tls-secret
         hosts:
-          - grafana.netdevops.fr
+          - grafana.opsdev.fr
 
   # Datasources additionnelles (Prometheus « default » est déjà créé par le chart
   # kube-prometheus-stack — ne pas redéclarer Prometheus avec isDefault: true
@@ -107,11 +107,11 @@ grafana:
   # SMTP pour alertes email (optionnel)
   grafana.ini:
     server:
-      root_url: "https://grafana.netdevops.fr"
+      root_url: "https://grafana.opsdev.fr"
     smtp:
       enabled: false
       # host: smtp.gmail.com:587
-      # user: alerts@netdevops.fr
+      # user: alerts@opsdev.fr
       # password: ""
     security:
       admin_user: admin
@@ -143,7 +143,7 @@ prometheus:
         cpu: 1000m
         memory: 2Gi
 
-    # Scraper TOUS les namespaces (dev, staging, production, kube-system)
+    # Scraper production, kube-system)
     serviceMonitorSelectorNilUsesHelmValues: false
     serviceMonitorSelector: {}
     serviceMonitorNamespaceSelector: {}

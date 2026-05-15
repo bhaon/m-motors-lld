@@ -24,11 +24,9 @@ data:
           {
             "name": "namespace",
             "type": "custom",
-            "query": "dev,staging,production",
+            "query": "production",
             "current": { "text": "production", "value": "production" },
             "options": [
-              { "text": "dev", "value": "dev" },
-              { "text": "staging", "value": "staging" },
               { "text": "production", "value": "production" }
             ]
           }

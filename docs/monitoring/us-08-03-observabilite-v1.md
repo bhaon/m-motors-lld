@@ -4,6 +4,8 @@
 
 Ce document s’appuie sur les manifests existants sous `k8s/infra/monitoring/`, le chart **kube-prometheus-stack**, **Loki** (Helm), **OpenTelemetry** déjà branché sur le backend et le frontend (traces + logs OTLP — voir [observabilite-opentelemetry.md](./observabilite-opentelemetry.md)), et complète par des **métriques HTTP Prometheus** exposées par l’API FastAPI.
 
+**Exploitation au quotidien** (dashboards, interprétation, réactions aux alertes) : voir **[exploitation-monitoring.md](./exploitation-monitoring.md)**.
+
 ---
 
 ## 1. Architecture récapitulative
