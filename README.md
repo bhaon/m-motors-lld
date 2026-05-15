@@ -84,7 +84,7 @@ Surcharges locales non versionnées : créer un fichier **`docker-compose.overri
 
 - **User stories** : [docs/UserStories/](docs/UserStories/)
 - **Schéma base (DBML)** : [docs/schema.dbml](docs/schema.dbml) et variante [docs/Database/schéma.dbml](docs/Database/schéma.dbml)
-- **Kubernetes (MinIO, setup)** : [docs/k8s/](docs/k8s/)
+- **Kubernetes (MinIO, setup, installation prod Ubuntu 24.04)** : [docs/k8s/](docs/k8s/) — guide détaillé : [docs/k8s/installation-production-from-scratch-ubuntu-24.04.md](docs/k8s/installation-production-from-scratch-ubuntu-24.04.md)
 
 ## Arborescence utile
 

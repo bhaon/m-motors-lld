@@ -80,6 +80,7 @@ kubectl port-forward -n monitoring svc/jaeger 16686:16686
 
 ## Documentation associée
 
+- **Installation production from scratch (Ubuntu 24.04 LTS)** : [docs/k8s/installation-production-from-scratch-ubuntu-24.04.md](../docs/k8s/installation-production-from-scratch-ubuntu-24.04.md)
 - **Observabilité (OpenTelemetry, métriques, stack complète)** : [docs/monitoring/observabilite-opentelemetry.md](../docs/monitoring/observabilite-opentelemetry.md), [docs/monitoring/us-08-03-observabilite-v1.md](../docs/monitoring/us-08-03-observabilite-v1.md)
 - **Détail du répertoire `infra/monitoring/`** : [k8s/infra/monitoring/README.md](infra/monitoring/README.md)
 - **MinIO / ingress** : [docs/k8s/docs-minio-ingress.md](../docs/k8s/docs-minio-ingress.md)
