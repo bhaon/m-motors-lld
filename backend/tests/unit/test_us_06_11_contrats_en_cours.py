@@ -12,6 +12,7 @@ from app.models.dossier import Dossier, DossierStatusEnum, DossierTypeEnum
 from app.models.user import RoleEnum
 from app.services.contract_retention_alerts import process_contract_retention_alerts
 from app.services.lld_dossier_lifecycle import (
+    _add_months,
     compute_location_phase,
     fin_contrat_dans_3_mois,
     months_elapsed_since,
@@ -52,8 +53,9 @@ def test_months_elapsed_and_phases() -> None:
 
 
 def test_fin_dans_3_mois() -> None:
-    """Alerte si la fin est dans les 90 jours."""
-    start = date.today() - timedelta(days=900)
+    """Alerte si la fin (début + duree_mois) est dans les 90 jours — pas en jours fixes."""
+    today = date(2026, 5, 15)
+    start = date(2023, 5, 15)
     d = Dossier(
         reference="Y",
         type=DossierTypeEnum.lld,
@@ -63,7 +65,21 @@ def test_fin_dans_3_mois() -> None:
         date_debut_contrat=start,
         duree_mois=36,
     )
-    assert fin_contrat_dans_3_mois(d, today=date.today()) is True
+    fin = _add_months(start, 36)
+    assert fin == today
+    assert fin_contrat_dans_3_mois(d, today=today) is True
+
+    d_loin = Dossier(
+        reference="Z",
+        type=DossierTypeEnum.lld,
+        status=DossierStatusEnum.contrat_en_cours,
+        client_id=1,
+        vehicle_id=1,
+        date_debut_contrat=date(2024, 1, 1),
+        duree_mois=36,
+    )
+    assert (_add_months(date(2024, 1, 1), 36) - today).days > 90
+    assert fin_contrat_dans_3_mois(d_loin, today=today) is False
 
 
 def test_gestionnaire_forbidden_contrats_en_cours(client: TestClient, db: Session) -> None:
@@ -108,7 +124,9 @@ def test_retention_alert_job_idempotent(db: Session) -> None:
     sup = create_user(db, role=RoleEnum.superviseur, email="sup.ret@ex.com", password=PASSWORD)
     cli = create_user(db, email="cli.ret@ex.com", password=PASSWORD)
     veh = create_vehicle(db)
-    debut = date.today() - timedelta(days=31 * 34)
+    now = datetime(2026, 5, 15, 12, 0, tzinfo=timezone.utc)
+    debut = date(2023, 5, 15)
+    assert _add_months(debut, 36) == now.date()
     d = Dossier(
         reference="DOS-RET",
         type=DossierTypeEnum.lld,
@@ -122,7 +140,6 @@ def test_retention_alert_job_idempotent(db: Session) -> None:
     db.commit()
     db.refresh(d)
 
-    now = datetime.now(timezone.utc)
     with patch(
         "app.services.contract_retention_alerts.send_contract_retention_alert_email",
         return_value=True,
