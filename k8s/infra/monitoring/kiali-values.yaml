@@ -11,9 +11,14 @@
 auth:
   strategy: anonymous
 
+login_token:
+  signing_key: "mmotors-kiali-opsdev-fr"
+
 deployment:
   instance_name: kiali
   cluster_wide_access: true
+  network_policy:
+    enabled: false
   pod_annotations: {}
   ingress:
     enabled: false
@@ -32,8 +37,6 @@ external_services:
     enabled: true
     internal_url: "http://jaeger.monitoring.svc.cluster.local:16686"
     use_grpc: false
-  istio:
-    root_namespace: ""
 
 kiali_feature_flags:
   disabled_features:
