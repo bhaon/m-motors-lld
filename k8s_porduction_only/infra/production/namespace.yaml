@@ -1,0 +1,12 @@
+---
+# ============================================================
+# NAMESPACE — dev
+# Label requis pour les NetworkPolicy namespaceSelector
+# ============================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    kubernetes.io/metadata.name: production
+    environment: production
