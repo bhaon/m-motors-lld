@@ -108,7 +108,16 @@ def configure_opentelemetry(
     if _trace_endpoint_configured():
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-        tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        endpoint = (
+            os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "").strip()
+            or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+        )
+        tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint or None)))
+        logging.getLogger(__name__).info(
+            "OTEL traces OTLP → %s (service.name=%s)",
+            endpoint or "default",
+            resource.attributes.get("service.name"),
+        )
     elif debug:
         tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 

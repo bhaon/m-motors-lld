@@ -1,5 +1,7 @@
 ---
 # Export OpenTelemetry vers Jaeger (monitoring) — production.
+# Dans l’UI Jaeger, les services attendus sont « mmotors-api » et « mmotors-frontend »,
+# pas uniquement « jaeger-all-in-one » (traces internes du collecteur).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -10,10 +12,16 @@ spec:
       containers:
         - name: backend
           env:
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://jaeger.monitoring.svc.cluster.local:4318"
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: "http://jaeger.monitoring.svc.cluster.local:4318/v1/traces"
             - name: OTEL_SERVICE_NAME
               value: "mmotors-api"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.name=mmotors-api,deployment.environment=production"
             - name: OTEL_LOGS_EXPORTER
               value: "none"
 ---
@@ -27,9 +35,15 @@ spec:
       containers:
         - name: frontend
           env:
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://jaeger.monitoring.svc.cluster.local:4318"
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: "http://jaeger.monitoring.svc.cluster.local:4318/v1/traces"
             - name: OTEL_SERVICE_NAME
               value: "mmotors-frontend"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.name=mmotors-frontend,deployment.environment=production"
             - name: OTEL_LOGS_EXPORTER
               value: "none"
