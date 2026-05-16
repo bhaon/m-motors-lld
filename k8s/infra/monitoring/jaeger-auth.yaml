@@ -1,0 +1,30 @@
+---
+# Basic Auth Traefik — UI Jaeger (https://jaeger.opsdev.fr).
+# Générer le hash : openssl passwd -apr1 'VotreMotDePasse'
+# Puis remplacer le Secret ci-dessous ou :
+#   kubectl create secret generic jaeger-auth-secret \
+#     --from-literal=users='admin:$(openssl passwd -apr1 "VotreMotDePasse")' \
+#     -n monitoring --dry-run=client -o yaml | kubectl apply -f -
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: jaeger-auth
+  labels:
+    app: jaeger
+spec:
+  basicAuth:
+    secret: jaeger-auth-secret
+    removeHeader: true
+---
+# RAPPEL — remplacer avant apply en prod (SealedSecret recommandé).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jaeger-auth-secret
+  labels:
+    app: jaeger
+  annotations:
+    note: "Remplacer par un SealedSecret — ne pas commiter de vraies valeurs"
+type: Opaque
+stringData:
+  users: "admin:$apr1$CHANGEME$CHANGEME"

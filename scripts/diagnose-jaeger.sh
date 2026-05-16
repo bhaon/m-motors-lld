@@ -14,8 +14,10 @@ kubectl get pods,svc,endpoints -n "$NS_MON" -l app=jaeger 2>/dev/null || echo "E
 section "2. Ingress + certificat TLS"
 kubectl get ingress,certificate -n "$NS_MON" 2>/dev/null | grep -E 'NAME|jaeger' || true
 
-section "3. Middleware Traefik (compress requis par l’Ingress Jaeger)"
+section "3. Middleware Traefik (compress + Basic Auth UI Jaeger)"
 kubectl get middleware -n kube-system compress 2>/dev/null || echo "ERREUR: appliquer k8s/infra/traefik/traefik-config.yaml"
+kubectl get middleware -n monitoring jaeger-auth 2>/dev/null || echo "ERREUR: appliquer k8s/infra/monitoring (jaeger-auth.yaml)"
+kubectl get secret -n monitoring jaeger-auth-secret 2>/dev/null || echo "ERREUR: créer jaeger-auth-secret (voir docs/monitoring/README.md § 4.6)"
 kubectl get middleware -n kube-system redirect-to-https 2>/dev/null || true
 
 section "4. OTLP depuis les pods production (variables OTel)"
