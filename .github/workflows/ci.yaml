@@ -218,7 +218,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend-${{ inputs.environment }}
           build-args: |
             BUILD_ENV=${{ inputs.environment }}
-            NEXT_PUBLIC_API_URL=${{ inputs.environment == 'production' && (vars.PRODUCTION_API_URL != '' && vars.PRODUCTION_API_URL || 'https://opsdev.fr/api') || format('https://{0}.netdevops.fr/api', inputs.environment) }}
+            NEXT_PUBLIC_API_URL=${{ inputs.environment == 'production' && (vars.PRODUCTION_API_URL != '' && vars.PRODUCTION_API_URL || 'https://opsdev.fr/api') || format('https://{0}.opsdev.fr/api', inputs.environment) }}
           provenance: false
 
       - name: Vérifier picomatch dans l'image frontend buildée
