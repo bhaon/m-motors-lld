@@ -11,4 +11,4 @@ spec:
         - name: minio
           env:
             - name: MINIO_SERVER_URL
-              value: "https://s3-staging.netdevops.fr"
+              value: "https://s3-staging.opsdev.fr"
