@@ -19,6 +19,12 @@ depends_on = None
 _PG_ENUM_NAME = "dossierstatusenum"
 
 
+def _has_column(bind: sa.engine.Connection, *, table_name: str, column_name: str) -> bool:
+    """Retourne True si la colonne existe déjà (migration idempotente)."""
+    inspector = sa.inspect(bind)
+    return any(col["name"] == column_name for col in inspector.get_columns(table_name))
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
@@ -38,10 +44,11 @@ END
 $do$;
 """)
         )
-    op.add_column(
-        "dossiers",
-        sa.Column("livraison_prevue_at", sa.DateTime(timezone=True), nullable=True),
-    )
+    if not _has_column(bind, table_name="dossiers", column_name="livraison_prevue_at"):
+        op.add_column(
+            "dossiers",
+            sa.Column("livraison_prevue_at", sa.DateTime(timezone=True), nullable=True),
+        )
 
 
 def downgrade() -> None:

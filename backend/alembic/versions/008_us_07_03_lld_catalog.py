@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import text
+
+from app.db.migration_utils import has_table
 
 revision = "008_us_07_03"
 down_revision = "007_us_07_01"
@@ -20,38 +23,51 @@ _FLAG_SUFFIX = ".enabled"
 _DEFAULT_TS = sa.text("(CURRENT_TIMESTAMP)")
 
 
+def _table_row_count(bind: sa.engine.Connection, table_name: str) -> int:
+    """Nombre de lignes dans une table (0 si vide ou inaccessible)."""
+    return int(bind.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar() or 0)
+
+
 def upgrade() -> None:
-    op.create_table(
-        "feature_flags",
-        sa.Column("key", sa.String(length=128), nullable=False),
-        sa.Column("value_bool", sa.Boolean(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=_DEFAULT_TS, nullable=False),
-        sa.PrimaryKeyConstraint("key"),
-    )
-    op.create_table(
-        "lld_option_catalog",
-        sa.Column("code", sa.String(length=40), nullable=False),
-        sa.Column("label", sa.String(length=255), nullable=False),
-        sa.Column("description", sa.Text(), nullable=False),
-        sa.PrimaryKeyConstraint("code"),
-    )
-    op.create_table(
-        "lld_option_price_history",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("option_code", sa.String(length=40), nullable=False),
-        sa.Column("price_ht", sa.Numeric(10, 2), nullable=False),
-        sa.Column("valid_from", sa.DateTime(timezone=True), server_default=_DEFAULT_TS, nullable=False),
-        sa.Column("created_by_user_id", sa.Integer(), nullable=True),
-        sa.ForeignKeyConstraint(["created_by_user_id"], ["users.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["option_code"], ["lld_option_catalog.code"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(
-        op.f("ix_lld_option_price_history_option_code"),
-        "lld_option_price_history",
-        ["option_code"],
-        unique=False,
-    )
+    bind = op.get_bind()
+
+    if not has_table(bind, "feature_flags"):
+        op.create_table(
+            "feature_flags",
+            sa.Column("key", sa.String(length=128), nullable=False),
+            sa.Column("value_bool", sa.Boolean(), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=_DEFAULT_TS, nullable=False),
+            sa.PrimaryKeyConstraint("key"),
+        )
+    if not has_table(bind, "lld_option_catalog"):
+        op.create_table(
+            "lld_option_catalog",
+            sa.Column("code", sa.String(length=40), nullable=False),
+            sa.Column("label", sa.String(length=255), nullable=False),
+            sa.Column("description", sa.Text(), nullable=False),
+            sa.PrimaryKeyConstraint("code"),
+        )
+    if not has_table(bind, "lld_option_price_history"):
+        op.create_table(
+            "lld_option_price_history",
+            sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column("option_code", sa.String(length=40), nullable=False),
+            sa.Column("price_ht", sa.Numeric(10, 2), nullable=False),
+            sa.Column("valid_from", sa.DateTime(timezone=True), server_default=_DEFAULT_TS, nullable=False),
+            sa.Column("created_by_user_id", sa.Integer(), nullable=True),
+            sa.ForeignKeyConstraint(["created_by_user_id"], ["users.id"], ondelete="SET NULL"),
+            sa.ForeignKeyConstraint(["option_code"], ["lld_option_catalog.code"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        op.create_index(
+            op.f("ix_lld_option_price_history_option_code"),
+            "lld_option_price_history",
+            ["option_code"],
+            unique=False,
+        )
+
+    if not has_table(bind, "lld_option_catalog") or _table_row_count(bind, "lld_option_catalog") > 0:
+        return
 
     catalog_rows = [
         {

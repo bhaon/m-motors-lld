@@ -28,7 +28,9 @@ def upgrade() -> None:
     import app.models.user  # noqa: F401
     import app.models.vehicle  # noqa: F401
 
-    # Exclure les tables gérées par des migrations postérieures pour éviter les DuplicateTable.
+    # Exclure les tables gérées par des migrations postérieures (évite DuplicateTable / DuplicateColumn).
+    # Les colonnes déjà présentes sur ``users`` / ``dossiers`` sont ignorées par les révisions 002+ via
+    # ``app.db.migration_utils`` (garde ``has_column`` / ``has_table``).
     # Ajouter ici tout nouveau modèle dont la migration dédiée crée la table.
     MANAGED_BY_LATER_MIGRATIONS = {
         "audit_trail",

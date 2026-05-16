@@ -17,10 +17,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    from sqlalchemy import inspect as sa_inspect
+    from app.db.migration_utils import has_table
 
-    conn = op.get_bind()
-    if "lld_avenants" not in sa_inspect(conn).get_table_names():
+    bind = op.get_bind()
+    if not has_table(bind, "lld_avenants"):
         op.create_table(
             "lld_avenants",
             sa.Column("id", sa.Integer(), nullable=False),
