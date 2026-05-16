@@ -1,9 +1,10 @@
 ---
 # ============================================================
 # PROMETHEUS RULES — Alertes applicatives
-# Couvre le namespace : production
+# Tous les namespaces sauf l'infra cluster (filtre PromQL ci-dessous).
 # Appliquer : kubectl apply -f k8s/infra/monitoring/alert-rules.yaml
 # ============================================================
+# Filtre : namespace!~"kube-system|kube-public|kube-node-lease|monitoring"
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -21,7 +22,7 @@ spec:
         - alert: PodCrashLooping
           expr: |
             rate(kube_pod_container_status_restarts_total{
-              namespace=~"production"
+              namespace!~"kube-system|kube-public|kube-node-lease|monitoring"
             }[5m]) * 60 > 5
           for: 5m
           labels:
@@ -33,7 +34,7 @@ spec:
         - alert: PodNotReady
           expr: |
             kube_pod_status_ready{
-              namespace=~"production",
+              namespace!~"kube-system|kube-public|kube-node-lease|monitoring",
               condition="true"
             } == 0
           for: 5m
@@ -45,8 +46,8 @@ spec:
 
         - alert: DeploymentReplicasMismatch
           expr: |
-            kube_deployment_spec_replicas{namespace=~"production"}
-            != kube_deployment_status_available_replicas{namespace=~"production"}
+            kube_deployment_spec_replicas{namespace!~"kube-system|kube-public|kube-node-lease|monitoring"}
+            != kube_deployment_status_available_replicas{namespace!~"kube-system|kube-public|kube-node-lease|monitoring"}
           for: 10m
           labels:
             severity: warning
@@ -61,11 +62,11 @@ spec:
         - alert: ContainerHighCPU
           expr: |
             rate(container_cpu_usage_seconds_total{
-              namespace=~"production",
+              namespace!~"kube-system|kube-public|kube-node-lease|monitoring",
               container!=""
             }[5m]) /
             kube_pod_container_resource_limits{
-              namespace=~"production",
+              namespace!~"kube-system|kube-public|kube-node-lease|monitoring",
               resource="cpu"
             } * 100 > 85
           for: 10m
@@ -78,11 +79,11 @@ spec:
         - alert: ContainerHighMemory
           expr: |
             container_memory_working_set_bytes{
-              namespace=~"production",
+              namespace!~"kube-system|kube-public|kube-node-lease|monitoring",
               container!=""
             } /
             kube_pod_container_resource_limits{
-              namespace=~"production",
+              namespace!~"kube-system|kube-public|kube-node-lease|monitoring",
               resource="memory"
             } * 100 > 85
           for: 10m
@@ -95,7 +96,7 @@ spec:
         - alert: ContainerOOMKilled
           expr: |
             kube_pod_container_status_last_terminated_reason{
-              namespace=~"production",
+              namespace!~"kube-system|kube-public|kube-node-lease|monitoring",
               reason="OOMKilled"
             } == 1
           for: 0m
@@ -111,8 +112,8 @@ spec:
       rules:
         - alert: PVCAlmostFull
           expr: |
-            kubelet_volume_stats_used_bytes{namespace=~"production"} /
-            kubelet_volume_stats_capacity_bytes{namespace=~"production"} * 100 > 80
+            kubelet_volume_stats_used_bytes{namespace!~"kube-system|kube-public|kube-node-lease|monitoring"} /
+            kubelet_volume_stats_capacity_bytes{namespace!~"kube-system|kube-public|kube-node-lease|monitoring"} * 100 > 80
           for: 5m
           labels:
             severity: warning
@@ -122,8 +123,8 @@ spec:
 
         - alert: PVCFull
           expr: |
-            kubelet_volume_stats_used_bytes{namespace=~"production"} /
-            kubelet_volume_stats_capacity_bytes{namespace=~"production"} * 100 > 95
+            kubelet_volume_stats_used_bytes{namespace!~"kube-system|kube-public|kube-node-lease|monitoring"} /
+            kubelet_volume_stats_capacity_bytes{namespace!~"kube-system|kube-public|kube-node-lease|monitoring"} * 100 > 95
           for: 1m
           labels:
             severity: critical
@@ -183,10 +184,10 @@ spec:
           expr: |
             sum(rate(traefik_service_requests_total{
               code=~"5..",
-              namespace=~"production"
+              namespace!~"kube-system|kube-public|kube-node-lease|monitoring"
             }[5m])) by (service, namespace) /
             sum(rate(traefik_service_requests_total{
-              namespace=~"production"
+              namespace!~"kube-system|kube-public|kube-node-lease|monitoring"
             }[5m])) by (service, namespace) * 100 > 5
           for: 5m
           labels:
@@ -199,7 +200,7 @@ spec:
           expr: |
             histogram_quantile(0.95,
               sum(rate(traefik_service_request_duration_seconds_bucket{
-                namespace="production"
+                namespace!~"kube-system|kube-public|kube-node-lease|monitoring"
               }[5m])) by (le, service)
             ) > 2
           for: 5m
@@ -218,7 +219,7 @@ spec:
           expr: |
             histogram_quantile(0.95,
               sum(rate(http_request_duration_highr_seconds_bucket{
-                namespace=~"production",
+                namespace!~"kube-system|kube-public|kube-node-lease|monitoring",
                 pod=~"backend.*"
               }[5m])) by (le)
             ) > 2
@@ -233,7 +234,7 @@ spec:
           expr: |
             (
               sum(rate(http_requests_total{
-                namespace=~"production",
+                namespace!~"kube-system|kube-public|kube-node-lease|monitoring",
                 pod=~"backend.*",
                 status="5xx"
               }[5m]))
@@ -241,7 +242,7 @@ spec:
             )
             /
             clamp_min(sum(rate(http_requests_total{
-              namespace=~"production",
+              namespace!~"kube-system|kube-public|kube-node-lease|monitoring",
               pod=~"backend.*"
             }[5m])), 1e-9)
             > 0.01
@@ -277,25 +278,23 @@ spec:
             description: "Le certificat {{ $labels.name }} dans {{ $labels.namespace }} n'est pas Ready"
 ---
 # ============================================================
-# SERVICE MONITOR — Scraper les métriques de l'application
-# À créer dans chaque namespace si l'app expose /metrics
+# SERVICE MONITOR — Scrape /metrics sur tous les backends (dev, staging, prod, …)
 # ============================================================
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: backend-metrics
-  namespace: production
+  namespace: monitoring
   labels:
     release: kube-prometheus-stack
 spec:
   selector:
     matchLabels:
       app: backend
+  namespaceSelector:
+    any: true
   endpoints:
     - port: http
       path: /metrics
       interval: 30s
       scrapeTimeout: 10s
-  namespaceSelector:
-    matchNames:
-      - production

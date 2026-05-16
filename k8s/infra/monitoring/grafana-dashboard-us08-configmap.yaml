@@ -16,22 +16,22 @@ data:
       "title": "M-Motors — Observabilité V1 (US-08-03)",
       "uid": "mmotors-us08",
       "schemaVersion": 39,
-      "version": 5,
+      "version": 6,
       "refresh": "30s",
       "time": { "from": "now-6h", "to": "now" },
       "templating": {
         "list": [
           {
             "name": "namespace",
-            "type": "custom",
-            "query": "production",
-            "current": { "selected": true, "text": "production", "value": "production" },
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "query": "label_values(kube_pod_info{namespace!~\"kube-system|kube-public|kube-node-lease|monitoring\"}, namespace)",
+            "refresh": 1,
             "hide": 0,
-            "includeAll": false,
-            "multi": false,
-            "options": [
-              { "selected": true, "text": "production", "value": "production" }
-            ]
+            "includeAll": true,
+            "allValue": ".+",
+            "multi": true,
+            "sort": 1
           },
           {
             "name": "DS_PROMETHEUS",
@@ -63,7 +63,7 @@ data:
           "targets": [
             {
               "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-              "expr": "sum(rate(http_requests_total{namespace=\"$namespace\",pod=~\"backend.*\"}[5m]))",
+              "expr": "sum(rate(http_requests_total{namespace=~\"$namespace\",pod=~\"backend.*\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -78,7 +78,7 @@ data:
           "targets": [
             {
               "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-              "expr": "100 * (sum(rate(http_requests_total{namespace=\"$namespace\",pod=~\"backend.*\",status=\"5xx\"}[5m])) or on() vector(0)) / clamp_min(sum(rate(http_requests_total{namespace=\"$namespace\",pod=~\"backend.*\"}[5m])), 1e-9)",
+              "expr": "100 * (sum(rate(http_requests_total{namespace=~\"$namespace\",pod=~\"backend.*\",status=\"5xx\"}[5m])) or on() vector(0)) / clamp_min(sum(rate(http_requests_total{namespace=~\"$namespace\",pod=~\"backend.*\"}[5m])), 1e-9)",
               "refId": "A"
             }
           ],
@@ -93,7 +93,7 @@ data:
           "targets": [
             {
               "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_highr_seconds_bucket{namespace=\"$namespace\",pod=~\"backend.*\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_highr_seconds_bucket{namespace=~\"$namespace\",pod=~\"backend.*\"}[5m])) by (le))",
               "legendFormat": "p95",
               "refId": "A"
             }
@@ -109,7 +109,7 @@ data:
           "targets": [
             {
               "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\",pod=~\"backend.*\",container=\"backend\"}[5m])) by (pod)",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\",pod=~\"backend.*\",container=\"backend\"}[5m])) by (pod)",
               "legendFormat": "{{pod}}",
               "refId": "A"
             }
@@ -125,7 +125,7 @@ data:
             {
               "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
               "editorMode": "code",
-              "expr": "{namespace=\"$namespace\", app=\"backend\", container=\"backend\"}",
+              "expr": "{namespace=~\"$namespace\", app=\"backend\", container=\"backend\"}",
               "queryType": "range",
               "refId": "A"
             }

@@ -44,10 +44,10 @@ promtail:
       pipelineStages:
         - cri: {}
       extraRelabelConfigs:
-        # Monitoring limité à la production (US-08).
-        - action: keep
+        # Tous les namespaces sauf l'infra cluster (bruit kube-system, etc.).
+        - action: drop
           source_labels: [__meta_kubernetes_namespace]
-          regex: production
+          regex: kube-system|kube-public|kube-node-lease|monitoring
   resources:
     requests:
       cpu: 50m

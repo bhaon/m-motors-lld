@@ -125,7 +125,7 @@ helm upgrade --install loki grafana/loki-stack -n monitoring \
 
 - Release Helm nommée **`loki`** (le Service DNS doit être `loki:3100`).
 - Ne pas laisser le chart provisionner une datasource Grafana par défaut en conflit — voir `loki-values.yaml` et `additionalDataSources` dans `prometheus-values.yaml`.
-- Promtail : pipeline **cri** (K3s/containerd), namespace `production` ciblé.
+- Promtail : pipeline **cri** (K3s/containerd), logs de **tous les namespaces** sauf `kube-system`, `kube-public`, `kube-node-lease`, `monitoring`.
 
 ### 4.4 Règles d’alerte et ServiceMonitors
 
@@ -379,7 +379,7 @@ kubectl apply -f k8s/infra/monitoring/grafana-dashboard-us08-configmap.yaml
 
 - ConfigMap : `grafana-dashboard-us08-configmap.yaml` (UID `mmotors-us08`)
 - Rafraîchissement **30 s**, fenêtre **6 h**
-- Variable **`namespace`** : `dev` | `staging` | `production`
+- Variable **`namespace`** : liste dynamique (tous les namespaces applicatifs) + option **All**
 
 | Panneau | Métrique / source | Alerte associée |
 |---------|-------------------|-----------------|
@@ -506,7 +506,7 @@ Manifests `kiali-*.yaml` : optionnels, non inclus dans `kustomization.yaml`.
 | Datasource Grafana absente / mauvaise URL | uid `loki`, URL `http://loki:3100` |
 | Conflit *Only one datasource can be marked as default* | `loki.isDefault: false`, sidecar datasources désactivé dans loki-values |
 | Panneau dashboard avec mauvaise datasource | Éditer panneau : datasource **Loki**, pas Prometheus |
-| Variable `namespace` non sélectionnée | Choisir `production` en haut du dashboard |
+| Variable `namespace` non sélectionnée | Choisir un namespace (ou **All**) en haut du dashboard |
 
 **Diagnostic automatisé :**
 
