@@ -13,6 +13,8 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
 helm upgrade --install loki grafana/loki-stack -n monitoring \
   -f k8s/infra/monitoring/loki-values.yaml
 kubectl apply -f k8s/infra/monitoring/alert-rules.yaml
+# Si un ancien ServiceMonitor « backend-metrics » existe encore dans production :
+# kubectl delete servicemonitor backend-metrics -n production --ignore-not-found
 kubectl apply -f k8s/infra/monitoring/grafana-dashboard-us08-configmap.yaml
 kubectl apply -k k8s/infra/monitoring
 ```

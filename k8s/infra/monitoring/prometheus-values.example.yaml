@@ -148,7 +148,7 @@ prometheus:
         cpu: 1000m
         memory: 2Gi
 
-    # Scraper production, kube-system)
+    # Découverte cluster-wide : tous les ServiceMonitor / PodMonitor / PrometheusRule
     serviceMonitorSelectorNilUsesHelmValues: false
     serviceMonitorSelector: {}
     serviceMonitorNamespaceSelector: {}
