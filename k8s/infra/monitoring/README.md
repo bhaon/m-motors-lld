@@ -19,4 +19,4 @@ kubectl apply -f k8s/infra/monitoring/grafana-dashboard-us08-configmap.yaml
 kubectl apply -k k8s/infra/monitoring
 ```
 
-Scripts : `./scripts/diagnose-jaeger.sh`, `./scripts/diagnose-loki.sh`
+Scripts : `./scripts/diagnose-jaeger.sh`, `./scripts/diagnose-loki.sh`, `./scripts/setup-jaeger-auth-secret.sh` (Basic Auth UI Jaeger)
