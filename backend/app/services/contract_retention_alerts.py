@@ -48,7 +48,7 @@ def process_contract_retention_alerts(
         now if now is not None and now.tzinfo is not None else datetime.now(timezone.utc)
     )
     today = effective_now.date()
-    close_expired_lld_contract_dossiers(db)
+    close_expired_lld_contract_dossiers(db, today=today)
     recipients = _supervisor_recipient_emails(db)
     if not recipients:
         logger.warning("Aucun superviseur/admin pour les alertes rétention US-06-11")
