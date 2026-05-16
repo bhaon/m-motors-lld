@@ -68,14 +68,27 @@ def upgrade() -> None:
             pass
 
     if is_postgres:
-        op.execute(
-            """
-            UPDATE users
-            SET birth_date = DATE '1970-01-01',
-                cgu_accepted_at = COALESCE(created_at, NOW()),
-                privacy_accepted_at = COALESCE(created_at, NOW())
-            """
-        )
+        birth_type = _column_type_name(bind, table_name="users", column_name="birth_date")
+        if birth_type == "bytea":
+            op.execute(
+                sa.text(
+                    """
+                    UPDATE users
+                    SET birth_date = pgp_sym_encrypt('1970-01-01', :encryption_key, 'cipher-algo=aes256'),
+                        cgu_accepted_at = COALESCE(created_at, NOW()),
+                        privacy_accepted_at = COALESCE(created_at, NOW())
+                    """
+                ).bindparams(encryption_key=encryption_key)
+            )
+        else:
+            op.execute(
+                """
+                UPDATE users
+                SET birth_date = DATE '1970-01-01',
+                    cgu_accepted_at = COALESCE(created_at, NOW()),
+                    privacy_accepted_at = COALESCE(created_at, NOW())
+                """
+            )
         first_name_type = _column_type_name(bind, table_name="users", column_name="first_name")
         if first_name_type != "bytea":
             op.execute(
