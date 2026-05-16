@@ -17,24 +17,28 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "lld_avenants",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("dossier_id", sa.Integer(), nullable=False),
-        sa.Column("reference", sa.String(length=64), nullable=False),
-        sa.Column("body_markdown", sa.Text(), nullable=False),
-        sa.Column("selections", sa.JSON(), nullable=False),
-        sa.Column("signature_token_hash", sa.String(length=64), nullable=True),
-        sa.Column("signature_token_sent_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("signature_token_expires_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("signed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.ForeignKeyConstraint(["dossier_id"], ["dossiers.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("reference"),
-        sa.UniqueConstraint("signature_token_hash"),
-    )
-    op.create_index(op.f("ix_lld_avenants_dossier_id"), "lld_avenants", ["dossier_id"], unique=False)
+    from sqlalchemy import inspect as sa_inspect
+
+    conn = op.get_bind()
+    if "lld_avenants" not in sa_inspect(conn).get_table_names():
+        op.create_table(
+            "lld_avenants",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("dossier_id", sa.Integer(), nullable=False),
+            sa.Column("reference", sa.String(length=64), nullable=False),
+            sa.Column("body_markdown", sa.Text(), nullable=False),
+            sa.Column("selections", sa.JSON(), nullable=False),
+            sa.Column("signature_token_hash", sa.String(length=64), nullable=True),
+            sa.Column("signature_token_sent_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("signature_token_expires_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("signed_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+            sa.ForeignKeyConstraint(["dossier_id"], ["dossiers.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("reference"),
+            sa.UniqueConstraint("signature_token_hash"),
+        )
+        op.create_index(op.f("ix_lld_avenants_dossier_id"), "lld_avenants", ["dossier_id"], unique=False)
 
 
 def downgrade() -> None:

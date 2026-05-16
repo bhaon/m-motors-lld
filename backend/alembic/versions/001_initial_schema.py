@@ -30,7 +30,15 @@ def upgrade() -> None:
 
     # Exclure les tables gérées par des migrations postérieures pour éviter les DuplicateTable.
     # Ajouter ici tout nouveau modèle dont la migration dédiée crée la table.
-    MANAGED_BY_LATER_MIGRATIONS = {"audit_trail"}
+    MANAGED_BY_LATER_MIGRATIONS = {
+        "audit_trail",
+        "options_lld",
+        "dossier_contrats",
+        "lld_avenants",
+        "feature_flags",
+        "lld_option_catalog",
+        "lld_option_price_history",
+    }
     tables = [t for t in Base.metadata.sorted_tables if t.name not in MANAGED_BY_LATER_MIGRATIONS]
     Base.metadata.create_all(bind=bind, tables=tables)
 
