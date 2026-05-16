@@ -40,8 +40,8 @@ spec:
                   number: 16686
 ---
 # UI Jaeger — production (https://jaeger.opsdev.fr).
-# Middlewares : uniquement kube-system (compress). Ne pas référencer production-rate-limit
-# depuis le namespace monitoring : si le Middleware production n’est pas déployé → 502.
+# Middlewares : Basic Auth (monitoring) + compress (kube-system).
+# Ne pas référencer production-rate-limit depuis monitoring : Middleware absent → 502.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -54,7 +54,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/service.passhostheader: "true"
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    traefik.ingress.kubernetes.io/router.middlewares: kube-system-compress@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-jaeger-auth@kubernetescrd,kube-system-compress@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:

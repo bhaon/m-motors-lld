@@ -71,6 +71,7 @@ Répertoire **`k8s/infra/monitoring/`** :
 | `namespace-and-netpol.yaml` | Namespace `monitoring` et politiques transverses |
 | `jaeger.yaml` | Deployment + Service Jaeger (OTLP 4317/4318, UI 16686) |
 | `jaeger-netpol.yaml` | OTLP depuis pods `component: api` / `web` ; UI depuis Traefik |
+| `jaeger-auth.yaml` | Middleware Traefik Basic Auth + Secret (UI Jaeger) |
 | `jaeger-ingress.yaml` | TLS + Ingress UI production (`jaeger.opsdev.fr`) |
 | `otel-collector.yaml` | Relais OTLP → Jaeger |
 | `otel-collector-netpol.yaml` | Politiques collecteur |
@@ -147,12 +148,23 @@ kubectl apply -k k8s/infra/monitoring
 
 Prérequis DNS : **`jaeger.opsdev.fr`** → IP du cluster ; middlewares Traefik `kube-system` appliqués (`k8s/infra/traefik/traefik-config.yaml`).
 
+**Authentification UI (Basic Auth Traefik) :** avant le premier accès en production, définir un mot de passe réel dans le Secret `jaeger-auth-secret` (namespace `monitoring`) :
+
+```bash
+kubectl create secret generic jaeger-auth-secret \
+  --from-literal=users="admin:$(openssl passwd -apr1 'VotreMotDePasseFort')" \
+  -n monitoring --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -k k8s/infra/monitoring
+```
+
+L’UI demande ensuite identifiant / mot de passe au navigateur. L’export OTLP (4317/4318) n’est pas concerné (trafic interne cluster).
+
 ### 4.7 Accès aux interfaces
 
 | Interface | URL / accès | Namespace |
 |-----------|-------------|-----------|
 | **Grafana** | `https://grafana.<domaine>` (selon config Helm) | `monitoring` |
-| **Jaeger UI** | `https://jaeger.opsdev.fr` (prod) | `monitoring` |
+| **Jaeger UI** | `https://jaeger.opsdev.fr` (prod, **Basic Auth**) | `monitoring` |
 | **Prometheus** | Port-forward `9090` | `monitoring` |
 | **Alertmanager** | Port-forward `9093` | `monitoring` |
 | **Métriques API** | `http://backend.<ns>.svc.cluster.local:8000/metrics` | `dev` / `staging` / `production` |
@@ -287,10 +299,18 @@ Ne pas copier l’URL Kubernetes (`jaeger.monitoring.svc...`) dans un `.env` loc
 ### 6.4 Dépannage 502 sur l’UI Jaeger
 
 1. **Pod / endpoints** : `kubectl get pods,svc,endpoints -n monitoring -l app=jaeger`
-2. **Middleware Traefik** : `kubectl get middleware -n kube-system compress` — appliquer `k8s/infra/traefik/traefik-config.yaml`
+2. **Middleware Traefik** : `kubectl get middleware -n kube-system compress` et `kubectl get middleware -n monitoring jaeger-auth` — appliquer `k8s/infra/traefik/traefik-config.yaml` et `kubectl apply -k k8s/infra/monitoring`
 3. **NetworkPolicy** : port **16686** depuis `kube-system`
 4. **Nouveau cluster** : Jaeger n’est pas dans l’overlay `production` seul — `kubectl apply -k k8s/infra/monitoring`
 5. Script : `./scripts/diagnose-jaeger.sh`
+
+### 6.5 Authentification UI (401 / accès refusé)
+
+1. **Secret** : `kubectl get secret jaeger-auth-secret -n monitoring` — clé `users` au format `utilisateur:hash_apr1`
+2. **Recréer le mot de passe** : voir [§ 4.6](#46-jaeger--collecteur-otlp) (`openssl passwd -apr1`)
+3. **Middleware** : `kubectl describe middleware -n monitoring jaeger-auth`
+4. **Ingress** : l’annotation `router.middlewares` doit inclure `monitoring-jaeger-auth@kubernetescrd`
+5. **Port-forward local** : pas de Basic Auth (`kubectl port-forward` → accès direct au Service)
 
 ---
 

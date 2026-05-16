@@ -10,6 +10,7 @@ namespace: monitoring
 resources:
   - jaeger.yaml
   - jaeger-netpol.yaml
+  - jaeger-auth.yaml
   - jaeger-ingress.yaml
   - otel-collector.yaml
   - otel-collector-netpol.yaml
