@@ -154,9 +154,9 @@ jobs:
       - name: Smoke test post-rollback
         run: |
           case "${{ inputs.environment }}" in
-            dev)        URL="https://app-dev.netdevops.fr" ;;
-            staging)    URL="https://staging.netdevops.fr" ;;
-            production) URL="https://netdevops.fr" ;;
+            dev)        URL="https://app-dev.opsdev.fr" ;;
+            staging)    URL="https://staging.opsdev.fr" ;;
+            production) URL="https://opsdev.fr" ;;
           esac
           STATUS=$(curl -o /dev/null -s -w "%{http_code}" "${URL}/api/healthz" \
             --max-time 15 --retry 12 --retry-delay 10 --retry-connrefused)

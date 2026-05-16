@@ -74,13 +74,13 @@ def jours_restants_contrat(dossier: Dossier, *, today: date | None = None) -> in
     return (fin - (today or date.today())).days
 
 
-def close_expired_lld_contract_dossiers(db: Session) -> int:
+def close_expired_lld_contract_dossiers(db: Session, *, today: date | None = None) -> int:
     """Passe en ``cloture`` les dossiers LLD ``contrat_en_cours`` dont la date de fin est passée.
 
     Idempotent ; ne notifie pas par email (passage automatique, trace en historique).
     À appeler en tête des lectures client / listes pour matérialiser l'échéance sans cron.
     """
-    today = date.today()
+    ref = today or date.today()
     rows = (
         db.query(Dossier)
         .filter(
@@ -94,7 +94,7 @@ def close_expired_lld_contract_dossiers(db: Session) -> int:
         fin = _date_fin_contrat(d)
         if fin is None:
             continue
-        if today > fin:
+        if ref > fin:
             old = d.status.value
             d.status = DossierStatusEnum.cloture
             db.add(

@@ -22,11 +22,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    from sqlalchemy import inspect as sa_inspect
+    from app.db.migration_utils import has_table
 
-    conn = op.get_bind()
+    bind = op.get_bind()
     # Garde idempotente : migration 001 peut avoir déjà créé la table via create_all
-    if "audit_trail" not in sa_inspect(conn).get_table_names():
+    if not has_table(bind, "audit_trail"):
         op.create_table(
             "audit_trail",
             sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),

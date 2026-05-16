@@ -106,7 +106,7 @@ jobs:
         run: |
           # Health check via l’ingress public : pas de pods/exec ni port-forward, donc pas de droit
           # supplémentaire sur le service account Kubernetes (curl s’exécute sur le runner GitHub).
-          DEFAULT_URL="https://app-dev.netdevops.fr/api/healthz"
+          DEFAULT_URL="https://app-dev.opsdev.fr/api/healthz"
           URL="${DEV_SMOKE_HEALTH_URL:-$DEFAULT_URL}"
           echo "GET $URL"
           # En DEV, le certificat peut être auto-signé ; -k tolère les certs self-signed.
@@ -131,7 +131,7 @@ jobs:
                 "fields": [
                   {"title": "Commit", "value": "${{ github.sha }}", "short": true},
                   {"title": "Auteur", "value": "${{ github.actor }}", "short": true},
-                  {"title": "URL", "value": "https://app-dev.netdevops.fr", "short": false}
+                  {"title": "URL", "value": "https://app-dev.opsdev.fr", "short": false}
                 ]
               }]
             }

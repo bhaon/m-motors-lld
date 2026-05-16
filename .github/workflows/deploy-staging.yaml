@@ -30,7 +30,7 @@ env:
   NAMESPACE: staging
   IMAGE_TAG: staging-${{ github.sha }}
   # Cible DAST (OWASP ZAP) — surcharge via vars.STAGING_DAST_TARGET si besoin.
-  STAGING_DAST_TARGET: ${{ vars.STAGING_DAST_TARGET != '' && vars.STAGING_DAST_TARGET || 'https://staging.netdevops.fr' }}
+  STAGING_DAST_TARGET: ${{ vars.STAGING_DAST_TARGET != '' && vars.STAGING_DAST_TARGET || 'https://staging.opsdev.fr' }}
 
 jobs:
   ci:
@@ -99,7 +99,7 @@ jobs:
 
       - name: Extended smoke tests
         run: |
-          BASE_URL="https://staging.netdevops.fr"
+          BASE_URL="https://staging.opsdev.fr"
 
           # Test via endpoint public HTTPS (retry étendu pour laisser le temps au pod de démarrer)
           curl -f --retry 12 --retry-delay 10 --retry-connrefused \
@@ -183,7 +183,7 @@ jobs:
                 "fields": [
                   {"title": "Commit", "value": "${{ github.sha }}", "short": true},
                   {"title": "Auteur", "value": "${{ github.actor }}", "short": true},
-                  {"title": "URL Staging", "value": "https://staging.netdevops.fr", "short": false},
+                  {"title": "URL Staging", "value": "https://staging.opsdev.fr", "short": false},
                   {"title": "Action requise", "value": "Valider puis créer un tag pour déployer en production", "short": false}
                 ]
               }]

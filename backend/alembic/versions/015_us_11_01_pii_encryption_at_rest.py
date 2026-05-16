@@ -14,27 +14,13 @@ import sqlalchemy as sa
 from sqlalchemy import text
 
 from app.core.config import settings
+from app.db.migration_utils import column_is_nullable, column_type_name, has_column
 
 
 revision = "015_us_11_01_pii"
 down_revision = "014_us_06_08_lld_avenants"
 branch_labels = None
 depends_on = None
-
-
-def _has_column(bind: sa.engine.Connection, table_name: str, column_name: str) -> bool:
-    """Retourne True si la colonne existe déjà."""
-    inspector = sa.inspect(bind)
-    return any(col["name"] == column_name for col in inspector.get_columns(table_name))
-
-
-def _column_type_name(bind: sa.engine.Connection, *, table_name: str, column_name: str) -> str | None:
-    """Retourne le nom de type SQL (en minuscule) d'une colonne, sinon None."""
-    inspector = sa.inspect(bind)
-    for col in inspector.get_columns(table_name):
-        if col["name"] == column_name:
-            return str(col["type"]).lower()
-    return None
 
 
 def _drop_unique_on_email(bind: sa.engine.Connection) -> None:
@@ -76,20 +62,35 @@ def upgrade() -> None:
     is_postgres = bind.dialect.name == "postgresql"
     encryption_key = settings.PII_ENCRYPTION_KEY or settings.SECRET_KEY
 
-    if not _has_column(bind, "users", "email_hash"):
+    if not has_column(bind, table_name="users", column_name="email_hash"):
         op.add_column("users", sa.Column("email_hash", sa.String(length=64), nullable=True))
 
     if is_postgres:
         op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
-        op.execute(
-            sa.text(
-                """
-                UPDATE users
-                SET email_hash = encode(digest(lower(trim(email::text)), 'sha256'), 'hex')
-                WHERE email_hash IS NULL
-                """
+        email_type = column_type_name(bind, table_name="users", column_name="email")
+        if email_type == "bytea":
+            op.execute(
+                sa.text(
+                    """
+                    UPDATE users
+                    SET email_hash = encode(
+                        digest(lower(trim(pgp_sym_decrypt(email, :encryption_key)::text)), 'sha256'),
+                        'hex'
+                    )
+                    WHERE email_hash IS NULL
+                    """
+                ).bindparams(encryption_key=encryption_key)
             )
-        )
+        else:
+            op.execute(
+                sa.text(
+                    """
+                    UPDATE users
+                    SET email_hash = encode(digest(lower(trim(email::text)), 'sha256'), 'hex')
+                    WHERE email_hash IS NULL
+                    """
+                )
+            )
     else:
         _backfill_email_hash_sqlite(bind)
 
@@ -97,7 +98,7 @@ def upgrade() -> None:
     _drop_nonunique_index_on_email(bind)
 
     if is_postgres:
-        email_type = _column_type_name(bind, table_name="users", column_name="email")
+        email_type = column_type_name(bind, table_name="users", column_name="email")
         if email_type != "bytea":
             op.execute(
                 sa.text(
@@ -108,7 +109,7 @@ def upgrade() -> None:
                     """
                 ).bindparams(encryption_key=encryption_key)
             )
-        birth_type = _column_type_name(bind, table_name="users", column_name="birth_date")
+        birth_type = column_type_name(bind, table_name="users", column_name="birth_date")
         if birth_type != "bytea":
             op.execute(
                 sa.text(
@@ -124,8 +125,9 @@ def upgrade() -> None:
     if (remaining or 0) > 0:
         raise RuntimeError("Impossible de finaliser US-11-01 : email_hash encore NULL sur certaines lignes.")
 
-    with op.batch_alter_table("users") as batch:
-        batch.alter_column("email_hash", existing_type=sa.String(length=64), nullable=False)
+    if column_is_nullable(bind, table_name="users", column_name="email_hash"):
+        with op.batch_alter_table("users") as batch:
+            batch.alter_column("email_hash", existing_type=sa.String(length=64), nullable=False)
 
     op.execute(
         """
@@ -148,7 +150,7 @@ def downgrade() -> None:
         batch.alter_column("email_hash", existing_type=sa.String(length=64), nullable=True)
 
     if is_postgres:
-        email_type = _column_type_name(bind, table_name="users", column_name="email")
+        email_type = column_type_name(bind, table_name="users", column_name="email")
         if email_type == "bytea":
             op.execute(
                 sa.text(
@@ -159,7 +161,7 @@ def downgrade() -> None:
                     """
                 ).bindparams(encryption_key=encryption_key)
             )
-        birth_type = _column_type_name(bind, table_name="users", column_name="birth_date")
+        birth_type = column_type_name(bind, table_name="users", column_name="birth_date")
         if birth_type == "bytea":
             op.execute(
                 sa.text(

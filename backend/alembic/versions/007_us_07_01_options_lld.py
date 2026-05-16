@@ -17,19 +17,24 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "options_lld",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("dossier_id", sa.Integer(), nullable=False),
-        sa.Column("code", sa.String(length=40), nullable=False),
-        # PostgreSQL refuse DEFAULT 0 sur une colonne BOOLEAN ; SQLite accepte false également.
-        sa.Column("selected", sa.Boolean(), nullable=False, server_default=sa.false()),
-        sa.Column("surcout_mensuel_ht", sa.Numeric(10, 2), nullable=False),
-        sa.ForeignKeyConstraint(["dossier_id"], ["dossiers.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("dossier_id", "code", name="uq_options_lld_dossier_code"),
-    )
-    op.create_index(op.f("ix_options_lld_dossier_id"), "options_lld", ["dossier_id"], unique=False)
+    from app.db.migration_utils import has_table
+
+    bind = op.get_bind()
+    # Garde idempotente : migration 001 peut avoir déjà créé la table via create_all
+    if not has_table(bind, "options_lld"):
+        op.create_table(
+            "options_lld",
+            sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column("dossier_id", sa.Integer(), nullable=False),
+            sa.Column("code", sa.String(length=40), nullable=False),
+            # PostgreSQL refuse DEFAULT 0 sur une colonne BOOLEAN ; SQLite accepte false également.
+            sa.Column("selected", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column("surcout_mensuel_ht", sa.Numeric(10, 2), nullable=False),
+            sa.ForeignKeyConstraint(["dossier_id"], ["dossiers.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("dossier_id", "code", name="uq_options_lld_dossier_code"),
+        )
+        op.create_index(op.f("ix_options_lld_dossier_id"), "options_lld", ["dossier_id"], unique=False)
 
 
 def downgrade() -> None:
