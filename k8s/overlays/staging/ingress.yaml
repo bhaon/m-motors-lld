@@ -18,7 +18,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: staging.netdevops.fr
+    - host: staging.opsdev.fr
       http:
         paths:
           - path: /
@@ -28,7 +28,7 @@ spec:
                 name: frontend
                 port:
                   name: http
-    - host: s3-staging.netdevops.fr
+    - host: s3-staging.opsdev.fr
       http:
         paths:
           - path: /
@@ -56,10 +56,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - staging.netdevops.fr
+        - staging.opsdev.fr
       secretName: staging-tls-secret
   rules:
-    - host: staging.netdevops.fr
+    - host: staging.opsdev.fr
       http:
         paths:
           - path: /api
@@ -97,10 +97,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - s3-staging.netdevops.fr
+        - s3-staging.opsdev.fr
       secretName: s3-staging-tls-secret
   rules:
-    - host: s3-staging.netdevops.fr
+    - host: s3-staging.opsdev.fr
       http:
         paths:
           - path: /
@@ -122,7 +122,7 @@ metadata:
 spec:
   headers:
     accessControlAllowOriginList:
-      - "https://staging.netdevops.fr"
+      - "https://staging.opsdev.fr"
     accessControlAllowMethods:
       - "GET"
       - "HEAD"
@@ -152,4 +152,4 @@ spec:
     name: letsencrypt-prod
     kind: ClusterIssuer
   dnsNames:
-    - s3-staging.netdevops.fr
+    - s3-staging.opsdev.fr
