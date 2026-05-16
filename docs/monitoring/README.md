@@ -71,7 +71,7 @@ Répertoire **`k8s/infra/monitoring/`** :
 | `namespace-and-netpol.yaml` | Namespace `monitoring` et politiques transverses |
 | `jaeger.yaml` | Deployment + Service Jaeger (OTLP 4317/4318, UI 16686) |
 | `jaeger-netpol.yaml` | OTLP depuis pods `component: api` / `web` ; UI depuis Traefik |
-| `jaeger-auth.yaml` | Middleware Traefik Basic Auth + Secret (UI Jaeger) |
+| `jaeger-auth.yaml` | Middleware Traefik Basic Auth (Secret via script) |
 | `jaeger-ingress.yaml` | TLS + Ingress UI production (`jaeger.opsdev.fr`) |
 | `otel-collector.yaml` | Relais OTLP → Jaeger |
 | `otel-collector-netpol.yaml` | Politiques collecteur |
@@ -148,16 +148,16 @@ kubectl apply -k k8s/infra/monitoring
 
 Prérequis DNS : **`jaeger.opsdev.fr`** → IP du cluster ; middlewares Traefik `kube-system` appliqués (`k8s/infra/traefik/traefik-config.yaml`).
 
-**Authentification UI (Basic Auth Traefik) :** avant le premier accès en production, définir un mot de passe réel dans le Secret `jaeger-auth-secret` (namespace `monitoring`) :
+**Authentification UI (Basic Auth Traefik) :** créer le Secret **avant** ou **après** `kubectl apply -k` (le Secret n’est plus dans le kustomize pour ne pas être écrasé) :
 
 ```bash
-kubectl create secret generic jaeger-auth-secret \
-  --from-literal=users="admin:$(openssl passwd -apr1 'VotreMotDePasseFort')" \
-  -n monitoring --dry-run=client -o yaml | kubectl apply -f -
+./scripts/setup-jaeger-auth-secret.sh 'VotreMotDePasseFort'
 kubectl apply -k k8s/infra/monitoring
 ```
 
-L’UI demande ensuite identifiant / mot de passe au navigateur. L’export OTLP (4317/4318) n’est pas concerné (trafic interne cluster).
+Identifiant par défaut : `admin`. L’UI demande ensuite identifiant / mot de passe au navigateur. L’export OTLP (4317/4318) n’est pas concerné (trafic interne cluster).
+
+**Attention :** ne pas utiliser de guillemets simples autour de `$(openssl passwd …)` — le hash ne serait pas généré. Utiliser le script ci-dessus.
 
 ### 4.7 Accès aux interfaces
 
@@ -306,11 +306,12 @@ Ne pas copier l’URL Kubernetes (`jaeger.monitoring.svc...`) dans un `.env` loc
 
 ### 6.5 Authentification UI (401 / accès refusé)
 
-1. **Secret** : `kubectl get secret jaeger-auth-secret -n monitoring` — clé `users` au format `utilisateur:hash_apr1`
-2. **Recréer le mot de passe** : voir [§ 4.6](#46-jaeger--collecteur-otlp) (`openssl passwd -apr1`)
-3. **Middleware** : `kubectl describe middleware -n monitoring jaeger-auth`
-4. **Ingress** : l’annotation `router.middlewares` doit inclure `monitoring-jaeger-auth@kubernetescrd`
-5. **Port-forward local** : pas de Basic Auth (`kubectl port-forward` → accès direct au Service)
+1. **Secret** : `kubectl get secret jaeger-auth-secret -n monitoring` — clé `users` au format `utilisateur:hash_apr1` (pas de texte littéral `$(openssl` ni `CHANGEME`)
+2. **Recréer le mot de passe** : `./scripts/setup-jaeger-auth-secret.sh 'NouveauMotDePasse'`
+3. **Écrasement** : un ancien `kubectl apply -k` avec Secret versionné remettait `CHANGEME` — réappliquer le script puis `kubectl apply -k` (sans Secret dans le bundle)
+4. **Middleware** : `kubectl describe middleware -n monitoring jaeger-auth`
+5. **Ingress** : l’annotation `router.middlewares` doit inclure `monitoring-jaeger-auth@kubernetescrd`
+6. **Port-forward local** : pas de Basic Auth (`kubectl port-forward` → accès direct au Service)
 
 ---
 

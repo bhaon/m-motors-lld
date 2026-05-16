@@ -17,7 +17,16 @@ kubectl get ingress,certificate -n "$NS_MON" 2>/dev/null | grep -E 'NAME|jaeger'
 section "3. Middleware Traefik (compress + Basic Auth UI Jaeger)"
 kubectl get middleware -n kube-system compress 2>/dev/null || echo "ERREUR: appliquer k8s/infra/traefik/traefik-config.yaml"
 kubectl get middleware -n monitoring jaeger-auth 2>/dev/null || echo "ERREUR: appliquer k8s/infra/monitoring (jaeger-auth.yaml)"
-kubectl get secret -n monitoring jaeger-auth-secret 2>/dev/null || echo "ERREUR: créer jaeger-auth-secret (voir docs/monitoring/README.md § 4.6)"
+if kubectl get secret -n monitoring jaeger-auth-secret &>/dev/null; then
+  users=$(kubectl get secret -n monitoring jaeger-auth-secret -o jsonpath='{.data.users}' 2>/dev/null | base64 -d 2>/dev/null || true)
+  if [[ -z "$users" ]] || [[ "$users" == *'CHANGEME'* ]] || [[ "$users" == *'$(openssl'* ]]; then
+    echo "ERREUR: secret invalide (placeholder ou commande non exécutée) — ./scripts/setup-jaeger-auth-secret.sh 'MotDePasse'"
+  else
+    echo "OK: jaeger-auth-secret présent (utilisateur : ${users%%:*})"
+  fi
+else
+  echo "ERREUR: créer jaeger-auth-secret — ./scripts/setup-jaeger-auth-secret.sh 'MotDePasse'"
+fi
 kubectl get middleware -n kube-system redirect-to-https 2>/dev/null || true
 
 section "4. OTLP depuis les pods production (variables OTel)"
